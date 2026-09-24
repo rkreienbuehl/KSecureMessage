@@ -25,7 +25,7 @@ internal class SessionState(
     val ratchet: ByteArray,
 ) {
     fun encode(): ByteArray {
-        val out = StateWriter()
+        val out = BinaryWriter()
         out.byte(VERSION)
         out.bytes(associatedData)
         if (pending == null) {
@@ -50,7 +50,7 @@ internal class SessionState(
         private const val VERSION: Byte = 1
 
         fun decode(data: ByteArray): SessionState = try {
-            val input = StateReader(data)
+            val input = BinaryReader(data)
             if (input.byte() != VERSION) throw IllegalArgumentException("Unsupported session state version")
             val associatedData = input.bytes()
             val pending = when (input.byte()) {
@@ -73,58 +73,5 @@ internal class SessionState(
         } catch (e: IllegalArgumentException) {
             throw ProtocolException.InvalidSessionState("Malformed session state", e)
         }
-    }
-}
-
-private class StateWriter {
-    private val parts = mutableListOf<ByteArray>()
-
-    fun byte(value: Byte) {
-        parts += byteArrayOf(value)
-    }
-
-    fun int(value: Int) {
-        parts += byteArrayOf((value shr 24).toByte(), (value shr 16).toByte(), (value shr 8).toByte(), value.toByte())
-    }
-
-    fun bytes(value: ByteArray) {
-        int(value.size)
-        parts += value
-    }
-
-    fun toByteArray(): ByteArray {
-        val result = ByteArray(parts.sumOf { it.size })
-        var offset = 0
-        for (part in parts) {
-            part.copyInto(result, offset)
-            offset += part.size
-        }
-        return result
-    }
-}
-
-private class StateReader(private val data: ByteArray) {
-    private var position = 0
-
-    fun byte(): Byte {
-        require(position < data.size) { "Truncated session state" }
-        return data[position++]
-    }
-
-    fun int(): Int {
-        require(data.size - position >= 4) { "Truncated session state" }
-        var value = 0
-        repeat(4) { value = (value shl 8) or (data[position++].toInt() and 0xFF) }
-        return value
-    }
-
-    fun bytes(): ByteArray {
-        val size = int()
-        require(size >= 0 && data.size - position >= size) { "Truncated session state" }
-        return data.copyOfRange(position, position + size).also { position += size }
-    }
-
-    fun requireEnd() {
-        require(position == data.size) { "Trailing session state data" }
     }
 }

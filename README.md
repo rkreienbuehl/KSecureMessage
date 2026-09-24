@@ -73,14 +73,15 @@ Current dependency baseline:
 
 Milestone 1 done: `KodiumProtocolEngine` creates identities and prekeys, sets up sessions with Kodium X3DH (the signed prekey signature is verified), and encrypts and decrypts with the Kodium Double Ratchet. Sessions persist as opaque `SecureSession.state` bytes. The initiator sends `PreKeyMessage`s until it has decrypted the first reply. After that it sends `RatchetMessage`s. See `core/protocol/src/commonTest`.
 
+Milestone 2 done: `CiphertextMessageCodec` encodes `RatchetMessage` and `PreKeyMessage` into a versioned binary wire format for `EncryptedEnvelope.payload` (see [docs/wire-format.md](docs/wire-format.md)). `SecureMessageClient` encrypts and sends through it and decrypts incoming envelopes, accepting a first-contact `PreKeyMessage` without an existing session. Local prekeys come from `ClientStorage.preKeys`; a consumed one-time prekey is removed in the same transaction that stores the new session.
+
 ## Next implementation steps
 
 1. Map Kodium X3DH bundle/session types into `core:protocol`.
 2. Define persisted session records without exposing Kodium objects through public APIs.
 3. Add atomic session update semantics to client storage.
 4. Implement prekey publication/consumption flows.
-5. Add a versioned wire format for `EncryptedEnvelope` and prekey/session-init messages.
-6. Add cross-platform protocol tests and Kodium persistence round-trip tests.
+5. Add cross-platform protocol tests and Kodium persistence round-trip tests.
 
 ## Gradle wrapper
 

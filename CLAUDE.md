@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-KSecureMessage is an early-stage Kotlin Multiplatform scaffold for a Signal-style secure messaging library built on [Kodium](https://github.com/LivotovLabs/kodium) (which provides the X3DH and Double Ratchet primitives). It adds the messaging lifecycle and infrastructure around those primitives. It does **not** aim for wire compatibility with Signal/libsignal. `KodiumProtocolEngine` implements milestone 1 (X3DH session setup, Double Ratchet, session export/restore; tests in `core/protocol/src/commonTest`). Envelope payload encoding is still open, so `SecureMessageClient.decrypt` is a `TODO()`. The README's "Next implementation steps" section is the roadmap.
+KSecureMessage is an early-stage Kotlin Multiplatform scaffold for a Signal-style secure messaging library built on [Kodium](https://github.com/LivotovLabs/kodium) (which provides the X3DH and Double Ratchet primitives). It adds the messaging lifecycle and infrastructure around those primitives. It does **not** aim for wire compatibility with Signal/libsignal. `KodiumProtocolEngine` implements milestone 1 (X3DH session setup, Double Ratchet, session export/restore; tests in `core/protocol/src/commonTest`). Milestone 2 added `CiphertextMessageCodec` (versioned binary wire format for `EncryptedEnvelope.payload`, spec in `docs/wire-format.md`) and the `SecureMessageClient` send/receive path; tests in `core/protocol` and `client/core` `commonTest`. The README's "Next implementation steps" section is the roadmap.
 
 ## Commands
 
-The Gradle wrapper (Gradle 9.6) is checked in. Tests exist only in `core:protocol`. There is no lint setup.
+The Gradle wrapper (Gradle 9.6) is checked in. Tests exist in `core:protocol` and `client:core`. There is no lint setup.
 
 ```bash
 ./gradlew build                          # everything (all KMP targets; native/iOS need macOS)
@@ -42,5 +42,6 @@ Key boundaries:
 - **Kodium stays behind `ProtocolEngine`** (`core:protocol`). Public models use `ByteArray` for keys (`PreKeyBundle`) and ratchet state (`SecureSession.state`, meant to be Kodium's export/import blob). Do not leak Kodium types into model, storage, client, or server APIs. `kodium` is an `implementation` dependency on purpose.
 - **Ratchet state must update atomically.** `ProtocolEngine.encrypt/decrypt` return an `updatedSession`. The client must persist it inside `ClientStorage.transaction { }` together with the crypto operation (see `SecureMessageClient`).
 - **Server is a blind relay.** `SecureMessageServer` only stores and serves `PreKeyBundle`s and queues opaque `EncryptedEnvelope`s per recipient `DeviceAddress` (`drain` removes the envelopes it returns). It must never decrypt payloads or hold client session secrets.
-- **Wire format:** `EncryptedEnvelope.protocolVersion` versions the envelope independently of Kodium's serialization.
+- **Wire format:** `CiphertextMessageCodec` (`core:protocol`, no Kodium imports) owns the payload bytes; version-1 vectors in `CiphertextMessageCodecTest` are frozen. `EncryptedEnvelope.protocolVersion` versions only the envelope metadata. Protocol info strings live in `ProtocolConstants` and must never change.
+- **Client storage:** `ClientStorage` has `sessions` and `preKeys` (local private prekeys). Accepting a `PreKeyMessage`, storing the session and removing the consumed one-time prekey happen in one `transaction`.
 - **HTTP contract** is defined twice and must stay in sync: `client:ktor/KtorSecureMessageTransport` and `server:ktor/KSecureMessageRoutes`. Routes: `POST /prekeys`, `GET /users/{user}/devices/{device}/prekeys`, `POST /messages`, `GET /users/{user}/devices/{device}/messages`. JSON is handled by kotlinx.serialization.

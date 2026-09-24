@@ -235,12 +235,11 @@ class KodiumProtocolEngine : ProtocolEngine {
 
     private companion object {
         const val KEY_SIZE = 32
-        const val PUBLIC_KEY_SIZE = 64
+        const val PUBLIC_KEY_SIZE = ProtocolConstants.PUBLIC_KEY_SIZE
         const val RATCHET_HEADER_SIZE = 72
 
-        // Domain separation for KSecureMessage sessions. Changing these breaks
-        // all existing sessions.
-        val X3DH_INFO = "KSecureMessage-X3DH-v1".encodeToByteArray()
-        val RATCHET_INFO = "KSecureMessage-Ratchet-v1".encodeToByteArray()
+        // Domain separation for KSecureMessage sessions, see ProtocolConstants.
+        val X3DH_INFO = ProtocolConstants.X3DH_INFO.encodeToByteArray()
+        val RATCHET_INFO = ProtocolConstants.RATCHET_INFO.encodeToByteArray()
     }
 }
