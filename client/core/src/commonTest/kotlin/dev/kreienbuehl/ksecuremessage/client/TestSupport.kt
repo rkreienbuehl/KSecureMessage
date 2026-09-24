@@ -15,6 +15,7 @@ import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionInitiationStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
 import dev.kreienbuehl.ksecuremessage.storage.inmemory.InMemoryServerStorage
+import kotlinx.coroutines.CompletableDeferred
 
 internal val ALICE = DeviceAddress(UserId("alice"), DeviceId("phone"))
 internal val BOB = DeviceAddress(UserId("bob"), DeviceId("laptop"))
@@ -34,12 +35,30 @@ internal class FakeNetwork : SecureMessageTransport {
 
     override suspend fun fetchPreKeyBundle(address: DeviceAddress): PreKeyBundle = bundles.getValue(address)
 
+    private val holds = mutableMapOf<DeviceAddress, HeldSend>()
+
     override suspend fun send(envelope: EncryptedEnvelope) {
+        holds.remove(envelope.sender)?.let { held ->
+            held.reached.complete(envelope)
+            held.release.await()
+        }
         mailboxes.getOrPut(envelope.recipient) { mutableListOf() }.add(envelope)
     }
 
     override suspend fun receive(address: DeviceAddress): List<EncryptedEnvelope> =
         mailboxes.remove(address)?.toList().orEmpty()
+
+    /**
+     * Makes the next [send] from [sender] suspend before it is enqueued, like
+     * a slow request, until [HeldSend.release] completes.
+     */
+    fun holdNextSend(sender: DeviceAddress): HeldSend = HeldSend().also { holds[sender] = it }
+
+    class HeldSend {
+        /** Completes with the held envelope once the send is waiting. */
+        val reached = CompletableDeferred<EncryptedEnvelope>()
+        val release = CompletableDeferred<Unit>()
+    }
 
     /** Stands in for publication: the relay hands out the lowest one-time prekey, or none. */
     suspend fun publish(client: SecureMessageClient, withOneTimePreKey: Boolean = true) {

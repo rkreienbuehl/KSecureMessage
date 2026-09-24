@@ -19,6 +19,8 @@ import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SessionAcceptanceResult
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.uuid.Uuid
 
 /**
@@ -58,6 +60,13 @@ import kotlin.uuid.Uuid
  * [SessionInitiationId]; the losing one's messages fail with
  * [SecureMessageClientException.SessionCollision] and are not delivered.
  *
+ * Sessions converge only if, per (sender, recipient) pair, a PreKeyMessage is
+ * processed before every envelope the sender handed to the transport after
+ * it (docs/transport-ordering.md). [send] hands envelopes over in encryption
+ * order; the server keeps them in that order per pair; the application must
+ * [decrypt] one sender's envelopes one at a time, in the order
+ * [SecureMessageTransport.receive] returned them.
+ *
  * Not handled yet: identity changes cannot be accepted, messages lost to a
  * collision are not resent, and prekeys are not published automatically.
  */
@@ -69,6 +78,9 @@ class SecureMessageClient(
     preKeyConfiguration: PreKeyConfiguration = PreKeyConfiguration(),
 ) {
     private val preKeyManager = PreKeyManager(protocol, preKeyConfiguration)
+
+    /** Keeps [send]'s hand-off to the transport in encryption order. */
+    private val sendMutex = Mutex()
 
     /**
      * Makes sure the local identity, a current signed prekey and
@@ -157,7 +169,14 @@ class SecureMessageClient(
         }
     }
 
-    /** Encrypts [plaintext] for [remote], starting a session if there is none. */
+    /**
+     * Encrypts [plaintext] for [remote], starting a session if there is none.
+     *
+     * A caller that sends the result itself must hand envelopes for one
+     * recipient to the transport in the order they were encrypted, and must
+     * not send an envelope again once a later one for the same recipient was
+     * handed over (docs/transport-ordering.md). [send] does both.
+     */
     suspend fun encrypt(
         remote: DeviceAddress,
         plaintext: ByteArray,
@@ -179,14 +198,26 @@ class SecureMessageClient(
         }
     }
 
-    /** [encrypt]s [plaintext] and hands the envelope to the transport. */
+    /**
+     * [encrypt]s [plaintext] and hands the envelope to the transport. Sends of
+     * this client run one at a time, so envelopes reach the transport in
+     * encryption order: a slow send is never overtaken by a later one. A
+     * failed send is not retried; resending it after later envelopes would
+     * break that order.
+     */
     suspend fun send(remote: DeviceAddress, plaintext: ByteArray): EncryptedEnvelope =
-        encrypt(remote, plaintext).also { transport.send(it) }
+        // Held across the network call, never inside a storage transaction.
+        sendMutex.withLock { encrypt(remote, plaintext).also { transport.send(it) } }
 
     /**
      * Decrypts [envelope]. Failures change nothing, except that a
      * [SecureMessageClientException.SessionCollision] retires the losing
      * initiation.
+     *
+     * Envelopes from one sender must be decrypted one at a time, in the order
+     * the transport delivered them; a PreKeyMessage processed after a later
+     * envelope from the same sender can make the two sides settle on
+     * different sessions (docs/transport-ordering.md).
      */
     suspend fun decrypt(envelope: EncryptedEnvelope): ByteArray {
         if (envelope.protocolVersion != ENVELOPE_VERSION) {

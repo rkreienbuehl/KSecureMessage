@@ -105,6 +105,8 @@ Milestone 5 done: remote identity trust on first use. The first identity key tha
 
 Milestone 6 done: session replacement and simultaneous initiation, on wire v1. Every session records the `SessionInitiationId` (SHA-256 over the authenticated X3DH inputs) that created it. A new initiation from the pinned identity atomically replaces the existing session. When both sides initiate at once, both keep the smaller ID, independent of arrival order and restarts. Replaced and losing initiations are retired persistently (`ClientStorage.sessionInitiations`, SQLDelight schema version 3) and rejected with `StaleSessionInitiation`, so a replayed old `PreKeyMessage` cannot roll a session back. A losing initiation's messages fail with `SessionCollision` and are not delivered. An initiation that never reached the device before cannot be recognized as old with wire v1. See [docs/session-lifecycle.md](docs/session-lifecycle.md).
 
+Transport ordering (milestone 6 follow-up): sessions converge only if, per (sender, recipient) device pair, a `PreKeyMessage` is processed before every envelope the sender sent after it. `SecureMessageClient.send` hands envelopes to the transport in encryption order, `MailboxRepository` guarantees per (sender, recipient) FIFO (the in-memory mailbox is now synchronized, checked by `MailboxRepositoryContractTest`), and applications decrypt one sender's envelopes in delivery order. No wire or HTTP API change. See [docs/transport-ordering.md](docs/transport-ordering.md).
+
 ## Next implementation steps
 
 1. Signed prekey retirement/expiry, with bounded retention of retired session initiations (limits how long withheld initiations stay acceptable, see docs/session-lifecycle.md).

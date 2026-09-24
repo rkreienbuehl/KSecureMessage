@@ -4,6 +4,7 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
+import dev.kreienbuehl.ksecuremessage.storage.MailboxRepository
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyPublicationException
 import dev.kreienbuehl.ksecuremessage.storage.ServerStorage
 
@@ -22,7 +23,13 @@ class SecureMessageServer(
     /** See [PreKeyService.fetchPreKeyBundle]. */
     suspend fun fetchPreKeyBundle(address: DeviceAddress): PreKeyBundle? = preKeys.fetchPreKeyBundle(address)
 
+    /**
+     * Queues [envelope] for its recipient. When this returns, the envelope is
+     * ordered after every envelope of the same sender for the same recipient
+     * that was relayed before ([MailboxRepository], docs/transport-ordering.md).
+     */
     suspend fun relay(envelope: EncryptedEnvelope) = storage.mailboxes.enqueue(envelope)
 
+    /** Removes and returns [address]'s envelopes, each sender's in relay order. */
     suspend fun receive(address: DeviceAddress): List<EncryptedEnvelope> = storage.mailboxes.drain(address)
 }

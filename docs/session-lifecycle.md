@@ -122,7 +122,9 @@ fields on both sides, so the decisions complement each other:
 - The side whose own initiation is larger accepts the incoming one and
   discards its own (step 8).
 
-Arrival order, timestamps, server ordering and addresses play no part. The
+The order in which the two `PreKeyMessage`s arrive, timestamps and addresses
+play no part. Replies on the winning session must not overtake the losing
+`PreKeyMessage`, see [transport-ordering.md](transport-ordering.md). The
 pending ID is re-derived from stored state, so a restart between sending and
 receiving gives the same decision. Pending sessions stored in the version 1
 state format still have the prekey data to derive it. After both messages are
@@ -237,12 +239,15 @@ and pins. `storage:inmemory` keeps the set in its transactional state.
   retired when they are replaced. A replay of their original initiation stays
   possible if it did not use a one-time prekey. Step 6 keeps a legacy session
   from being replaced by anything that could be its own initiation.
-- **Reordering.** If a peer's reply on the winning session is processed
-  before that peer's losing `PreKeyMessage`, the late losing message looks
-  like a replacement of an established session and is accepted. The two
-  sides then disagree until one of them starts a new session. The per-device
-  FIFO mailbox prevents this. A server that reorders messages can cause it,
-  but only as denial of service.
+- **Reordering.** The rules above converge only if, for each (sender,
+  recipient) pair, a `PreKeyMessage` is processed before every envelope the
+  sender handed to the transport after it. Otherwise a peer's reply on the
+  winning session can overtake its losing `PreKeyMessage`. The late message
+  then looks like a replacement and is accepted, and the two sides stay on
+  different sessions. The client's `send`, the `MailboxRepository` contract
+  and the application's receive loop enforce this ordering; see
+  [transport-ordering.md](transport-ordering.md). A relay that breaks the
+  contract can still cause the split, but only as denial of service.
 - **Lost collision messages** are not delivered and not resent (see above).
 - **Removing a session** with `SessionStore.remove` does not retire its
   initiation.

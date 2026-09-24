@@ -5,6 +5,8 @@ import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.Rea
 import dev.kreienbuehl.ksecuremessage.client.ktor.KtorSecureMessageTransport
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
+import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
+import dev.kreienbuehl.ksecuremessage.model.MessageId
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
@@ -176,5 +178,44 @@ class KSecureMessageRoutesTest {
         assertEquals(3, storage.preKeys.oneTimePreKeyCount(odd))
         assertEquals(odd, transport.fetchPreKeyBundle(odd).address)
         assertEquals(0, storage.preKeys.oneTimePreKeyCount(bob))
+    }
+
+    @Test
+    fun eachSendersEnvelopesArriveInSendOrderOverHttp() = testServer { _, http ->
+        val transport = KtorSecureMessageTransport("", http)
+        val senders = List(4) { DeviceAddress(UserId("sender-$it"), DeviceId("phone")) }
+        val carol = DeviceAddress(UserId("carol"), DeviceId("tablet"))
+
+        // Each sender sends sequentially (as SecureMessageClient.send does);
+        // the senders run concurrently, to two recipients.
+        coroutineScope {
+            senders.map { sender ->
+                async {
+                    repeat(25) { sequence ->
+                        for (recipient in listOf(bob, carol)) {
+                            transport.send(
+                                EncryptedEnvelope(
+                                    id = MessageId("${sender.userId.value}#$sequence"),
+                                    sender = sender,
+                                    recipient = recipient,
+                                    payload = byteArrayOf(sequence.toByte()),
+                                ),
+                            )
+                        }
+                    }
+                }
+            }.awaitAll()
+        }
+
+        for (recipient in listOf(bob, carol)) {
+            val received = transport.receive(recipient)
+            assertEquals(senders.size * 25, received.size)
+            for (sender in senders) {
+                val stream = received.filter { it.sender == sender }
+                assertEquals((0 until 25).map { "${sender.userId.value}#$it" }, stream.map { it.id.value })
+                assertContentEquals(byteArrayOf(24), stream.last().payload)
+            }
+            assertEquals(emptyList(), transport.receive(recipient))
+        }
     }
 }

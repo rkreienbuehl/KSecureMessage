@@ -24,6 +24,17 @@ interface SecureMessageTransport {
      */
     suspend fun fetchPreKeyBundle(address: DeviceAddress): PreKeyBundle
 
+    /**
+     * Hands [envelope] to the server. When this returns, the envelope is
+     * queued behind every envelope this device sent to the same recipient
+     * before (docs/transport-ordering.md).
+     */
     suspend fun send(envelope: EncryptedEnvelope)
+
+    /**
+     * Removes and returns the envelopes queued for [address]. Envelopes of
+     * one sender come in the order that sender sent them; process them in
+     * that order.
+     */
     suspend fun receive(address: DeviceAddress): List<EncryptedEnvelope>
 }

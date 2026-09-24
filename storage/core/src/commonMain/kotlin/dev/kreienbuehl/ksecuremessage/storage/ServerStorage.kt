@@ -68,8 +68,25 @@ sealed class PreKeyPublicationException(message: String) : Exception(message) {
         PreKeyPublicationException("One-time prekey ${id.value} already exists with a different key")
 }
 
+/**
+ * Queues opaque envelopes per recipient device. See
+ * docs/transport-ordering.md for why the order matters.
+ *
+ * Ordering contract: for each ordered pair (sender [DeviceAddress], recipient
+ * [DeviceAddress]), envelopes are drained in the order their [enqueue] calls
+ * returned. An envelope whose [enqueue] returned before another one's started
+ * comes out first. Nothing is promised about the order between different
+ * senders, or between one sender's envelopes for different recipients.
+ *
+ * Every enqueued envelope is returned by exactly one [drain]: none is lost,
+ * duplicated or returned twice, also when calls run concurrently. There are no
+ * acknowledgements, expiry or persistence guarantees beyond that.
+ */
 interface MailboxRepository {
+    /** Appends [envelope] to the queue of its recipient. Atomic. */
     suspend fun enqueue(envelope: EncryptedEnvelope)
+
+    /** Removes and returns the queued envelopes of [recipient], each (sender, recipient) stream in order. Atomic. */
     suspend fun drain(recipient: DeviceAddress): List<EncryptedEnvelope>
 }
 

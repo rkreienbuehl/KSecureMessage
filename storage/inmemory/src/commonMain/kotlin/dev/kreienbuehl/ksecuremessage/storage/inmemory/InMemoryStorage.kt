@@ -221,20 +221,27 @@ private fun SecureSession.copyState() = copy(state = state.copyOf())
  * The prekey repository keeps immutable state behind a [Mutex]: publication
  * and bundle consumption each run under the lock and replace the state only
  * after all checks passed, so they are atomic and serialized. The mailboxes
- * are not synchronized.
+ * are one queue per recipient behind another [Mutex], so enqueue and drain
+ * are serialized too and each recipient's queue is in enqueue order. That is
+ * stronger than the per (sender, recipient) order [MailboxRepository]
+ * promises.
  */
 class InMemoryServerStorage : ServerStorage {
-    private val messages = mutableMapOf<DeviceAddress, MutableList<EncryptedEnvelope>>()
-
     override val preKeys: PreKeyRepository = InMemoryPreKeyRepository()
 
-    override val mailboxes: MailboxRepository = object : MailboxRepository {
-        override suspend fun enqueue(envelope: EncryptedEnvelope) {
-            messages.getOrPut(envelope.recipient) { mutableListOf() }.add(envelope)
-        }
+    override val mailboxes: MailboxRepository = InMemoryMailboxRepository()
+}
 
-        override suspend fun drain(recipient: DeviceAddress): List<EncryptedEnvelope> =
-            messages.remove(recipient)?.toList().orEmpty()
+private class InMemoryMailboxRepository : MailboxRepository {
+    private val mutex = Mutex()
+    private val queues = mutableMapOf<DeviceAddress, ArrayDeque<EncryptedEnvelope>>()
+
+    override suspend fun enqueue(envelope: EncryptedEnvelope) = mutex.withLock {
+        queues.getOrPut(envelope.recipient) { ArrayDeque() }.addLast(envelope)
+    }
+
+    override suspend fun drain(recipient: DeviceAddress): List<EncryptedEnvelope> = mutex.withLock {
+        queues.remove(recipient)?.toList().orEmpty()
     }
 }
 
