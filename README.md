@@ -69,6 +69,10 @@ Current dependency baseline:
 - Kodium 1.0.0
 - Ktor 3.6.0
 
+## Status
+
+Milestone 1 done: `KodiumProtocolEngine` creates identities and prekeys, sets up sessions with Kodium X3DH (the signed prekey signature is verified), and encrypts and decrypts with the Kodium Double Ratchet. Sessions persist as opaque `SecureSession.state` bytes. The initiator sends `PreKeyMessage`s until it has decrypted the first reply. After that it sends `RatchetMessage`s. See `core/protocol/src/commonTest`.
+
 ## Next implementation steps
 
 1. Map Kodium X3DH bundle/session types into `core:protocol`.

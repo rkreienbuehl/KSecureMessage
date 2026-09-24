@@ -20,3 +20,20 @@ data class DeviceAddress(
 @Serializable
 @JvmInline
 value class MessageId(val value: String)
+
+/**
+ * KSecureMessage-owned identifier of a signed prekey. Chosen by the owning
+ * device; used to select the matching private key when a [PreKeyMessage]
+ * arrives and, later, for rotation.
+ */
+@Serializable
+@JvmInline
+value class SignedPreKeyId(val value: Int)
+
+/**
+ * KSecureMessage-owned identifier of a one-time prekey. Separate ID space from
+ * [SignedPreKeyId]. Used to find and then delete the consumed private key.
+ */
+@Serializable
+@JvmInline
+value class OneTimePreKeyId(val value: Int)

@@ -2,7 +2,7 @@
 agp = "9.4.1"
 android-compileSdk = "37"
 android-minSdk = "26"
-android-targetSdk = "27"
+android-targetSdk = "37"
 
 kotlin = "2.4.20"
 kodium = "1.0.0"
@@ -14,6 +14,7 @@ coroutines = "1.11.0"
 [libraries]
 kodium = { module = "eu.livotov.labs:kodium", version.ref = "kodium" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 kotlinx-serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "serialization" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
