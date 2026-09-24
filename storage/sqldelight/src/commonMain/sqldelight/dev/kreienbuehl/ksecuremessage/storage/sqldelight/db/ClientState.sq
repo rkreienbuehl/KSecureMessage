@@ -38,11 +38,27 @@ CREATE TABLE session (
     PRIMARY KEY (remote_user_id, remote_device_id)
 );
 
+-- Remote identity keys pinned on first contact (TOFU). Public keys. Rows are
+-- only inserted, never replaced. Added in schema version 2, see 1.sqm.
+CREATE TABLE remote_identity (
+    remote_user_id TEXT NOT NULL,
+    remote_device_id TEXT NOT NULL,
+    identity_key BLOB NOT NULL,
+    PRIMARY KEY (remote_user_id, remote_device_id)
+);
+
 selectIdentity:
 SELECT public_key, private_key FROM local_identity;
 
 insertIdentity:
 INSERT INTO local_identity (id, public_key, private_key) VALUES (0, ?, ?);
+
+selectRemoteIdentity:
+SELECT identity_key FROM remote_identity WHERE remote_user_id = ? AND remote_device_id = ?;
+
+-- Plain INSERT: the primary key rejects a second pin for the same device.
+insertRemoteIdentity:
+INSERT INTO remote_identity (remote_user_id, remote_device_id, identity_key) VALUES (?, ?, ?);
 
 selectSession:
 SELECT state FROM session WHERE remote_user_id = ? AND remote_device_id = ?;

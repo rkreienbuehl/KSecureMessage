@@ -45,6 +45,50 @@ abstract class ClientStorageContractTest {
     }
 
     @Test
+    fun remoteIdentityIsPinnedOnceAndNeverReplaced() = runTest {
+        val storage = newStorage()
+        assertNull(storage.remoteIdentities.identityKey(alice))
+
+        storage.remoteIdentities.store(alice, bytes(1))
+        assertContentEquals(bytes(1), storage.remoteIdentities.identityKey(alice))
+
+        storage.remoteIdentities.store(alice, bytes(1))
+        assertContentEquals(bytes(1), storage.remoteIdentities.identityKey(alice), "same key again is a no-op")
+
+        assertFailsWith<IllegalStateException> { storage.remoteIdentities.store(alice, bytes(2)) }
+        assertContentEquals(bytes(1), storage.remoteIdentities.identityKey(alice))
+    }
+
+    @Test
+    fun remoteIdentitiesArePerDevice() = runTest {
+        val storage = newStorage()
+        val bobPhone = DeviceAddress(UserId("bob"), DeviceId("phone"))
+        storage.remoteIdentities.store(bob, bytes(1))
+        storage.remoteIdentities.store(bobPhone, bytes(2))
+
+        assertContentEquals(bytes(1), storage.remoteIdentities.identityKey(bob))
+        assertContentEquals(bytes(2), storage.remoteIdentities.identityKey(bobPhone))
+        assertNull(storage.remoteIdentities.identityKey(alice))
+    }
+
+    @Test
+    fun rolledBackTransactionLeavesNoPin() = runTest {
+        val storage = newStorage()
+        assertFailsWith<Failure> {
+            storage.transaction {
+                remoteIdentities.store(alice, bytes(1))
+                assertContentEquals(bytes(1), remoteIdentities.identityKey(alice))
+                throw Failure()
+            }
+        }
+        assertNull(storage.remoteIdentities.identityKey(alice))
+
+        // Not pinned, so a different key can still be the first one.
+        storage.remoteIdentities.store(alice, bytes(2))
+        assertContentEquals(bytes(2), storage.remoteIdentities.identityKey(alice))
+    }
+
+    @Test
     fun sessionsAreStoredReplacedAndRemoved() = runTest {
         val storage = newStorage()
         storage.sessions.store(SecureSession(alice, bytes(1)))
@@ -264,6 +308,13 @@ abstract class ClientStorageContractTest {
         assertContentEquals(bytes(-1), storage.identity.identity()?.privateKey)
         assertContentEquals(bytes(1), storage.sessions.load(alice)?.state)
         assertContentEquals(bytes(-1), storage.preKeys.oneTimePreKey(OneTimePreKeyId(0))?.privateKey)
+
+        val remoteKey = bytes(5)
+        storage.remoteIdentities.store(bob, remoteKey)
+        remoteKey.fill(0)
+        assertContentEquals(bytes(5), storage.remoteIdentities.identityKey(bob))
+        storage.remoteIdentities.identityKey(bob)!!.fill(0)
+        assertContentEquals(bytes(5), storage.remoteIdentities.identityKey(bob))
 
         storage.identity.identity()!!.privateKey.fill(0)
         storage.sessions.load(alice)!!.state.fill(0)

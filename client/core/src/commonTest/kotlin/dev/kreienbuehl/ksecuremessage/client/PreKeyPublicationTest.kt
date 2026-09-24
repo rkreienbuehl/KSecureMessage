@@ -70,6 +70,10 @@ class PreKeyPublicationTest {
         alice.client.send(BOB, "again".encodeToByteArray())
         assertEquals("again", bob.receiveText())
         assertTrue(networkCalls >= 7)
+
+        // Each side pinned the other's published identity key.
+        assertContentEquals(bob.storage.identity.identity()?.publicKey, alice.client.remoteIdentityKey(BOB))
+        assertContentEquals(alice.storage.identity.identity()?.publicKey, bob.client.remoteIdentityKey(ALICE))
     }
 
     @Test

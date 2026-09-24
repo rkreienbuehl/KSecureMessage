@@ -10,6 +10,7 @@ import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
+import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
 import dev.kreienbuehl.ksecuremessage.storage.inmemory.InMemoryServerStorage
 
@@ -101,8 +102,10 @@ internal class StorageFailure : Exception("Injected storage failure")
 internal class FailingClientStorage(private val delegate: ClientStorage) : ClientStorage {
     var failSessionStore = false
     var failOneTimePreKeyRemoval = false
+    var failRemoteIdentityStore = false
 
     override val identity get() = delegate.identity
+    override val remoteIdentities get() = delegate.remoteIdentities
     override val sessions get() = delegate.sessions
     override val preKeys get() = delegate.preKeys
 
@@ -111,6 +114,13 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
 
     private inner class FailingView(private val tx: ClientStorage) : ClientStorage {
         override val identity get() = tx.identity
+
+        override val remoteIdentities: RemoteIdentityStore = object : RemoteIdentityStore by tx.remoteIdentities {
+            override suspend fun store(address: DeviceAddress, identityKey: ByteArray) {
+                if (failRemoteIdentityStore) throw StorageFailure()
+                tx.remoteIdentities.store(address, identityKey)
+            }
+        }
 
         override val sessions: SessionStore = object : SessionStore by tx.sessions {
             override suspend fun store(session: SecureSession) {

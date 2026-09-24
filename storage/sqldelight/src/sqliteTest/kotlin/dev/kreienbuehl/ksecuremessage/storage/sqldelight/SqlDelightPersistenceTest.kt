@@ -2,6 +2,7 @@ package dev.kreienbuehl.ksecuremessage.storage.sqldelight
 
 import dev.kreienbuehl.ksecuremessage.client.PreKeyConfiguration
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageClient
+import dev.kreienbuehl.ksecuremessage.client.SecureMessageClientException
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransport
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
@@ -58,6 +59,7 @@ class SqlDelightPersistenceTest {
         before.preKeys.storeOneTimePreKeys(listOf(oneTimePreKey(0), oneTimePreKey(1), oneTimePreKey(2)))
         before.preKeys.removeOneTimePreKey(OneTimePreKeyId(2))
         before.sessions.store(SecureSession(ALICE, bytes(7)))
+        before.remoteIdentities.store(ALICE, bytes(8))
 
         val after = reopen()
         assertContentEquals(bytes(-1), after.identity.identity()?.privateKey)
@@ -67,6 +69,9 @@ class SqlDelightPersistenceTest {
         assertEquals(listOf(0, 1), after.oneTimePreKeyIds())
         assertEquals(OneTimePreKeyId(2), after.preKeys.highestOneTimePreKeyId())
         assertContentEquals(bytes(7), after.sessions.load(ALICE)?.state)
+        assertContentEquals(bytes(8), after.remoteIdentities.identityKey(ALICE))
+        assertFailsWith<IllegalStateException> { after.remoteIdentities.store(ALICE, bytes(9)) }
+        assertContentEquals(bytes(8), reopen().remoteIdentities.identityKey(ALICE))
     }
 
     @Test
@@ -78,6 +83,7 @@ class SqlDelightPersistenceTest {
             before.transaction {
                 identity.store(identity(1))
                 sessions.store(SecureSession(ALICE, bytes(1)))
+                remoteIdentities.store(ALICE, bytes(2))
                 preKeys.removeOneTimePreKey(OneTimePreKeyId(0))
                 preKeys.storeOneTimePreKeys(listOf(oneTimePreKey(1)))
                 error("fail")
@@ -87,6 +93,7 @@ class SqlDelightPersistenceTest {
         val after = reopen()
         assertNull(after.identity.identity())
         assertNull(after.sessions.load(ALICE))
+        assertNull(after.remoteIdentities.identityKey(ALICE))
         assertEquals(listOf(0), after.oneTimePreKeyIds())
         assertEquals(OneTimePreKeyId(0), after.preKeys.highestOneTimePreKeyId())
     }
@@ -121,6 +128,8 @@ class SqlDelightPersistenceTest {
         assertEquals(signedPreKeyId, restarted.currentPreKeyBundle().signedPreKey.id)
         assertEquals(listOf(1, 2, 3), restartedStorage.oneTimePreKeyIds(), "only the consumed key is replaced")
 
+        assertContentEquals(alice.currentPreKeyBundle().identityKey, restarted.remoteIdentityKey(ALICE), "pin survives restart")
+
         alice.send(BOB, "Still there?".encodeToByteArray())
         assertEquals("Still there?", restarted.receiveText())
         restarted.send(ALICE, "Yes".encodeToByteArray())
@@ -144,7 +153,59 @@ class SqlDelightPersistenceTest {
 
         val after = reopen()
         assertNull(after.sessions.load(ALICE))
+        assertNull(after.remoteIdentities.identityKey(ALICE))
         assertNotNull(after.preKeys.oneTimePreKey(OneTimePreKeyId(0)))
+    }
+
+    @Test
+    fun remoteTrustSurvivesRestart() = runTest {
+        val config = PreKeyConfiguration(oneTimePreKeyTarget = 3)
+        val bob = SecureMessageClient(BOB, InMemoryClientStorage(), engine, network, config)
+        bob.initialize()
+        network.publish(bob)
+
+        val alice = SecureMessageClient(ALICE, reopen(), engine, network, config)
+        alice.initialize()
+        alice.send(BOB, "Hello Bob".encodeToByteArray())
+        val bobIdentity = bob.currentPreKeyBundle().identityKey
+
+        // Restart; a new session with the same identity is accepted.
+        val storage = reopen()
+        val restarted = SecureMessageClient(ALICE, storage, engine, network, config)
+        restarted.initialize()
+        assertContentEquals(bobIdentity, restarted.remoteIdentityKey(BOB))
+        storage.sessions.remove(BOB)
+        restarted.send(BOB, "same identity".encodeToByteArray())
+        assertNotNull(storage.sessions.load(BOB))
+
+        // Restart; a valid bundle of another identity for BOB is rejected.
+        val impostor = SecureMessageClient(BOB, InMemoryClientStorage(), engine, network, config)
+        impostor.initialize()
+        network.publish(impostor)
+        val storageAgain = reopen()
+        storageAgain.sessions.remove(BOB)
+        val again = SecureMessageClient(ALICE, storageAgain, engine, network, config)
+        assertFailsWith<SecureMessageClientException.IdentityChanged> { again.send(BOB, "secret".encodeToByteArray()) }
+        assertContentEquals(bobIdentity, reopen().remoteIdentities.identityKey(BOB))
+        assertNull(reopen().sessions.load(BOB))
+    }
+
+    @Test
+    fun version1DatabaseIsMigratedWithoutLosingData() = runTest {
+        val old = database.open(Version1Schema)
+        old.execute(null, "INSERT INTO local_identity (id, public_key, private_key) VALUES (0, X'0102', X'0304')", 0)
+        old.execute(null, "INSERT INTO session (remote_user_id, remote_device_id, state) VALUES ('alice', 'phone', X'0506')", 0)
+        database.closeOpenDrivers()
+
+        val migrated = SqlDelightClientStorage(database.open())
+        assertContentEquals(byteArrayOf(1, 2), migrated.identity.identity()?.publicKey)
+        assertContentEquals(byteArrayOf(5, 6), migrated.sessions.load(ALICE)?.state)
+        assertNull(migrated.remoteIdentities.identityKey(ALICE), "a pin is never invented for an old session")
+        migrated.remoteIdentities.store(ALICE, bytes(1))
+
+        val after = reopen()
+        assertContentEquals(bytes(1), after.remoteIdentities.identityKey(ALICE))
+        assertContentEquals(byteArrayOf(5, 6), after.sessions.load(ALICE)?.state)
     }
 
     private suspend fun SecureMessageClient.receiveText(): String =

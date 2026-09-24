@@ -18,6 +18,7 @@ import dev.kreienbuehl.ksecuremessage.storage.MailboxRepository
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyPublicationException
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyRepository
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
+import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.ServerStorage
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
 import kotlinx.coroutines.currentCoroutineContext
@@ -41,6 +42,12 @@ class InMemoryClientStorage : ClientStorage {
     override val identity: IdentityStore = object : IdentityStore {
         override suspend fun identity() = transaction { identity.identity() }
         override suspend fun store(identity: LocalIdentity) = transaction { this.identity.store(identity) }
+    }
+
+    override val remoteIdentities: RemoteIdentityStore = object : RemoteIdentityStore {
+        override suspend fun identityKey(address: DeviceAddress) = transaction { remoteIdentities.identityKey(address) }
+        override suspend fun store(address: DeviceAddress, identityKey: ByteArray) =
+            transaction { remoteIdentities.store(address, identityKey) }
     }
 
     override val sessions: SessionStore = object : SessionStore {
@@ -89,6 +96,7 @@ class InMemoryClientStorage : ClientStorage {
 
 private data class State(
     val identity: LocalIdentity? = null,
+    val remoteIdentities: Map<DeviceAddress, ByteArray> = emptyMap(),
     val sessions: Map<DeviceAddress, SecureSession> = emptyMap(),
     val signedPreKeys: Map<SignedPreKeyId, SignedPreKeyPair> = emptyMap(),
     val currentSignedPreKeyId: SignedPreKeyId? = null,
@@ -105,6 +113,19 @@ private class TransactionView(var state: State) : ClientStorage {
         override suspend fun store(identity: LocalIdentity) {
             check(state.identity == null) { "A local identity is already stored" }
             state = state.copy(identity = identity.copy())
+        }
+    }
+
+    override val remoteIdentities: RemoteIdentityStore = object : RemoteIdentityStore {
+        override suspend fun identityKey(address: DeviceAddress) = state.remoteIdentities[address]?.copyOf()
+
+        override suspend fun store(address: DeviceAddress, identityKey: ByteArray) {
+            val pinned = state.remoteIdentities[address]
+            if (pinned != null) {
+                check(pinned.contentEquals(identityKey)) { "A different remote identity is already pinned" }
+                return
+            }
+            state = state.copy(remoteIdentities = state.remoteIdentities + (address to identityKey.copyOf()))
         }
     }
 

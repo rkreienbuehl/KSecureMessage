@@ -17,6 +17,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.IdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
+import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
 import dev.kreienbuehl.ksecuremessage.storage.sqldelight.db.ClientStateQueries
 import dev.kreienbuehl.ksecuremessage.storage.sqldelight.db.KSecureMessageDatabase
@@ -42,6 +43,11 @@ import kotlin.coroutines.CoroutineContext
  *
  * Private keys and session state are stored as plain BLOBs. This adapter does
  * not encrypt them: protect the database file with platform means.
+ *
+ * Schema version 2 added the `remote_identity` table (milestone 5). A driver
+ * created with [Schema] upgrades a version 1 database on open; an application
+ * that manages versions itself calls `Schema.migrate(driver, 1, 2)`. The
+ * migration only adds a table.
  */
 class SqlDelightClientStorage(driver: SqlDriver) : ClientStorage {
     private val database = KSecureMessageDatabase(driver)
@@ -51,6 +57,12 @@ class SqlDelightClientStorage(driver: SqlDriver) : ClientStorage {
     override val identity: IdentityStore = object : IdentityStore {
         override suspend fun identity() = transaction { identity.identity() }
         override suspend fun store(identity: LocalIdentity) = transaction { this.identity.store(identity) }
+    }
+
+    override val remoteIdentities: RemoteIdentityStore = object : RemoteIdentityStore {
+        override suspend fun identityKey(address: DeviceAddress) = transaction { remoteIdentities.identityKey(address) }
+        override suspend fun store(address: DeviceAddress, identityKey: ByteArray) =
+            transaction { remoteIdentities.store(address, identityKey) }
     }
 
     override val sessions: SessionStore = object : SessionStore {
@@ -107,6 +119,20 @@ private class DatabaseView(private val queries: ClientStateQueries) : ClientStor
         override suspend fun store(identity: LocalIdentity) {
             check(identity() == null) { "A local identity is already stored" }
             queries.insertIdentity(identity.publicKey, identity.privateKey)
+        }
+    }
+
+    override val remoteIdentities: RemoteIdentityStore = object : RemoteIdentityStore {
+        override suspend fun identityKey(address: DeviceAddress): ByteArray? =
+            queries.selectRemoteIdentity(address.userId.value, address.deviceId.value).awaitAsOneOrNull()
+
+        override suspend fun store(address: DeviceAddress, identityKey: ByteArray) {
+            val pinned = identityKey(address)
+            if (pinned != null) {
+                check(pinned.contentEquals(identityKey)) { "A different remote identity is already pinned" }
+                return
+            }
+            queries.insertRemoteIdentity(address.userId.value, address.deviceId.value, identityKey.copyOf())
         }
     }
 

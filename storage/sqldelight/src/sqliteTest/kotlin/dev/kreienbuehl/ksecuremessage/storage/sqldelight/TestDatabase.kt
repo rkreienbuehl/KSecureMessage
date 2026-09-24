@@ -1,10 +1,16 @@
 package dev.kreienbuehl.ksecuremessage.storage.sqldelight
 
+import app.cash.sqldelight.async.coroutines.synchronous
+import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
+import app.cash.sqldelight.db.SqlSchema
 import kotlin.random.Random
 
-/** Opens the database file [name], creating it with the schema if needed. */
-expect fun openTestDriver(name: String): SqlDriver
+/** Opens the database file [name], creating it with [schema] if needed, or migrating it to [schema]'s version. */
+expect fun openTestDriver(
+    name: String,
+    schema: SqlSchema<QueryResult.Value<Unit>> = SqlDelightClientStorage.Schema.synchronous(),
+): SqlDriver
 
 expect fun deleteTestDatabase(name: String)
 
@@ -18,6 +24,8 @@ class TestDatabase : AutoCloseable {
     }
 
     fun open(): SqlDriver = openTestDriver(name).also { drivers += it }
+
+    fun open(schema: SqlSchema<QueryResult.Value<Unit>>): SqlDriver = openTestDriver(name, schema).also { drivers += it }
 
     fun closeOpenDrivers() {
         drivers.forEach { it.close() }

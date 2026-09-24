@@ -9,7 +9,8 @@ import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 
-// Every store below holds secret key material or ratchet state as raw bytes.
+// Every store below except RemoteIdentityStore holds secret key material or
+// ratchet state as raw bytes.
 // Adapters persist those bytes as they are; none of them encrypts at rest.
 // Protect the underlying database or files with platform means.
 // See docs/storage.md.
@@ -29,6 +30,26 @@ interface IdentityStore {
      * already: an identity is never replaced silently.
      */
     suspend fun store(identity: LocalIdentity)
+}
+
+/**
+ * Remote identity keys pinned on first contact (trust on first use, see
+ * docs/identity-trust.md). One public identity key per remote [DeviceAddress];
+ * two devices of the same user have separate entries.
+ *
+ * Keys are public, but a pin is security state: it is only ever added, never
+ * replaced or removed here. The client pins a key only after the first
+ * contact with it succeeded cryptographically.
+ */
+interface RemoteIdentityStore {
+    suspend fun identityKey(address: DeviceAddress): ByteArray?
+
+    /**
+     * Pins [identityKey] for [address]. Storing the key that is already
+     * pinned does nothing. Throws [IllegalStateException] if a different key
+     * is pinned: a pin is never replaced silently.
+     */
+    suspend fun store(address: DeviceAddress, identityKey: ByteArray)
 }
 
 /**
@@ -75,7 +96,8 @@ interface PreKeyStore {
  * [transaction] must be atomic: if [transaction]'s block throws, none of its
  * writes become visible; otherwise all of them do. Ratchet state is updated
  * together with the encrypt/decrypt work, and a consumed one-time prekey is
- * removed together with storing the session it created.
+ * removed together with storing the session it created. A remote identity is
+ * pinned in the same transaction that stores the first session with it.
  *
  * Rules for the block:
  * - Use the receiver's stores, not those of the outer storage object.
@@ -87,6 +109,7 @@ interface PreKeyStore {
  */
 interface ClientStorage {
     val identity: IdentityStore
+    val remoteIdentities: RemoteIdentityStore
     val sessions: SessionStore
     val preKeys: PreKeyStore
 

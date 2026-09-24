@@ -38,10 +38,17 @@ import kotlin.uuid.Uuid
  * [initialize] and [rotateSignedPreKey] change local state only. Call
  * [publishPreKeys] afterwards to upload the public material.
  *
- * Not handled yet: the remote identity key in a first-contact
- * [PreKeyMessage] is accepted without a trust check, a new session from a
- * sender that already has one (reinstall, simultaneous initiation) fails, and
- * prekeys are not published automatically.
+ * Remote identity keys are trusted on first use (docs/identity-trust.md).
+ * The first identity key that sets up a session with a remote device, as
+ * initiator or responder, is pinned in the same transaction that stores the
+ * session. A different key for that device later fails with
+ * [SecureMessageClientException.IdentityChanged] and changes nothing. This
+ * detects identity changes after first contact; it does not prove who the
+ * remote party is on first contact.
+ *
+ * Not handled yet: a new session from a sender that already has one
+ * (reinstall, simultaneous initiation) fails, identity changes cannot be
+ * accepted, and prekeys are not published automatically.
  */
 class SecureMessageClient(
     val localAddress: DeviceAddress,
@@ -122,6 +129,16 @@ class SecureMessageClient(
         for (publication in publications) transport.publishPreKeys(publication)
     }
 
+    /**
+     * The identity key pinned for [remote], or `null` if there was no
+     * successful first contact with it yet (or only before identity keys
+     * were pinned). Public key material.
+     */
+    suspend fun remoteIdentityKey(remote: DeviceAddress): ByteArray? = storage.transaction {
+        requireIdentity()
+        remoteIdentities.identityKey(remote)
+    }
+
     suspend fun ensureSession(remote: DeviceAddress): SecureSession {
         val bundle = fetchBundleIfNoSession(remote)
         return storage.transaction {
@@ -168,8 +185,13 @@ class SecureMessageClient(
 
         return storage.transaction {
             val identity = requireIdentity()
+            // Only a PreKeyMessage names the sender's identity key. Check it
+            // before any crypto or write; pin it only after decryption
+            // succeeded, so a forged first contact pins nothing.
+            val claimedIdentity = (message as? PreKeyMessage)?.identityKey
+            val pinned = claimedIdentity?.let { checkRemoteIdentity(sender, it) }
             val session = sessions.load(sender)
-            if (session != null) {
+            val plaintext = if (session != null) {
                 // Also covers repeated PreKeyMessages from the initiator.
                 val result = protocol.decrypt(session, message)
                 sessions.store(result.updatedSession)
@@ -180,6 +202,10 @@ class SecureMessageClient(
                     is RatchetMessage -> throw ProtocolException.InvalidSessionState("No session with the sender")
                 }
             }
+            // A session from before pinning existed gets its pin here: the
+            // engine checked the key against the session and decrypted.
+            if (claimedIdentity != null && pinned == false) pinRemoteIdentity(sender, claimedIdentity)
+            plaintext
         }
     }
 
@@ -198,7 +224,16 @@ class SecureMessageClient(
     private suspend fun ClientStorage.initiateSession(remote: DeviceAddress, bundle: PreKeyBundle?): SecureSession {
         // No bundle means a session existed a moment ago and was removed since.
         bundle ?: throw ProtocolException.InvalidSessionState("Session was removed concurrently")
-        return protocol.initiateSession(requireIdentity(), bundle)
+        // The session and the pin are stored under remote, so the bundle must
+        // be for it.
+        if (bundle.address != remote) throw ProtocolException.InvalidPreKeyBundle("Prekey bundle is for another device")
+        val pinned = checkRemoteIdentity(remote, bundle.identityKey)
+        // Verifies the bundle (key sizes, signed prekey signature) first, so an
+        // invalid bundle is never pinned. The caller stores the session in the
+        // same transaction.
+        val session = protocol.initiateSession(requireIdentity(), bundle)
+        if (!pinned) pinRemoteIdentity(remote, bundle.identityKey)
+        return session
     }
 
     private suspend fun ClientStorage.acceptSession(

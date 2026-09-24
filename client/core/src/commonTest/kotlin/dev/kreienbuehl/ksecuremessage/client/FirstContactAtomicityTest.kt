@@ -14,8 +14,9 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /**
- * Accepting a first-contact message stores the session and removes the
- * one-time prekey in one transaction: both happen, or neither.
+ * Accepting a first-contact message stores the session, removes the one-time
+ * prekey and pins the sender's identity in one transaction: all happen, or
+ * none.
  */
 class FirstContactAtomicityTest {
     private val engine: ProtocolEngine = KodiumProtocolEngine()
@@ -36,6 +37,7 @@ class FirstContactAtomicityTest {
 
     private suspend fun assertNothingCommitted() {
         assertNull(storage.sessions.load(ALICE), "no session")
+        assertNull(storage.remoteIdentities.identityKey(ALICE), "no pinned identity")
         assertNotNull(storage.preKeys.oneTimePreKey(oneTimePreKey), "one-time prekey still available")
         assertEquals(2, storage.preKeys.oneTimePreKeyCount())
     }
@@ -47,6 +49,7 @@ class FirstContactAtomicityTest {
 
         assertNotNull(storage.sessions.load(ALICE))
         assertNull(storage.preKeys.oneTimePreKey(oneTimePreKey))
+        assertNotNull(storage.remoteIdentities.identityKey(ALICE))
     }
 
     @Test
@@ -77,5 +80,17 @@ class FirstContactAtomicityTest {
         failing.failOneTimePreKeyRemoval = false
         assertEquals("Hello Bob", bob.decrypt(envelope).decodeToString())
         assertNull(storage.preKeys.oneTimePreKey(oneTimePreKey))
+    }
+
+    @Test
+    fun pinFailureRollsBackSessionAndRemoval() = runTest {
+        val (bob, envelope) = firstContact()
+        failing.failRemoteIdentityStore = true
+        assertFailsWith<StorageFailure> { bob.decrypt(envelope) }
+        assertNothingCommitted()
+
+        failing.failRemoteIdentityStore = false
+        assertEquals("Hello Bob", bob.decrypt(envelope).decodeToString())
+        assertNotNull(storage.remoteIdentities.identityKey(ALICE))
     }
 }

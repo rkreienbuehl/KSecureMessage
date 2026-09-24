@@ -101,11 +101,13 @@ client.publishPreKeys()
 
 Milestone 4 done: `client.publishPreKeys()` uploads the identity key, the current signed prekey and the public one-time prekeys. The server's `PreKeyRepository` applies a publication atomically, treats retries as no-ops and rejects identity and prekey ID conflicts. Each bundle fetch atomically hands out and consumes at most one one-time prekey (lowest ID first); a bundle without one is served when none are left. `server:ktor` and `client:ktor` implement the HTTP API v1. See [docs/prekey-publication.md](docs/prekey-publication.md).
 
+Milestone 5 done: remote identity trust on first use. The first identity key that sets up a session with a remote device, as initiator or responder, is pinned per `DeviceAddress` in the same transaction that stores the session; a failed first contact pins nothing. A different key for a pinned device fails with `SecureMessageClientException.IdentityChanged` and changes nothing. `ClientStorage.remoteIdentities` stores the pins; `storage:sqldelight` migrates its schema from version 1 to 2. TOFU detects identity changes after first contact but does not authenticate the remote party on first contact; safety numbers are not implemented. See [docs/identity-trust.md](docs/identity-trust.md).
+
 ## Next implementation steps
 
-1. Remote identity trust (TOFU, identity change handling).
-2. Handle session reset and simultaneous initiation.
-3. Authenticated server API, device re-registration, persistent server storage.
+1. Handle session reset and simultaneous initiation.
+2. Authenticated server API, device re-registration, persistent server storage.
+3. Safety numbers / manual identity verification, and a deliberate way to accept identity changes.
 4. Encryption at rest for client storage.
 5. Sealed sender.
 

@@ -185,9 +185,10 @@ stays inside `EncryptedEnvelope.payload`.
   so claim it, or drain a device's one-time prekeys by fetching bundles.
 - **No device reset or re-registration.** A device that lost its identity
   cannot publish a new one for the same address (`409 identity_key_conflict`).
-- **No remote identity trust.** The server's identity-key check is repository
-  consistency only. Clients do not yet pin remote identity keys (TOFU) or warn
-  on changes.
+- **Server identity checks are not trust.** The server's identity-key check
+  is repository consistency only. Clients pin remote identity keys themselves
+  (TOFU, see [identity-trust.md](identity-trust.md)) and do not rely on the
+  server for identity continuity.
 - **Tombstones are never pruned.** Consumed IDs accumulate, one per handed-out
   one-time prekey.
 - **Consumed tombstones hide conflicts.** A re-upload of a consumed ID is
