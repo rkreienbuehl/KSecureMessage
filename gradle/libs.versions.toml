@@ -1,12 +1,15 @@
 [versions]
-kotlin = "2.3.10"
+agp = "9.4.1"
+android-compileSdk = "37"
+android-minSdk = "26"
+android-targetSdk = "27"
+
+kotlin = "2.4.20"
 kodium = "1.0.0"
 ktor = "3.6.0"
-serialization = "1.9.0"
-coroutines = "1.10.2"
-agp = "9.4.1"
-android-compileSdk = "36"
-android-minSdk = "26"
+serialization = "1.11.0"
+coroutines = "1.11.0"
+
 
 [libraries]
 kodium = { module = "eu.livotov.labs:kodium", version.ref = "kodium" }
