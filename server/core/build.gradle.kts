@@ -10,4 +10,8 @@ dependencies {
     api(project(":core:model"))
     api(project(":storage:core"))
     implementation(libs.kotlinx.coroutines.core)
+
+    testImplementation(kotlin("test"))
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(project(":storage:inmemory"))
 }

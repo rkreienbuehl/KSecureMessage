@@ -13,4 +13,12 @@ dependencies {
     implementation(libs.ktor.server.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.kotlinx.serialization.json)
+
+    testImplementation(kotlin("test"))
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.ktor.server.test.host)
+    testImplementation(libs.ktor.client.content.negotiation)
+    // HTTP contract and end-to-end tests run the real client adapter against the routes.
+    testImplementation(project(":client:ktor"))
+    testImplementation(project(":storage:inmemory"))
 }

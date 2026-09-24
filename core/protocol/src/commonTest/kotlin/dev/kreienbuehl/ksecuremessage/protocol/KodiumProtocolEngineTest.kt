@@ -2,7 +2,10 @@ package dev.kreienbuehl.ksecuremessage.protocol
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
+import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyMessage
+import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
+import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.RatchetMessage
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import kotlinx.coroutines.test.runTest
@@ -173,6 +176,38 @@ class KodiumProtocolEngineTest {
         }
         assertFailsWith<ProtocolException.InvalidMessage> {
             engine.acceptSession(bob.identity, ALICE, bob.signedPreKey, null, message)
+        }
+    }
+
+    @Test
+    fun generatedPublicMaterialMatchesPreKeyFormat() = runTest {
+        val bob = engine.party(BOB)
+        val publication = PreKeyPublication(
+            address = BOB,
+            identityKey = bob.identity.publicKey,
+            signedPreKey = bob.signedPreKey.toPublic(),
+            oneTimePreKeys = bob.oneTimePreKeys.map { it.toPublic() },
+        )
+        assertEquals(PreKeyFormat.PUBLIC_KEY_SIZE, publication.identityKey.size)
+        assertEquals(PreKeyFormat.SIGNATURE_SIZE, publication.signedPreKey.signature.size)
+        PreKeyFormat.validate(publication)
+
+        assertFailsWith<IllegalArgumentException> {
+            PreKeyFormat.validate(publication.copy(identityKey = publication.identityKey.copyOf(32)))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            PreKeyFormat.validate(
+                publication.copy(signedPreKey = publication.signedPreKey.copy(signature = ByteArray(63))),
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            PreKeyFormat.validate(publication.copy(oneTimePreKeys = publication.oneTimePreKeys + publication.oneTimePreKeys[0]))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            val tooMany = List(PreKeyFormat.MAX_ONE_TIME_PRE_KEYS_PER_PUBLICATION + 1) {
+                PublicOneTimePreKey(OneTimePreKeyId(it), ByteArray(PreKeyFormat.PUBLIC_KEY_SIZE))
+            }
+            PreKeyFormat.validate(publication.copy(oneTimePreKeys = tooMany))
         }
     }
 }

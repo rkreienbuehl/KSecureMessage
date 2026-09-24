@@ -86,8 +86,9 @@ lower it. New IDs are allocated upward from `highest + 1`, starting at 0.
 
 ### Publication boundary
 
-Publishing is not implemented yet. The client exposes the public material a
-publication layer needs:
+`publishPreKeys()` uploads this public material (see
+[prekey-publication.md](prekey-publication.md)). It reads it in one
+transaction and does the network call afterwards:
 
 - `currentPreKeyBundle()`: the identity public key and the current signed prekey
   (ID, public key, signature). `oneTimePreKey` is always `null`.
@@ -192,7 +193,8 @@ so they are only linked and run on a Linux or Windows host.
 
 - Remote identity trust (TOFU, safety numbers, identity change handling).
   The identity key in a first-contact message is accepted without checks.
-- Publishing prekeys to a server and tracking what the server handed out.
+- Tracking locally what the server handed out (the server tombstones consumed
+  one-time prekey IDs instead, see [prekey-publication.md](prekey-publication.md)).
 - Simultaneous session initiation by both sides.
 - Signed prekey retention and scheduled rotation.
 - Encryption at rest.

@@ -8,6 +8,7 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
+import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.KodiumProtocolEngine
@@ -157,6 +158,9 @@ class SqlDelightPersistenceTest {
             bundles[client.localAddress] =
                 client.currentPreKeyBundle().copy(oneTimePreKey = client.publicOneTimePreKeys().first())
         }
+
+        override suspend fun publishPreKeys(publication: PreKeyPublication) =
+            error("These tests set bundles directly, see publish")
 
         override suspend fun fetchPreKeyBundle(address: DeviceAddress) = bundles.getValue(address)
 

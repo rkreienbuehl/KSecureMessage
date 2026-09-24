@@ -14,3 +14,16 @@ allprojects {
     group = rootProject.group.toString() + path.substringBeforeLast(':').replace(':', '.')
     version = rootProject.version
 }
+
+// The JVM target of the multiplatform modules must load on the server
+// modules' Java 17 toolchain (Kodium is Java 17 bytecode as well). Without
+// this they get the bytecode level of the JDK running Gradle.
+subprojects {
+    plugins.withId("org.jetbrains.kotlin.multiplatform") {
+        extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension> {
+            targets.withType<org.jetbrains.kotlin.gradle.targets.jvm.KotlinJvmTarget>().configureEach {
+                compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            }
+        }
+    }
+}

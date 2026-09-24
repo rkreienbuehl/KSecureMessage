@@ -5,11 +5,13 @@ import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.MessageId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyMessage
+import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
 import dev.kreienbuehl.ksecuremessage.model.RatchetMessage
 import dev.kreienbuehl.ksecuremessage.protocol.CiphertextMessageCodec
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
+import dev.kreienbuehl.ksecuremessage.protocol.PreKeyFormat
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolException
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
@@ -33,10 +35,13 @@ import kotlin.uuid.Uuid
  * leaves the stored state as it was. Network calls happen outside
  * transactions.
  *
+ * [initialize] and [rotateSignedPreKey] change local state only. Call
+ * [publishPreKeys] afterwards to upload the public material.
+ *
  * Not handled yet: the remote identity key in a first-contact
  * [PreKeyMessage] is accepted without a trust check, a new session from a
  * sender that already has one (reinstall, simultaneous initiation) fails, and
- * prekeys are not published to a server (see [currentPreKeyBundle]).
+ * prekeys are not published automatically.
  */
 class SecureMessageClient(
     val localAddress: DeviceAddress,
@@ -51,7 +56,7 @@ class SecureMessageClient(
      * Makes sure the local identity, a current signed prekey and
      * [PreKeyConfiguration.oneTimePreKeyTarget] one-time prekeys exist. Only
      * missing state is created, in one transaction. An existing identity is
-     * never replaced.
+     * never replaced. No network I/O: see [publishPreKeys].
      */
     suspend fun initialize() {
         storage.transaction { with(preKeyManager) { ensureInitialized() } }
@@ -90,6 +95,32 @@ class SecureMessageClient(
      */
     suspend fun rotateSignedPreKey(): PublicSignedPreKey =
         storage.transaction { with(preKeyManager) { rotateSignedPreKey() } }.toPublic()
+
+    /**
+     * Uploads the public prekey material: identity key, current signed prekey
+     * and the public halves of all local one-time prekeys. Private keys never
+     * leave the device.
+     *
+     * The keys are read in one transaction; the upload happens after it. More
+     * one-time prekeys than [PreKeyFormat.MAX_ONE_TIME_PRE_KEYS_PER_PUBLICATION]
+     * are sent in several publications. Publishing again, also after a failed
+     * or lost request, is safe: the server ignores keys it already has and
+     * never hands out a one-time prekey twice.
+     */
+    suspend fun publishPreKeys() {
+        val publications = storage.transaction {
+            val identity = requireIdentity()
+            val signedPreKey = preKeys.currentSignedPreKey() ?: throw SecureMessageClientException.NotInitialized()
+            preKeys.publicOneTimePreKeys()
+                .chunked(PreKeyFormat.MAX_ONE_TIME_PRE_KEYS_PER_PUBLICATION)
+                .ifEmpty { listOf(emptyList()) }
+                .map { batch ->
+                    PreKeyPublication(localAddress, identity.publicKey, signedPreKey.toPublic(), batch)
+                }
+        }
+        // Outside the transaction: it must not wait for the network.
+        for (publication in publications) transport.publishPreKeys(publication)
+    }
 
     suspend fun ensureSession(remote: DeviceAddress): SecureSession {
         val bundle = fetchBundleIfNoSession(remote)

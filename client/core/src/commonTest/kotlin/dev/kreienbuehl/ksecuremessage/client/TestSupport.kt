@@ -5,11 +5,13 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
+import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
+import dev.kreienbuehl.ksecuremessage.storage.inmemory.InMemoryServerStorage
 
 internal val ALICE = DeviceAddress(UserId("alice"), DeviceId("phone"))
 internal val BOB = DeviceAddress(UserId("bob"), DeviceId("laptop"))
@@ -19,6 +21,13 @@ internal val CAROL = DeviceAddress(UserId("carol"), DeviceId("tablet"))
 internal class FakeNetwork : SecureMessageTransport {
     val bundles = mutableMapOf<DeviceAddress, PreKeyBundle>()
     private val mailboxes = mutableMapOf<DeviceAddress, MutableList<EncryptedEnvelope>>()
+
+    val publications = mutableListOf<PreKeyPublication>()
+
+    /** Only records: these tests set [bundles] by hand, see [publish]. */
+    override suspend fun publishPreKeys(publication: PreKeyPublication) {
+        publications += publication
+    }
 
     override suspend fun fetchPreKeyBundle(address: DeviceAddress): PreKeyBundle = bundles.getValue(address)
 
@@ -34,6 +43,52 @@ internal class FakeNetwork : SecureMessageTransport {
         bundles[client.localAddress] = client.currentPreKeyBundle().copy(
             oneTimePreKey = if (withOneTimePreKey) client.publicOneTimePreKeys().first() else null,
         )
+    }
+}
+
+/**
+ * Stands in for the relay server with the real server-side prekey semantics
+ * of [InMemoryServerStorage]: publication is idempotent and every fetch
+ * consumes one one-time prekey. [beforeNetworkCall] runs on every call.
+ */
+internal class ServerBackedNetwork(
+    private val beforeNetworkCall: () -> Unit = {},
+) : SecureMessageTransport {
+    val server = InMemoryServerStorage()
+
+    override suspend fun publishPreKeys(publication: PreKeyPublication) {
+        beforeNetworkCall()
+        server.preKeys.publish(publication)
+    }
+
+    override suspend fun fetchPreKeyBundle(address: DeviceAddress): PreKeyBundle {
+        beforeNetworkCall()
+        return server.preKeys.consumePreKeyBundle(address) ?: throw SecureMessageTransportException.DeviceNotFound(address)
+    }
+
+    override suspend fun send(envelope: EncryptedEnvelope) {
+        beforeNetworkCall()
+        server.mailboxes.enqueue(envelope)
+    }
+
+    override suspend fun receive(address: DeviceAddress): List<EncryptedEnvelope> {
+        beforeNetworkCall()
+        return server.mailboxes.drain(address)
+    }
+}
+
+/** Delegates to [delegate] and tracks whether a transaction is running. */
+internal class TransactionTrackingStorage(private val delegate: ClientStorage) : ClientStorage by delegate {
+    var depth = 0
+        private set
+
+    override suspend fun <T> transaction(block: suspend ClientStorage.() -> T): T {
+        depth++
+        try {
+            return delegate.transaction(block)
+        } finally {
+            depth--
+        }
     }
 }
 

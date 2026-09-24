@@ -4,7 +4,9 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
+import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
+import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
@@ -13,6 +15,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.IdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.MailboxRepository
+import dev.kreienbuehl.ksecuremessage.storage.PreKeyPublicationException
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyRepository
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.ServerStorage
@@ -170,17 +173,18 @@ private fun OneTimePreKeyPair.copy() = OneTimePreKeyPair(id, publicKey.copyOf(),
 
 private fun SecureSession.copyState() = copy(state = state.copyOf())
 
+/**
+ * Non-persistent [ServerStorage] for tests and examples.
+ *
+ * The prekey repository keeps immutable state behind a [Mutex]: publication
+ * and bundle consumption each run under the lock and replace the state only
+ * after all checks passed, so they are atomic and serialized. The mailboxes
+ * are not synchronized.
+ */
 class InMemoryServerStorage : ServerStorage {
-    private val bundles = mutableMapOf<DeviceAddress, PreKeyBundle>()
     private val messages = mutableMapOf<DeviceAddress, MutableList<EncryptedEnvelope>>()
 
-    override val preKeys: PreKeyRepository = object : PreKeyRepository {
-        override suspend fun publish(bundle: PreKeyBundle) {
-            bundles[bundle.address] = bundle
-        }
-
-        override suspend fun get(address: DeviceAddress): PreKeyBundle? = bundles[address]
-    }
+    override val preKeys: PreKeyRepository = InMemoryPreKeyRepository()
 
     override val mailboxes: MailboxRepository = object : MailboxRepository {
         override suspend fun enqueue(envelope: EncryptedEnvelope) {
@@ -191,3 +195,81 @@ class InMemoryServerStorage : ServerStorage {
             messages.remove(recipient)?.toList().orEmpty()
     }
 }
+
+/** Published state of one device. Arrays are never handed out without a copy. */
+private data class DeviceKeys(
+    val identityKey: ByteArray,
+    val signedPreKey: PublicSignedPreKey,
+    /** Available one-time prekeys, public key by ID. */
+    val available: Map<OneTimePreKeyId, ByteArray>,
+    /** IDs already handed out. Never published again. */
+    val consumed: Set<OneTimePreKeyId>,
+)
+
+private class InMemoryPreKeyRepository : PreKeyRepository {
+    private val mutex = Mutex()
+    private var devices = mapOf<DeviceAddress, DeviceKeys>()
+
+    override suspend fun publish(publication: PreKeyPublication) = mutex.withLock {
+        val ids = publication.oneTimePreKeys.map { it.id }
+        if (ids.toSet().size != ids.size) {
+            throw PreKeyPublicationException.InvalidPublication("Duplicate one-time prekey ID")
+        }
+        val existing = devices[publication.address]
+        if (existing != null && !existing.identityKey.contentEquals(publication.identityKey)) {
+            throw PreKeyPublicationException.IdentityKeyConflict()
+        }
+        val signedPreKey = publication.signedPreKey
+        if (existing != null) checkSignedPreKey(existing.signedPreKey, signedPreKey)
+
+        val available = existing?.available.orEmpty().toMutableMap()
+        val consumed = existing?.consumed.orEmpty()
+        for (preKey in publication.oneTimePreKeys) {
+            if (preKey.id in consumed) continue
+            val stored = available[preKey.id]
+            when {
+                stored == null -> available[preKey.id] = preKey.publicKey.copyOf()
+                !stored.contentEquals(preKey.publicKey) -> throw PreKeyPublicationException.OneTimePreKeyConflict(preKey.id)
+            }
+        }
+        // All checks passed: commit.
+        devices = devices + (publication.address to DeviceKeys(
+            identityKey = publication.identityKey.copyOf(),
+            signedPreKey = signedPreKey.deepCopy(),
+            available = available,
+            consumed = consumed,
+        ))
+    }
+
+    private fun checkSignedPreKey(current: PublicSignedPreKey, published: PublicSignedPreKey) {
+        when {
+            published.id.value < current.id.value ->
+                throw PreKeyPublicationException.SignedPreKeyConflict("Signed prekey is older than the current one")
+            published.id == current.id && (
+                !published.publicKey.contentEquals(current.publicKey) ||
+                    !published.signature.contentEquals(current.signature)
+                ) ->
+                throw PreKeyPublicationException.SignedPreKeyConflict("Signed prekey ID already exists with other bytes")
+        }
+    }
+
+    override suspend fun consumePreKeyBundle(address: DeviceAddress): PreKeyBundle? = mutex.withLock {
+        val device = devices[address] ?: return@withLock null
+        val id = device.available.keys.minByOrNull { it.value }
+        if (id != null) {
+            devices = devices + (address to device.copy(available = device.available - id, consumed = device.consumed + id))
+        }
+        PreKeyBundle(
+            address = address,
+            identityKey = device.identityKey.copyOf(),
+            signedPreKey = device.signedPreKey.deepCopy(),
+            oneTimePreKey = id?.let { PublicOneTimePreKey(it, device.available.getValue(it).copyOf()) },
+        )
+    }
+
+    override suspend fun oneTimePreKeyCount(address: DeviceAddress): Int =
+        mutex.withLock { devices[address]?.available?.size ?: 0 }
+}
+
+// Not named copy(): the data class member would win and copy shallowly.
+private fun PublicSignedPreKey.deepCopy() = PublicSignedPreKey(id, publicKey.copyOf(), signature.copyOf())
