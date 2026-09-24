@@ -1,5 +1,8 @@
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
+// Shared test fixtures: ClientStorage contract tests for every adapter.
+// Not meant to be published.
+
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
@@ -9,7 +12,7 @@ kotlin {
     jvm()
 
     android {
-        namespace = "dev.kreienbuehl.ksecuremessage.storage.inmemory"
+        namespace = "dev.kreienbuehl.ksecuremessage.storage.testing"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
     }
@@ -33,12 +36,15 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":storage:core"))
-            implementation(libs.kotlinx.coroutines.core)
+            api(kotlin("test"))
+            api(libs.kotlinx.coroutines.test)
         }
-        commonTest.dependencies {
-            implementation(kotlin("test"))
-            implementation(libs.kotlinx.coroutines.test)
-            implementation(project(":storage:testing"))
+        // Test framework binding the other modules' jvmTest also infers.
+        jvmMain.dependencies {
+            api(kotlin("test-junit"))
+        }
+        androidMain.dependencies {
+            api(kotlin("test-junit"))
         }
     }
 }

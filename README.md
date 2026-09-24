@@ -28,7 +28,9 @@ KSecureMessage/
 │   └── ktor/
 └── storage/
     ├── core/
-    └── inmemory/
+    ├── inmemory/
+    ├── sqldelight/
+    └── testing/
 ```
 
 ### `core:model`
@@ -53,7 +55,13 @@ JVM Ktor server routes/adapters.
 Shared storage contracts.
 
 ### `storage:inmemory`
-Simple in-memory implementations useful for tests and examples.
+Simple in-memory implementations useful for tests and examples. Transactions are atomic.
+
+### `storage:sqldelight`
+Persistent `ClientStorage` on SQLite via SQLDelight, for all client targets. The application supplies the platform driver. Stores secret keys unencrypted, see [docs/storage.md](docs/storage.md).
+
+### `storage:testing`
+Shared `ClientStorage` contract tests that every storage adapter runs. Not published.
 
 ## Coordinates
 
@@ -65,9 +73,10 @@ dev.kreienbuehl.ksecuremessage
 
 Current dependency baseline:
 
-- Kotlin 2.3.10
+- Kotlin 2.4.20
 - Kodium 1.0.0
 - Ktor 3.6.0
+- SQLDelight 2.4.0
 
 ## Status
 
@@ -75,13 +84,28 @@ Milestone 1 done: `KodiumProtocolEngine` creates identities and prekeys, sets up
 
 Milestone 2 done: `CiphertextMessageCodec` encodes `RatchetMessage` and `PreKeyMessage` into a versioned binary wire format for `EncryptedEnvelope.payload` (see [docs/wire-format.md](docs/wire-format.md)). `SecureMessageClient` encrypts and sends through it and decrypts incoming envelopes, accepting a first-contact `PreKeyMessage` without an existing session. Local prekeys come from `ClientStorage.preKeys`; a consumed one-time prekey is removed in the same transaction that stores the new session.
 
+Milestone 3 done: the client owns its local protocol state. `initialize()` creates the identity, a current signed prekey and missing one-time prekeys in storage, and keeps whatever already exists. `currentPreKeyBundle()` and `publicOneTimePreKeys()` expose the public material for publication. `ClientStorage.transaction` is atomic in both adapters, and `storage:sqldelight` adds persistent storage. See [docs/storage.md](docs/storage.md).
+
+```kotlin
+val client = SecureMessageClient(
+    localAddress = address,
+    storage = SqlDelightClientStorage(driver),
+    protocol = KodiumProtocolEngine(),
+    transport = transport,
+)
+client.initialize()
+val bundle = client.currentPreKeyBundle()
+```
+
+> Storage adapters persist private keys and session state unencrypted. Protect the database with platform means until encryption at rest is added.
+
 ## Next implementation steps
 
-1. Map Kodium X3DH bundle/session types into `core:protocol`.
-2. Define persisted session records without exposing Kodium objects through public APIs.
-3. Add atomic session update semantics to client storage.
-4. Implement prekey publication/consumption flows.
-5. Add cross-platform protocol tests and Kodium persistence round-trip tests.
+1. Publish prekeys to the server: upload the bundle and one-time prekeys, and have the server hand out each one-time prekey once.
+2. Remote identity trust (TOFU, identity change handling).
+3. Handle session reset and simultaneous initiation.
+4. Encryption at rest for client storage.
+5. Sealed sender.
 
 ## Gradle wrapper
 

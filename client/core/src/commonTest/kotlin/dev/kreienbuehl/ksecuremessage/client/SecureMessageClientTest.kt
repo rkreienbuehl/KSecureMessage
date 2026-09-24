@@ -1,15 +1,11 @@
 package dev.kreienbuehl.ksecuremessage.client
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
-import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.MessageId
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
-import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyMessage
 import dev.kreienbuehl.ksecuremessage.model.RatchetMessage
-import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
-import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.CiphertextMessageCodec
 import dev.kreienbuehl.ksecuremessage.protocol.KodiumProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolEngine
@@ -24,25 +20,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
-private val ALICE = DeviceAddress(UserId("alice"), DeviceId("phone"))
-private val BOB = DeviceAddress(UserId("bob"), DeviceId("laptop"))
-private val CAROL = DeviceAddress(UserId("carol"), DeviceId("tablet"))
-
-/** Stands in for the relay server: bundles plus one mailbox per device. */
-private class FakeNetwork : SecureMessageTransport {
-    val bundles = mutableMapOf<DeviceAddress, PreKeyBundle>()
-    private val mailboxes = mutableMapOf<DeviceAddress, MutableList<EncryptedEnvelope>>()
-
-    override suspend fun fetchPreKeyBundle(address: DeviceAddress): PreKeyBundle = bundles.getValue(address)
-
-    override suspend fun send(envelope: EncryptedEnvelope) {
-        mailboxes.getOrPut(envelope.recipient) { mutableListOf() }.add(envelope)
-    }
-
-    override suspend fun receive(address: DeviceAddress): List<EncryptedEnvelope> =
-        mailboxes.remove(address)?.toList().orEmpty()
-}
-
 private class Device(val client: SecureMessageClient, val storage: InMemoryClientStorage)
 
 class SecureMessageClientTest {
@@ -50,28 +27,16 @@ class SecureMessageClientTest {
     private val network = FakeNetwork()
 
     private suspend fun device(address: DeviceAddress, publishOneTimePreKey: Boolean = true): Device {
-        val identity = engine.createIdentity()
-        val signedPreKey = engine.createSignedPreKey(identity, SignedPreKeyId(1))
-        val oneTimePreKeys = engine.createOneTimePreKeys(OneTimePreKeyId(100), 2)
-        val storage = InMemoryClientStorage().apply {
-            storeSignedPreKey(signedPreKey)
-            storeOneTimePreKeys(oneTimePreKeys)
-        }
-        network.bundles[address] = PreKeyBundle(
-            address = address,
-            identityKey = identity.publicKey,
-            signedPreKey = signedPreKey.toPublic(),
-            oneTimePreKey = if (publishOneTimePreKey) oneTimePreKeys.first().toPublic() else null,
-        )
-        return Device(SecureMessageClient(address, identity, storage, engine, network), storage)
+        val storage = InMemoryClientStorage()
+        val client = SecureMessageClient(address, storage, engine, network, PreKeyConfiguration(oneTimePreKeyTarget = 2))
+        client.initialize()
+        network.publish(client, publishOneTimePreKey)
+        return Device(client, storage)
     }
 
     private suspend fun Device.receiveOne(): EncryptedEnvelope = network.receive(client.localAddress).single()
 
     private suspend fun Device.decryptText(envelope: EncryptedEnvelope) = client.decrypt(envelope).decodeToString()
-
-    private fun EncryptedEnvelope.tampered() =
-        copy(payload = payload.copyOf().also { it[it.lastIndex] = (it[it.lastIndex].toInt() xor 1).toByte() })
 
     @Test
     fun aliceAndBobExchangeMessagesThroughClients() = runTest {
@@ -86,8 +51,8 @@ class SecureMessageClientTest {
 
         assertEquals("Hello Bob", bob.decryptText(first))
         assertNotNull(bob.storage.sessions.load(ALICE))
-        assertNull(bob.storage.preKeys.oneTimePreKey(OneTimePreKeyId(100)), "consumed one-time prekey is removed")
-        assertNotNull(bob.storage.preKeys.oneTimePreKey(OneTimePreKeyId(101)))
+        assertNull(bob.storage.preKeys.oneTimePreKey(OneTimePreKeyId(0)), "consumed one-time prekey is removed")
+        assertNotNull(bob.storage.preKeys.oneTimePreKey(OneTimePreKeyId(1)))
 
         bob.client.send(ALICE, "Hello Alice".encodeToByteArray())
         val reply = alice.receiveOne()
@@ -124,7 +89,7 @@ class SecureMessageClientTest {
         val first = bob.receiveOne()
         assertNull(assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(first.payload)).oneTimePreKeyId)
         assertEquals("Hello Bob", bob.decryptText(first))
-        assertNotNull(bob.storage.preKeys.oneTimePreKey(OneTimePreKeyId(100)))
+        assertNotNull(bob.storage.preKeys.oneTimePreKey(OneTimePreKeyId(0)))
 
         bob.client.send(ALICE, "Hello Alice".encodeToByteArray())
         assertEquals("Hello Alice", alice.decryptText(alice.receiveOne()))
@@ -140,7 +105,7 @@ class SecureMessageClientTest {
 
         assertFailsWith<ProtocolException> { bob.client.decrypt(first.tampered()) }
         assertNull(bob.storage.sessions.load(ALICE))
-        assertNotNull(bob.storage.preKeys.oneTimePreKey(OneTimePreKeyId(100)))
+        assertNotNull(bob.storage.preKeys.oneTimePreKey(OneTimePreKeyId(0)))
 
         assertEquals("Hello Bob", bob.decryptText(first))
     }

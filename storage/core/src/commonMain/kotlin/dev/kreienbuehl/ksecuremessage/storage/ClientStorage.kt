@@ -2,10 +2,17 @@ package dev.kreienbuehl.ksecuremessage.storage
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
+import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
+import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
+
+// Every store below holds secret key material or ratchet state as raw bytes.
+// Adapters persist those bytes as they are; none of them encrypts at rest.
+// Protect the underlying database or files with platform means.
+// See docs/storage.md.
 
 interface SessionStore {
     suspend fun load(address: DeviceAddress): SecureSession?
@@ -13,30 +20,73 @@ interface SessionStore {
     suspend fun remove(address: DeviceAddress)
 }
 
-/**
- * The local device's private prekeys, looked up by the IDs in an incoming
- * `PreKeyMessage`. Holds private key material, so implementations must use
- * protected storage.
- *
- * Only what receiving a first-contact message needs: lookup and one-time
- * prekey removal. Generation, publication and rotation are not part of this
- * interface yet.
- */
-interface PreKeyStore {
-    suspend fun signedPreKey(id: SignedPreKeyId): SignedPreKeyPair?
-    suspend fun oneTimePreKey(id: OneTimePreKeyId): OneTimePreKeyPair?
+/** The local device's long-term identity key pair. There is at most one. */
+interface IdentityStore {
+    suspend fun identity(): LocalIdentity?
 
-    /** Deletes a one-time prekey after a session was accepted with it. */
-    suspend fun removeOneTimePreKey(id: OneTimePreKeyId)
+    /**
+     * Stores the local identity. Throws [IllegalStateException] if one exists
+     * already: an identity is never replaced silently.
+     */
+    suspend fun store(identity: LocalIdentity)
 }
 
 /**
- * Client storage boundary. The transaction method is intentionally explicit:
- * ratchet state must be updated atomically with successful encrypt/decrypt work,
- * and a consumed one-time prekey must be removed together with storing the
- * session it created.
+ * The local device's private prekeys.
+ *
+ * Signed prekeys are never deleted here: an incoming `PreKeyMessage` may
+ * still name an older one after [storeCurrentSignedPreKey] replaced it.
+ *
+ * IDs are allocated upward from a persisted high-water mark (the highest ID
+ * ever stored, see [highestSignedPreKeyId] and [highestOneTimePreKeyId]).
+ * Removing a key does not lower it, so IDs are never reused. Storing a key
+ * whose ID is not above the high-water mark throws [IllegalArgumentException].
+ */
+interface PreKeyStore {
+    /** Any stored signed prekey, current or replaced. */
+    suspend fun signedPreKey(id: SignedPreKeyId): SignedPreKeyPair?
+
+    /** The signed prekey to publish, or `null` if none was stored yet. */
+    suspend fun currentSignedPreKey(): SignedPreKeyPair?
+
+    /** Stores [preKey] and makes it current. The previous one stays available by ID. */
+    suspend fun storeCurrentSignedPreKey(preKey: SignedPreKeyPair)
+
+    suspend fun highestSignedPreKeyId(): SignedPreKeyId?
+
+    suspend fun oneTimePreKey(id: OneTimePreKeyId): OneTimePreKeyPair?
+
+    /** Public halves of all stored one-time prekeys, ordered by ID. */
+    suspend fun publicOneTimePreKeys(): List<PublicOneTimePreKey>
+
+    suspend fun oneTimePreKeyCount(): Int
+
+    suspend fun storeOneTimePreKeys(preKeys: List<OneTimePreKeyPair>)
+
+    /** Deletes a one-time prekey after a session was accepted with it. */
+    suspend fun removeOneTimePreKey(id: OneTimePreKeyId)
+
+    suspend fun highestOneTimePreKeyId(): OneTimePreKeyId?
+}
+
+/**
+ * Client storage boundary.
+ *
+ * [transaction] must be atomic: if [transaction]'s block throws, none of its
+ * writes become visible; otherwise all of them do. Ratchet state is updated
+ * together with the encrypt/decrypt work, and a consumed one-time prekey is
+ * removed together with storing the session it created.
+ *
+ * Rules for the block:
+ * - Use the receiver's stores, not those of the outer storage object.
+ * - A nested `transaction` call on the receiver joins the running transaction.
+ * - No network I/O or other long suspension: the transaction holds a lock.
+ * - Do not switch threads. SQLite drivers bind a transaction to its thread.
+ *
+ * Store calls outside [transaction] act as single-call transactions.
  */
 interface ClientStorage {
+    val identity: IdentityStore
     val sessions: SessionStore
     val preKeys: PreKeyStore
 

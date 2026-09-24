@@ -25,4 +25,6 @@ include(
     ":server:ktor",
     ":storage:core",
     ":storage:inmemory",
+    ":storage:sqldelight",
+    ":storage:testing",
 )

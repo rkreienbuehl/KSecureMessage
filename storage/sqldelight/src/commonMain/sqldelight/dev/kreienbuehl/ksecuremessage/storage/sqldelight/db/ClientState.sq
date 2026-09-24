@@ -1,0 +1,84 @@
+-- Local client state. Key material and session state are opaque BLOBs
+-- produced by the ProtocolEngine and are stored unencrypted.
+
+CREATE TABLE local_identity (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    public_key BLOB NOT NULL,
+    private_key BLOB NOT NULL
+);
+
+CREATE TABLE signed_pre_key (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id BETWEEN 0 AND 2147483647),
+    public_key BLOB NOT NULL,
+    signature BLOB NOT NULL,
+    private_key BLOB NOT NULL
+);
+
+CREATE TABLE one_time_pre_key (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id BETWEEN 0 AND 2147483647),
+    public_key BLOB NOT NULL,
+    private_key BLOB NOT NULL
+);
+
+-- Single row. The highest_* columns are ID high-water marks: they keep their
+-- value when keys are deleted, so IDs are never reused.
+CREATE TABLE pre_key_state (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    current_signed_pre_key_id INTEGER REFERENCES signed_pre_key(id),
+    highest_signed_pre_key_id INTEGER,
+    highest_one_time_pre_key_id INTEGER
+);
+
+INSERT INTO pre_key_state (id) VALUES (0);
+
+CREATE TABLE session (
+    remote_user_id TEXT NOT NULL,
+    remote_device_id TEXT NOT NULL,
+    state BLOB NOT NULL,
+    PRIMARY KEY (remote_user_id, remote_device_id)
+);
+
+selectIdentity:
+SELECT public_key, private_key FROM local_identity;
+
+insertIdentity:
+INSERT INTO local_identity (id, public_key, private_key) VALUES (0, ?, ?);
+
+selectSession:
+SELECT state FROM session WHERE remote_user_id = ? AND remote_device_id = ?;
+
+upsertSession:
+INSERT OR REPLACE INTO session (remote_user_id, remote_device_id, state) VALUES (?, ?, ?);
+
+deleteSession:
+DELETE FROM session WHERE remote_user_id = ? AND remote_device_id = ?;
+
+selectPreKeyState:
+SELECT current_signed_pre_key_id, highest_signed_pre_key_id, highest_one_time_pre_key_id FROM pre_key_state;
+
+selectSignedPreKey:
+SELECT id, public_key, signature, private_key FROM signed_pre_key WHERE id = ?;
+
+insertSignedPreKey:
+INSERT INTO signed_pre_key (id, public_key, signature, private_key) VALUES (?, ?, ?, ?);
+
+makeSignedPreKeyCurrent:
+UPDATE pre_key_state SET current_signed_pre_key_id = :id, highest_signed_pre_key_id = :id;
+
+selectOneTimePreKey:
+SELECT id, public_key, private_key FROM one_time_pre_key WHERE id = ?;
+
+selectPublicOneTimePreKeys:
+SELECT id, public_key FROM one_time_pre_key ORDER BY id;
+
+countOneTimePreKeys:
+SELECT count(*) FROM one_time_pre_key;
+
+insertOneTimePreKey:
+INSERT INTO one_time_pre_key (id, public_key, private_key) VALUES (?, ?, ?);
+
+deleteOneTimePreKey:
+DELETE FROM one_time_pre_key WHERE id = ?;
+
+setHighestOneTimePreKeyId:
+UPDATE pre_key_state SET highest_one_time_pre_key_id = ?;
