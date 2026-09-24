@@ -7,9 +7,10 @@ import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
+import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 
-// Every store below except RemoteIdentityStore holds secret key material or
+// Every store below except RemoteIdentityStore and SessionInitiationStore holds secret key material or
 // ratchet state as raw bytes.
 // Adapters persist those bytes as they are; none of them encrypts at rest.
 // Protect the underlying database or files with platform means.
@@ -50,6 +51,23 @@ interface RemoteIdentityStore {
      * is pinned: a pin is never replaced silently.
      */
     suspend fun store(address: DeviceAddress, identityKey: ByteArray)
+}
+
+/**
+ * Session initiations from a remote device that must never become the current
+ * session again (see docs/session-lifecycle.md): initiations whose session
+ * was replaced, and initiations that lost a simultaneous-initiation collision.
+ * Kept per remote [DeviceAddress]. IDs are public values.
+ *
+ * Entries are only ever added, never removed here. The client retires an ID
+ * in the same transaction that replaces the session or rejects the
+ * initiation, so the entry survives restarts together with that decision.
+ */
+interface SessionInitiationStore {
+    suspend fun isRetired(remote: DeviceAddress, id: SessionInitiationId): Boolean
+
+    /** Retires [id] for [remote]. Retiring an ID twice does nothing. */
+    suspend fun retire(remote: DeviceAddress, id: SessionInitiationId)
 }
 
 /**
@@ -97,7 +115,8 @@ interface PreKeyStore {
  * writes become visible; otherwise all of them do. Ratchet state is updated
  * together with the encrypt/decrypt work, and a consumed one-time prekey is
  * removed together with storing the session it created. A remote identity is
- * pinned in the same transaction that stores the first session with it.
+ * pinned in the same transaction that stores the first session with it. A
+ * replaced session and the retired initiation are written together.
  *
  * Rules for the block:
  * - Use the receiver's stores, not those of the outer storage object.
@@ -111,6 +130,7 @@ interface ClientStorage {
     val identity: IdentityStore
     val remoteIdentities: RemoteIdentityStore
     val sessions: SessionStore
+    val sessionInitiations: SessionInitiationStore
     val preKeys: PreKeyStore
 
     suspend fun <T> transaction(block: suspend ClientStorage.() -> T): T

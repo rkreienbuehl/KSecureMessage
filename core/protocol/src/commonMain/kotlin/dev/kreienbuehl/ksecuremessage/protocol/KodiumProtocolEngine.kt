@@ -82,14 +82,17 @@ class KodiumProtocolEngine : ProtocolEngine {
             ephemeralKey.secretKey.fill(0)
         }
 
+        val associatedData = localIdentity.publicKey + remoteBundle.identityKey
+        val pending = PendingPreKey(
+            identityKey = localIdentity.publicKey.copyOf(),
+            ephemeralKey = ephemeralKey.getPublicKey().toBytes(),
+            signedPreKeyId = remoteBundle.signedPreKey.id,
+            oneTimePreKeyId = remoteBundle.oneTimePreKey?.id,
+        )
         val state = SessionState(
-            associatedData = localIdentity.publicKey + remoteBundle.identityKey,
-            pending = PendingPreKey(
-                identityKey = localIdentity.publicKey.copyOf(),
-                ephemeralKey = ephemeralKey.getPublicKey().toBytes(),
-                signedPreKeyId = remoteBundle.signedPreKey.id,
-                oneTimePreKeyId = remoteBundle.oneTimePreKey?.id,
-            ),
+            associatedData = associatedData,
+            pending = pending,
+            origin = SessionState.originOf(associatedData, pending),
             ratchet = ratchet.exportToArray(),
         )
         return SecureSession(remoteBundle.address, state.encodeAndWipe())
@@ -111,6 +114,7 @@ class KodiumProtocolEngine : ProtocolEngine {
         val initiatorIdentityKey = messageKey(message.identityKey)
         val initiatorEphemeralKey = messageKey(message.ephemeralKey)
         val ratchetMessage = parse(message.message)
+        val origin = SessionInitiationId.of(message, localIdentity.publicKey)
 
         val sharedSecret = X3DH.calculateSecretAsResponder(
             responderIdentityKey = privateKey(localIdentity.privateKey),
@@ -131,7 +135,8 @@ class KodiumProtocolEngine : ProtocolEngine {
             val associatedData = message.identityKey + localIdentity.publicKey
             val plaintext = ratchet.decrypt(ratchetMessage, associatedData)
                 .getOrElse { throw ProtocolException.DecryptionFailed("Could not decrypt the first message", it) }
-            val state = SessionState(associatedData, pending = null, ratchet = ratchet.exportToArray())
+            // Decryption authenticated the X3DH inputs, so origin is genuine.
+            val state = SessionState(associatedData, pending = null, origin = origin, ratchet = ratchet.exportToArray())
             return SessionAcceptanceResult(
                 session = SecureSession(remote, state.encodeAndWipe()),
                 plaintext = plaintext,
@@ -161,7 +166,7 @@ class KodiumProtocolEngine : ProtocolEngine {
                 message = ratchetMessage,
             )
         }
-        val updated = SessionState(state.associatedData, pending, ratchet.exportToArray())
+        val updated = SessionState(state.associatedData, pending, state.origin, ratchet.exportToArray())
         state.ratchet.fill(0)
         return EncryptionResult(message, session.copy(state = updated.encodeAndWipe()))
     }
@@ -176,6 +181,11 @@ class KodiumProtocolEngine : ProtocolEngine {
                 if (!state.associatedData.startsWith(message.identityKey)) {
                     throw ProtocolException.InvalidMessage("Prekey message is from a different identity")
                 }
+                // A session set up by another initiation cannot decrypt it.
+                val origin = state.origin
+                if (origin != null && origin != SessionInitiationId.of(message, state.responderIdentityKey())) {
+                    throw ProtocolException.InvalidMessage("Prekey message belongs to another session initiation")
+                }
                 message.message
             }
         }
@@ -186,9 +196,20 @@ class KodiumProtocolEngine : ProtocolEngine {
 
         // An authenticated message from the remote side proves it has the
         // session, so the initiator can stop sending prekey messages.
-        val updated = SessionState(state.associatedData, pending = null, ratchet = ratchet.exportToArray())
+        val updated = SessionState(state.associatedData, pending = null, origin = state.origin, ratchet = ratchet.exportToArray())
         state.ratchet.fill(0)
         return DecryptionResult(plaintext, session.copy(state = updated.encodeAndWipe()))
+    }
+
+    override fun sessionInfo(session: SecureSession): SessionInfo {
+        val state = SessionState.decode(session.state)
+        state.ratchet.fill(0)
+        return SessionInfo(initiationId = state.origin, awaitingReply = state.pending != null)
+    }
+
+    private fun SessionState.responderIdentityKey(): ByteArray {
+        if (associatedData.size != 2 * PUBLIC_KEY_SIZE) throw ProtocolException.InvalidSessionState("Stored associated data is invalid")
+        return associatedData.copyOfRange(PUBLIC_KEY_SIZE, associatedData.size)
     }
 
     private fun importRatchet(state: SessionState): DoubleRatchetSession =

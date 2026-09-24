@@ -1,5 +1,6 @@
 package dev.kreienbuehl.ksecuremessage.client
 
+import dev.kreienbuehl.ksecuremessage.model.CiphertextMessage
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.MessageId
@@ -15,6 +16,8 @@ import dev.kreienbuehl.ksecuremessage.protocol.PreKeyFormat
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolException
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
+import dev.kreienbuehl.ksecuremessage.protocol.SessionAcceptanceResult
+import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import kotlin.uuid.Uuid
 
@@ -46,9 +49,17 @@ import kotlin.uuid.Uuid
  * detects identity changes after first contact; it does not prove who the
  * remote party is on first contact.
  *
- * Not handled yet: a new session from a sender that already has one
- * (reinstall, simultaneous initiation) fails, identity changes cannot be
- * accepted, and prekeys are not published automatically.
+ * A sender with the pinned identity may set up a new session while one
+ * exists (lost session state, simultaneous initiation); see
+ * docs/session-lifecycle.md. The new session replaces the old one atomically.
+ * Initiations that were replaced or lost a collision are retired and
+ * rejected for good ([SecureMessageClientException.StaleSessionInitiation]).
+ * When both sides initiate at once, both keep the initiation with the smaller
+ * [SessionInitiationId]; the losing one's messages fail with
+ * [SecureMessageClientException.SessionCollision] and are not delivered.
+ *
+ * Not handled yet: identity changes cannot be accepted, messages lost to a
+ * collision are not resent, and prekeys are not published automatically.
  */
 class SecureMessageClient(
     val localAddress: DeviceAddress,
@@ -172,6 +183,11 @@ class SecureMessageClient(
     suspend fun send(remote: DeviceAddress, plaintext: ByteArray): EncryptedEnvelope =
         encrypt(remote, plaintext).also { transport.send(it) }
 
+    /**
+     * Decrypts [envelope]. Failures change nothing, except that a
+     * [SecureMessageClientException.SessionCollision] retires the losing
+     * initiation.
+     */
     suspend fun decrypt(envelope: EncryptedEnvelope): ByteArray {
         if (envelope.protocolVersion != ENVELOPE_VERSION) {
             throw ProtocolException.InvalidMessage("Unsupported envelope version")
@@ -183,31 +199,85 @@ class SecureMessageClient(
         val message = CiphertextMessageCodec.decode(envelope.payload)
         val sender = envelope.sender
 
-        return storage.transaction {
+        val received = storage.transaction {
             val identity = requireIdentity()
-            // Only a PreKeyMessage names the sender's identity key. Check it
-            // before any crypto or write; pin it only after decryption
-            // succeeded, so a forged first contact pins nothing.
-            val claimedIdentity = (message as? PreKeyMessage)?.identityKey
-            val pinned = claimedIdentity?.let { checkRemoteIdentity(sender, it) }
-            val session = sessions.load(sender)
-            val plaintext = if (session != null) {
-                // Also covers repeated PreKeyMessages from the initiator.
-                val result = protocol.decrypt(session, message)
-                sessions.store(result.updatedSession)
-                result.plaintext
-            } else {
-                when (message) {
-                    is PreKeyMessage -> acceptSession(identity, sender, message)
-                    is RatchetMessage -> throw ProtocolException.InvalidSessionState("No session with the sender")
+            when (message) {
+                is PreKeyMessage -> receivePreKeyMessage(identity, sender, message)
+                is RatchetMessage -> {
+                    val session = sessions.load(sender) ?: throw ProtocolException.InvalidSessionState("No session with the sender")
+                    Received.Plaintext(decryptOn(session, message))
                 }
             }
-            // A session from before pinning existed gets its pin here: the
-            // engine checked the key against the session and decrypted.
-            if (claimedIdentity != null && pinned == false) pinRemoteIdentity(sender, claimedIdentity)
-            plaintext
+        }
+        // Thrown after the commit, so the retired initiation is kept.
+        return when (received) {
+            is Received.Plaintext -> received.plaintext
+            Received.CollisionLost -> throw SecureMessageClientException.SessionCollision(sender)
         }
     }
+
+    /**
+     * Session setup, repetition, replacement and collision handling for an
+     * incoming [PreKeyMessage], see docs/session-lifecycle.md.
+     */
+    private suspend fun ClientStorage.receivePreKeyMessage(
+        identity: LocalIdentity,
+        sender: DeviceAddress,
+        message: PreKeyMessage,
+    ): Received {
+        // Identity continuity first: check the pin before any crypto or write;
+        // pin only after decryption succeeded, so a forged first contact pins
+        // nothing.
+        val pinned = checkRemoteIdentity(sender, message.identityKey)
+        // Computed from unauthenticated header fields. It is only trusted as
+        // a session's origin after acceptSession decrypted with them.
+        val initiation = SessionInitiationId.of(message, identity.publicKey)
+        val session = sessions.load(sender)
+        val current = session?.let { protocol.sessionInfo(it) }
+        val currentInitiation = current?.initiationId
+
+        val plaintext = when {
+            // The initiator repeats its PreKeyMessage until it sees a reply.
+            session != null && currentInitiation == initiation -> decryptOn(session, message)
+            sessionInitiations.isRetired(sender, initiation) ->
+                throw SecureMessageClientException.StaleSessionInitiation(sender)
+            session == null || current == null -> acceptSession(identity, sender, message, replaced = null)
+            // A session from before pinning is never replaced: without a pin
+            // there is no identity to hold the new initiation against. Its
+            // own repeated PreKeyMessages still decrypt (and pin it).
+            !pinned -> decryptOn(session, message)
+            // Established before milestone 6, so its initiation is unknown and
+            // may even be this one (a replay). Only an initiation with a
+            // one-time prekey that is still stored is certainly a different
+            // one: accepting the old session consumed its one-time prekey.
+            // Anything else is decrypted as a repetition on the old session.
+            currentInitiation == null ->
+                if (hasOneTimePreKeyFor(message)) {
+                    acceptSession(identity, sender, message, replaced = null)
+                } else {
+                    decryptOn(session, message)
+                }
+            // Simultaneous initiation: the smaller ID wins on both sides.
+            current.awaitingReply && initiation > currentInitiation -> {
+                rejectLosingInitiation(identity, sender, message, initiation)
+                return Received.CollisionLost
+            }
+            else -> acceptSession(identity, sender, message, replaced = currentInitiation)
+        }
+        // A session from before pinning gets its pin here: the engine checked
+        // the key against the session and decrypted.
+        if (!pinned) pinRemoteIdentity(sender, message.identityKey)
+        return Received.Plaintext(plaintext)
+    }
+
+    private suspend fun ClientStorage.decryptOn(session: SecureSession, message: CiphertextMessage): ByteArray {
+        val result = protocol.decrypt(session, message)
+        sessions.store(result.updatedSession)
+        return result.plaintext
+    }
+
+    private suspend fun ClientStorage.hasOneTimePreKeyFor(message: PreKeyMessage): Boolean =
+        message.oneTimePreKeyId?.let { preKeys.oneTimePreKey(it) } != null
 
     /**
      * Fetches [remote]'s bundle when there is no session yet. Runs outside
@@ -236,23 +306,63 @@ class SecureMessageClient(
         return session
     }
 
+    /**
+     * Sets up the session [message] starts and makes it the current one,
+     * retiring the [replaced] initiation. Nothing is written unless the
+     * message decrypts.
+     */
     private suspend fun ClientStorage.acceptSession(
         identity: LocalIdentity,
         sender: DeviceAddress,
         message: PreKeyMessage,
+        replaced: SessionInitiationId?,
     ): ByteArray {
+        val result = acceptWithLocalPreKeys(identity, sender, message)
+        // One transaction: the session, the retired initiation and the
+        // one-time prekey removal commit together or not at all.
+        sessions.store(result.session)
+        replaced?.let { sessionInitiations.retire(sender, it) }
+        result.consumedOneTimePreKeyId?.let { preKeys.removeOneTimePreKey(it) }
+        return result.plaintext
+    }
+
+    /**
+     * Authenticates an initiation that lost a collision, then retires it.
+     * The current session and the one-time prekey stay; the plaintext is
+     * discarded. Retiring only after decryption keeps forged messages from
+     * adding entries.
+     */
+    private suspend fun ClientStorage.rejectLosingInitiation(
+        identity: LocalIdentity,
+        sender: DeviceAddress,
+        message: PreKeyMessage,
+        initiation: SessionInitiationId,
+    ) {
+        val result = acceptWithLocalPreKeys(identity, sender, message)
+        result.plaintext.fill(0)
+        result.session.state.fill(0)
+        sessionInitiations.retire(sender, initiation)
+    }
+
+    private suspend fun ClientStorage.acceptWithLocalPreKeys(
+        identity: LocalIdentity,
+        sender: DeviceAddress,
+        message: PreKeyMessage,
+    ): SessionAcceptanceResult {
         val signedPreKey = preKeys.signedPreKey(message.signedPreKeyId)
             ?: throw ProtocolException.InvalidMessage("Unknown signed prekey")
         val oneTimePreKey = message.oneTimePreKeyId?.let { id ->
             // Missing usually means it was already consumed by another session.
             preKeys.oneTimePreKey(id) ?: throw ProtocolException.InvalidMessage("Unknown one-time prekey")
         }
-        val result = protocol.acceptSession(identity, sender, signedPreKey, oneTimePreKey, message)
-        // One transaction: the session and the one-time prekey removal commit
-        // together or not at all.
-        sessions.store(result.session)
-        result.consumedOneTimePreKeyId?.let { preKeys.removeOneTimePreKey(it) }
-        return result.plaintext
+        return protocol.acceptSession(identity, sender, signedPreKey, oneTimePreKey, message)
+    }
+
+    /** Result of a decrypt transaction. A collision is reported after the commit. */
+    private sealed interface Received {
+        class Plaintext(val plaintext: ByteArray) : Received
+
+        data object CollisionLost : Received
     }
 
     private companion object {

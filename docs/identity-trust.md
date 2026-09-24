@@ -42,7 +42,10 @@ the same user have separate pins and may have different identity keys.
 
 A pin is never replaced or removed. There is no API to accept a changed
 identity, reset trust or forget a device. Device reset and re-registration
-are out of scope for now. So is automatic session replacement.
+are out of scope for now. A new *session* from the pinned identity is
+accepted and replaces the old one; the identity check runs first, so a
+different identity never reaches session replacement or collision handling
+(see [session-lifecycle.md](session-lifecycle.md)).
 
 `IdentityChanged` carries the address only. Its message is
 `Remote identity changed for <address>`. It does not contain either key.
@@ -131,8 +134,10 @@ unauthenticated routing data. Such sessions keep working. The first
 `PreKeyMessage` that decrypts successfully on such a session pins its
 identity key, because the engine has checked it against the session.
 
-A session whose peer already sends `RatchetMessage`s stays unpinned until a
-new session is set up. A stronger migration is possible later: the stored
+A session whose peer already sends `RatchetMessage`s stays unpinned. Such a
+session is never replaced by a new initiation: without a pin there is no
+identity to check the new initiation against
+([session-lifecycle.md](session-lifecycle.md)). A stronger migration is possible later: the stored
 session state contains both identity keys as associated data, so a narrow
 `ProtocolEngine` method could return the remote one. It is not implemented.
 

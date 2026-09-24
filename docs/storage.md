@@ -106,6 +106,7 @@ interface ClientStorage {
     val identity: IdentityStore
     val remoteIdentities: RemoteIdentityStore
     val sessions: SessionStore
+    val sessionInitiations: SessionInitiationStore
     val preKeys: PreKeyStore
     suspend fun <T> transaction(block: suspend ClientStorage.() -> T): T
 }
@@ -120,7 +121,9 @@ Every implementation must provide:
   together or not at all. A failure never leaves a stored session with its
   one-time prekey still available, or a removed one-time prekey with no
   session. The first remote identity pin commits with the same transaction
-  (see [identity-trust.md](identity-trust.md)).
+  (see [identity-trust.md](identity-trust.md)). A replaced session, its
+  retired initiation and the consumed one-time prekey commit together too
+  (see [session-lifecycle.md](session-lifecycle.md)).
 - **Nesting.** A `transaction` call inside a running transaction of the same
   storage joins it, through the receiver or the storage object.
 - **Single-call writes.** Store calls outside `transaction` behave as
@@ -130,6 +133,8 @@ Every implementation must provide:
 - **No pin replacement.** `RemoteIdentityStore.store` is a no-op for the key
   already pinned for an address and fails with `IllegalStateException` for a
   different key. Pins are per `DeviceAddress` and are never removed.
+- **Retired initiations are kept.** `SessionInitiationStore.retire` is
+  idempotent, and entries are per `DeviceAddress` and never removed.
 - **Monotonic prekey IDs**, as described above.
 - **No aliasing.** Mutating an array after storing it, or an array returned
   by a load, must not change stored state.
@@ -182,24 +187,30 @@ Tables:
 - `pre_key_state`: one row holding the current signed prekey ID and both high-water marks
 - `session`: keyed by remote user and device ID
 - `remote_identity`: pinned remote identity public keys, keyed by remote user and device ID
+- `retired_session_initiation`: retired 32-byte session initiation IDs, keyed by remote user, device ID and initiation ID
 
 Keys and session state are opaque BLOBs, and the schema does not depend on
 Kodium internals. All IDs have a `CHECK (id BETWEEN 0 AND 2147483647)`
 constraint.
 
-The schema version is 2. Version 1 (milestones 3 and 4) had no
-`remote_identity` table; `1.sqm` adds it and changes nothing else. A driver
-created with `SqlDelightClientStorage.Schema`, as in the table above, reads
-SQLite's `user_version` on open and runs the migration itself. An application
-that manages schema versions on its own calls
-`SqlDelightClientStorage.Schema.migrate(driver, 1, 2)`. Existing identities,
-prekeys and sessions are kept. Sessions from version 1 have no pin, see
-[identity-trust.md](identity-trust.md#sessions-from-before-pinning).
+The schema version is 3. Version 1 (milestones 3 and 4) had no
+`remote_identity` table; `1.sqm` adds it and changes nothing else. Version 2
+(milestone 5) had no `retired_session_initiation` table; `2.sqm` adds it and
+changes nothing else. A driver created with `SqlDelightClientStorage.Schema`,
+as in the table above, reads SQLite's `user_version` on open and runs the
+migrations itself. An application that manages schema versions on its own
+calls `SqlDelightClientStorage.Schema.migrate(driver, oldVersion, 3)`.
+Existing identities, prekeys, sessions and pins are kept. Sessions from
+version 1 have no pin, see
+[identity-trust.md](identity-trust.md#sessions-from-before-pinning). Session
+BLOBs written before milestone 6 use the older local state format and stay
+readable (see [session-lifecycle.md](session-lifecycle.md#persistence-and-compatibility)).
 
 The tests run on JVM (file database) and Apple/native targets. They cover the
 contract, closing and reopening the database, on-disk rollback, a client
 restart that continues an existing session, remote trust across restarts,
-and migrating a version 1 database.
+replay protection and simultaneous-initiation resolution across restarts, and
+migrating version 1 and version 2 databases.
 JS/Wasm have no SQLDelight tests: the web worker driver needs a browser worker.
 The linuxX64 and mingwX64 test binaries link against the target's `libsqlite3`,
 so they are only linked and run on a Linux or Windows host.
@@ -210,6 +221,6 @@ so they are only linked and run on a Linux or Windows host.
   identity (TOFU itself is described in [identity-trust.md](identity-trust.md)).
 - Tracking locally what the server handed out (the server tombstones consumed
   one-time prekey IDs instead, see [prekey-publication.md](prekey-publication.md)).
-- Simultaneous session initiation by both sides.
-- Signed prekey retention and scheduled rotation.
+- Signed prekey retention and scheduled rotation, and pruning of retired
+  session initiations.
 - Encryption at rest.

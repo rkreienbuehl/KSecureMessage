@@ -8,6 +8,7 @@ import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
+import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import kotlinx.coroutines.test.runTest
@@ -15,8 +16,10 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Behavior every [ClientStorage] implementation must have. Subclass it in an
@@ -86,6 +89,39 @@ abstract class ClientStorageContractTest {
         // Not pinned, so a different key can still be the first one.
         storage.remoteIdentities.store(alice, bytes(2))
         assertContentEquals(bytes(2), storage.remoteIdentities.identityKey(alice))
+    }
+
+    @Test
+    fun sessionInitiationsAreRetiredPerDevice() = runTest {
+        val storage = newStorage()
+        val bobPhone = DeviceAddress(UserId("bob"), DeviceId("phone"))
+        assertFalse(storage.sessionInitiations.isRetired(bob, initiation(1)))
+
+        storage.sessionInitiations.retire(bob, initiation(1))
+        storage.sessionInitiations.retire(bob, initiation(1))
+        storage.sessionInitiations.retire(bob, initiation(2))
+
+        assertTrue(storage.sessionInitiations.isRetired(bob, initiation(1)))
+        assertTrue(storage.sessionInitiations.isRetired(bob, SessionInitiationId(bytes(1))), "compared by content")
+        assertTrue(storage.sessionInitiations.isRetired(bob, initiation(2)))
+        assertFalse(storage.sessionInitiations.isRetired(bob, initiation(3)))
+        assertFalse(storage.sessionInitiations.isRetired(bobPhone, initiation(1)))
+        assertFalse(storage.sessionInitiations.isRetired(alice, initiation(1)))
+    }
+
+    @Test
+    fun rolledBackTransactionRetiresNothing() = runTest {
+        val storage = newStorage()
+        assertFailsWith<Failure> {
+            storage.transaction {
+                sessionInitiations.retire(alice, initiation(1))
+                sessions.store(SecureSession(alice, bytes(1)))
+                assertTrue(sessionInitiations.isRetired(alice, initiation(1)))
+                throw Failure()
+            }
+        }
+        assertFalse(storage.sessionInitiations.isRetired(alice, initiation(1)))
+        assertNull(storage.sessions.load(alice))
     }
 
     @Test
@@ -333,5 +369,7 @@ abstract class ClientStorageContractTest {
         fun signedPreKey(id: Int) = SignedPreKeyPair(SignedPreKeyId(id), bytes(id), bytes(id + 11), bytes(-1))
 
         fun oneTimePreKey(id: Int) = OneTimePreKeyPair(OneTimePreKeyId(id), bytes(id), bytes(-1))
+
+        fun initiation(seed: Int) = SessionInitiationId(bytes(seed))
     }
 }

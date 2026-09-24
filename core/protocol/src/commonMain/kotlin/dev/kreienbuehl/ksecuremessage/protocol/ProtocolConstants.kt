@@ -15,6 +15,12 @@ internal object ProtocolConstants {
     /** HKDF info for the Double Ratchet root and chain KDFs. */
     const val RATCHET_INFO = "KSecureMessage-Ratchet-v1"
 
+    /**
+     * Domain separator of [SessionInitiationId]. Persisted IDs and the
+     * simultaneous-initiation decision depend on it.
+     */
+    const val SESSION_INITIATION_DOMAIN = "KSecureMessage-SessionInitiation-v1"
+
     /** Size of an encoded public key: X25519 key followed by Ed25519 key. */
     const val PUBLIC_KEY_SIZE = 64
 }

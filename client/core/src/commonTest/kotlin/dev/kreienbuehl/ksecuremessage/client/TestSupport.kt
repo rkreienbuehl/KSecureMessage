@@ -8,9 +8,11 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
+import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
+import dev.kreienbuehl.ksecuremessage.storage.SessionInitiationStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
 import dev.kreienbuehl.ksecuremessage.storage.inmemory.InMemoryServerStorage
 
@@ -103,10 +105,12 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
     var failSessionStore = false
     var failOneTimePreKeyRemoval = false
     var failRemoteIdentityStore = false
+    var failRetire = false
 
     override val identity get() = delegate.identity
     override val remoteIdentities get() = delegate.remoteIdentities
     override val sessions get() = delegate.sessions
+    override val sessionInitiations get() = delegate.sessionInitiations
     override val preKeys get() = delegate.preKeys
 
     override suspend fun <T> transaction(block: suspend ClientStorage.() -> T): T =
@@ -126,6 +130,13 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
             override suspend fun store(session: SecureSession) {
                 if (failSessionStore) throw StorageFailure()
                 tx.sessions.store(session)
+            }
+        }
+
+        override val sessionInitiations: SessionInitiationStore = object : SessionInitiationStore by tx.sessionInitiations {
+            override suspend fun retire(remote: DeviceAddress, id: SessionInitiationId) {
+                if (failRetire) throw StorageFailure()
+                tx.sessionInitiations.retire(remote, id)
             }
         }
 

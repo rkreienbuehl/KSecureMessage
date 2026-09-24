@@ -6,6 +6,7 @@ android-targetSdk = "37"
 
 kotlin = "2.4.20"
 kodium = "1.0.0"
+kotlincrypto-hash = "0.8.0"
 ktor = "3.6.0"
 serialization = "1.11.0"
 coroutines = "1.11.0"
@@ -14,6 +15,7 @@ sqldelight = "2.4.0"
 
 [libraries]
 kodium = { module = "eu.livotov.labs:kodium", version.ref = "kodium" }
+kotlincrypto-sha2 = { module = "org.kotlincrypto.hash:sha2", version.ref = "kotlincrypto-hash" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 kotlinx-serialization-core = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "serialization" }

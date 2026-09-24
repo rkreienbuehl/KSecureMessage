@@ -11,6 +11,7 @@ import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
+import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.IdentityStore
@@ -20,6 +21,7 @@ import dev.kreienbuehl.ksecuremessage.storage.PreKeyRepository
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.ServerStorage
+import dev.kreienbuehl.ksecuremessage.storage.SessionInitiationStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Mutex
@@ -54,6 +56,13 @@ class InMemoryClientStorage : ClientStorage {
         override suspend fun load(address: DeviceAddress) = transaction { sessions.load(address) }
         override suspend fun store(session: SecureSession) = transaction { sessions.store(session) }
         override suspend fun remove(address: DeviceAddress) = transaction { sessions.remove(address) }
+    }
+
+    override val sessionInitiations: SessionInitiationStore = object : SessionInitiationStore {
+        override suspend fun isRetired(remote: DeviceAddress, id: SessionInitiationId) =
+            transaction { sessionInitiations.isRetired(remote, id) }
+        override suspend fun retire(remote: DeviceAddress, id: SessionInitiationId) =
+            transaction { sessionInitiations.retire(remote, id) }
     }
 
     override val preKeys: PreKeyStore = object : PreKeyStore {
@@ -98,6 +107,7 @@ private data class State(
     val identity: LocalIdentity? = null,
     val remoteIdentities: Map<DeviceAddress, ByteArray> = emptyMap(),
     val sessions: Map<DeviceAddress, SecureSession> = emptyMap(),
+    val retiredInitiations: Map<DeviceAddress, Set<SessionInitiationId>> = emptyMap(),
     val signedPreKeys: Map<SignedPreKeyId, SignedPreKeyPair> = emptyMap(),
     val currentSignedPreKeyId: SignedPreKeyId? = null,
     val highestSignedPreKeyId: SignedPreKeyId? = null,
@@ -138,6 +148,17 @@ private class TransactionView(var state: State) : ClientStorage {
 
         override suspend fun remove(address: DeviceAddress) {
             state = state.copy(sessions = state.sessions - address)
+        }
+    }
+
+    // SessionInitiationId is immutable (it copies its bytes), so no copies needed.
+    override val sessionInitiations: SessionInitiationStore = object : SessionInitiationStore {
+        override suspend fun isRetired(remote: DeviceAddress, id: SessionInitiationId) =
+            state.retiredInitiations[remote]?.contains(id) == true
+
+        override suspend fun retire(remote: DeviceAddress, id: SessionInitiationId) {
+            val retired = state.retiredInitiations[remote].orEmpty()
+            state = state.copy(retiredInitiations = state.retiredInitiations + (remote to retired + id))
         }
     }
 

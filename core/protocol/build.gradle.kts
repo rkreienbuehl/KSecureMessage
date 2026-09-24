@@ -35,6 +35,7 @@ kotlin {
         commonMain.dependencies {
             api(project(":core:model"))
             implementation(libs.kodium)
+            implementation(libs.kotlincrypto.sha2)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.core)
         }

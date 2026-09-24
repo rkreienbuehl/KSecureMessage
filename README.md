@@ -103,9 +103,11 @@ Milestone 4 done: `client.publishPreKeys()` uploads the identity key, the curren
 
 Milestone 5 done: remote identity trust on first use. The first identity key that sets up a session with a remote device, as initiator or responder, is pinned per `DeviceAddress` in the same transaction that stores the session; a failed first contact pins nothing. A different key for a pinned device fails with `SecureMessageClientException.IdentityChanged` and changes nothing. `ClientStorage.remoteIdentities` stores the pins; `storage:sqldelight` migrates its schema from version 1 to 2. TOFU detects identity changes after first contact but does not authenticate the remote party on first contact; safety numbers are not implemented. See [docs/identity-trust.md](docs/identity-trust.md).
 
+Milestone 6 done: session replacement and simultaneous initiation, on wire v1. Every session records the `SessionInitiationId` (SHA-256 over the authenticated X3DH inputs) that created it. A new initiation from the pinned identity atomically replaces the existing session. When both sides initiate at once, both keep the smaller ID, independent of arrival order and restarts. Replaced and losing initiations are retired persistently (`ClientStorage.sessionInitiations`, SQLDelight schema version 3) and rejected with `StaleSessionInitiation`, so a replayed old `PreKeyMessage` cannot roll a session back. A losing initiation's messages fail with `SessionCollision` and are not delivered. An initiation that never reached the device before cannot be recognized as old with wire v1. See [docs/session-lifecycle.md](docs/session-lifecycle.md).
+
 ## Next implementation steps
 
-1. Handle session reset and simultaneous initiation.
+1. Signed prekey retirement/expiry, with bounded retention of retired session initiations (limits how long withheld initiations stay acceptable, see docs/session-lifecycle.md).
 2. Authenticated server API, device re-registration, persistent server storage.
 3. Safety numbers / manual identity verification, and a deliberate way to accept identity changes.
 4. Encryption at rest for client storage.

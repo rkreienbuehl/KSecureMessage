@@ -12,8 +12,11 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.model.UserId
+import dev.kreienbuehl.ksecuremessage.model.PreKeyMessage
+import dev.kreienbuehl.ksecuremessage.protocol.CiphertextMessageCodec
 import dev.kreienbuehl.ksecuremessage.protocol.KodiumProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
+import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.testing.ClientStorageContractTest.Companion.bytes
@@ -27,8 +30,11 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 private val ALICE = DeviceAddress(UserId("alice"), DeviceId("phone"))
 private val BOB = DeviceAddress(UserId("bob"), DeviceId("laptop"))
@@ -206,6 +212,118 @@ class SqlDelightPersistenceTest {
         val after = reopen()
         assertContentEquals(bytes(1), after.remoteIdentities.identityKey(ALICE))
         assertContentEquals(byteArrayOf(5, 6), after.sessions.load(ALICE)?.state)
+    }
+
+    @Test
+    fun version2DatabaseIsMigratedWithoutLosingData() = runTest {
+        val old = database.open(Version2Schema)
+        old.execute(null, "INSERT INTO local_identity (id, public_key, private_key) VALUES (0, X'0102', X'0304')", 0)
+        old.execute(null, "INSERT INTO session (remote_user_id, remote_device_id, state) VALUES ('alice', 'phone', X'0506')", 0)
+        old.execute(null, "INSERT INTO remote_identity (remote_user_id, remote_device_id, identity_key) VALUES ('alice', 'phone', X'0708')", 0)
+        old.execute(null, "INSERT INTO one_time_pre_key (id, public_key, private_key) VALUES (4, X'09', X'0A')", 0)
+        database.closeOpenDrivers()
+
+        val migrated = SqlDelightClientStorage(database.open())
+        assertContentEquals(byteArrayOf(1, 2), migrated.identity.identity()?.publicKey)
+        assertContentEquals(byteArrayOf(5, 6), migrated.sessions.load(ALICE)?.state)
+        assertContentEquals(byteArrayOf(7, 8), migrated.remoteIdentities.identityKey(ALICE))
+        assertEquals(listOf(4), migrated.oneTimePreKeyIds())
+        val initiation = SessionInitiationId(bytes(3))
+        assertFalse(migrated.sessionInitiations.isRetired(ALICE, initiation), "nothing is retired by the migration")
+        migrated.sessionInitiations.retire(ALICE, initiation)
+
+        val after = reopen()
+        assertTrue(after.sessionInitiations.isRetired(ALICE, initiation))
+        assertContentEquals(byteArrayOf(5, 6), after.sessions.load(ALICE)?.state)
+        assertContentEquals(byteArrayOf(7, 8), after.remoteIdentities.identityKey(ALICE))
+    }
+
+    @Test
+    fun replayProtectionSurvivesRestart() = runTest {
+        val config = PreKeyConfiguration(oneTimePreKeyTarget = 3)
+        val aliceStorage = InMemoryClientStorage()
+        val alice = SecureMessageClient(ALICE, aliceStorage, engine, network, config)
+        alice.initialize()
+        val bob = SecureMessageClient(BOB, reopen(), engine, network, config)
+        bob.initialize()
+        network.publish(bob)
+
+        alice.send(BOB, "old session".encodeToByteArray())
+        val old = network.receive(BOB).single()
+        assertEquals("old session", bob.decrypt(old).decodeToString())
+        bob.send(ALICE, "ack".encodeToByteArray())
+        alice.receiveText()
+
+        // Alice lost her session; her new one replaces Bob's.
+        aliceStorage.sessions.remove(BOB)
+        network.publish(bob)
+        alice.send(BOB, "new session".encodeToByteArray())
+        assertEquals("new session", bob.receiveText())
+
+        val storage = reopen()
+        val restarted = SecureMessageClient(BOB, storage, engine, network, config)
+        val session = assertNotNull(storage.sessions.load(ALICE)).state
+        val oneTimePreKeys = storage.oneTimePreKeyIds()
+        assertFailsWith<SecureMessageClientException.StaleSessionInitiation> { restarted.decrypt(old) }
+        assertContentEquals(session, reopen().sessions.load(ALICE)?.state)
+        assertEquals(oneTimePreKeys, reopen().oneTimePreKeyIds())
+
+        val bobAgain = SecureMessageClient(BOB, reopen(), engine, network, config)
+        alice.send(BOB, "still new".encodeToByteArray())
+        assertEquals("still new", bobAgain.receiveText())
+        bobAgain.send(ALICE, "yes".encodeToByteArray())
+        assertEquals("yes", alice.receiveText())
+    }
+
+    @Test
+    fun simultaneousInitiationResolvesTheSameAfterRestart() = runTest {
+        val config = PreKeyConfiguration(oneTimePreKeyTarget = 3)
+        val bobStorage = InMemoryClientStorage()
+        val bob = SecureMessageClient(BOB, bobStorage, engine, network, config)
+        bob.initialize()
+        network.publish(bob)
+        val alice = SecureMessageClient(ALICE, reopen(), engine, network, config)
+        alice.initialize()
+        network.publish(alice)
+
+        alice.send(BOB, "hello".encodeToByteArray())
+        bob.receiveText()
+        bob.send(ALICE, "hi".encodeToByteArray())
+        alice.receiveText()
+        bobStorage.sessions.remove(ALICE)
+        network.publish(bob)
+        val aliceBeforeRestart = reopen()
+        aliceBeforeRestart.sessions.remove(BOB)
+        network.publish(SecureMessageClient(ALICE, aliceBeforeRestart, engine, network, config))
+
+        // Both start a session; Alice's pending initiation is only on disk.
+        SecureMessageClient(ALICE, reopen(), engine, network, config).send(BOB, "from Alice".encodeToByteArray())
+        bob.send(ALICE, "from Bob".encodeToByteArray())
+        val toBob = network.receive(BOB).single()
+        val toAlice = network.receive(ALICE).single()
+        val aliceStorage = reopen()
+        val restarted = SecureMessageClient(ALICE, aliceStorage, engine, network, config)
+        val aliceIdentity = assertNotNull(aliceStorage.identity.identity()).publicKey
+        val bobIdentity = assertNotNull(bobStorage.identity.identity()).publicKey
+        val aliceInitiation = SessionInitiationId.of(assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(toBob.payload)), bobIdentity)
+        val bobInitiation = SessionInitiationId.of(assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(toAlice.payload)), aliceIdentity)
+
+        if (aliceInitiation < bobInitiation) {
+            assertFailsWith<SecureMessageClientException.SessionCollision> { restarted.decrypt(toAlice) }
+            assertEquals("from Alice", bob.decrypt(toBob).decodeToString())
+        } else {
+            assertEquals("from Bob", restarted.decrypt(toAlice).decodeToString())
+            assertFailsWith<SecureMessageClientException.SessionCollision> { bob.decrypt(toBob) }
+        }
+        val winner = minOf(aliceInitiation, bobInitiation)
+        assertEquals(winner, engine.sessionInfo(assertNotNull(reopen().sessions.load(BOB))).initiationId)
+        assertEquals(winner, engine.sessionInfo(assertNotNull(bobStorage.sessions.load(ALICE))).initiationId)
+
+        val aliceAgain = SecureMessageClient(ALICE, reopen(), engine, network, config)
+        aliceAgain.send(BOB, "converged".encodeToByteArray())
+        assertEquals("converged", bob.receiveText())
+        bob.send(ALICE, "yes".encodeToByteArray())
+        assertEquals("yes", aliceAgain.receiveText())
     }
 
     private suspend fun SecureMessageClient.receiveText(): String =

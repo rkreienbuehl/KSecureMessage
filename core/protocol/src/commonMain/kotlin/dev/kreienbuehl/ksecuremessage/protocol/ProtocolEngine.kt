@@ -51,13 +51,34 @@ interface ProtocolEngine {
 
     /**
      * Decrypts [message] on an existing session. A [PreKeyMessage] is accepted
-     * too; the initiator may send several before it sees a reply.
+     * too; the initiator may send several before it sees a reply. It must
+     * belong to the initiation that created [session] (see [sessionInfo]).
      */
     suspend fun decrypt(
         session: SecureSession,
         message: CiphertextMessage,
     ): DecryptionResult
+
+    /**
+     * Describes [session] without changing it. Throws
+     * [ProtocolException.InvalidSessionState] for an unreadable state.
+     */
+    fun sessionInfo(session: SecureSession): SessionInfo
 }
+
+/**
+ * Lifecycle facts about a stored session, see docs/session-lifecycle.md.
+ *
+ * @property initiationId the initiation that created the session, or `null`
+ *   for a session that was established before milestone 6 recorded it.
+ * @property awaitingReply `true` while this device is the initiator and has
+ *   not decrypted a message from the remote side yet (it still sends
+ *   [PreKeyMessage]s).
+ */
+class SessionInfo(
+    val initiationId: SessionInitiationId?,
+    val awaitingReply: Boolean,
+)
 
 data class EncryptionResult(
     val message: CiphertextMessage,

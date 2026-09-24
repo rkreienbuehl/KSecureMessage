@@ -47,6 +47,16 @@ CREATE TABLE remote_identity (
     PRIMARY KEY (remote_user_id, remote_device_id)
 );
 
+-- Session initiations that must never become current again (replaced or
+-- lost a collision). Public values, only inserted. Added in schema version 3,
+-- see 2.sqm.
+CREATE TABLE retired_session_initiation (
+    remote_user_id TEXT NOT NULL,
+    remote_device_id TEXT NOT NULL,
+    initiation_id BLOB NOT NULL CHECK (length(initiation_id) = 32),
+    PRIMARY KEY (remote_user_id, remote_device_id, initiation_id)
+);
+
 selectIdentity:
 SELECT public_key, private_key FROM local_identity;
 
@@ -68,6 +78,13 @@ INSERT OR REPLACE INTO session (remote_user_id, remote_device_id, state) VALUES 
 
 deleteSession:
 DELETE FROM session WHERE remote_user_id = ? AND remote_device_id = ?;
+
+countRetiredSessionInitiation:
+SELECT count(*) FROM retired_session_initiation
+WHERE remote_user_id = ? AND remote_device_id = ? AND initiation_id = ?;
+
+insertRetiredSessionInitiation:
+INSERT OR IGNORE INTO retired_session_initiation (remote_user_id, remote_device_id, initiation_id) VALUES (?, ?, ?);
 
 selectPreKeyState:
 SELECT current_signed_pre_key_id, highest_signed_pre_key_id, highest_one_time_pre_key_id FROM pre_key_state;

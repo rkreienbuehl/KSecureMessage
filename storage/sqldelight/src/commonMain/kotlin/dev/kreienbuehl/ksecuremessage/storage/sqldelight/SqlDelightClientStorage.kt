@@ -13,11 +13,13 @@ import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
+import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.IdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
+import dev.kreienbuehl.ksecuremessage.storage.SessionInitiationStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
 import dev.kreienbuehl.ksecuremessage.storage.sqldelight.db.ClientStateQueries
 import dev.kreienbuehl.ksecuremessage.storage.sqldelight.db.KSecureMessageDatabase
@@ -44,10 +46,12 @@ import kotlin.coroutines.CoroutineContext
  * Private keys and session state are stored as plain BLOBs. This adapter does
  * not encrypt them: protect the database file with platform means.
  *
- * Schema version 2 added the `remote_identity` table (milestone 5). A driver
- * created with [Schema] upgrades a version 1 database on open; an application
- * that manages versions itself calls `Schema.migrate(driver, 1, 2)`. The
- * migration only adds a table.
+ * Schema version 2 added the `remote_identity` table (milestone 5), version 3
+ * the `retired_session_initiation` table (milestone 6). A driver created with
+ * [Schema] upgrades an older database on open; an application that manages
+ * versions itself calls `Schema.migrate(driver, oldVersion, 3)`. Both
+ * migrations only add a table. Session state written before milestone 6 stays
+ * readable; its format is versioned inside the BLOB.
  */
 class SqlDelightClientStorage(driver: SqlDriver) : ClientStorage {
     private val database = KSecureMessageDatabase(driver)
@@ -69,6 +73,13 @@ class SqlDelightClientStorage(driver: SqlDriver) : ClientStorage {
         override suspend fun load(address: DeviceAddress) = transaction { sessions.load(address) }
         override suspend fun store(session: SecureSession) = transaction { sessions.store(session) }
         override suspend fun remove(address: DeviceAddress) = transaction { sessions.remove(address) }
+    }
+
+    override val sessionInitiations: SessionInitiationStore = object : SessionInitiationStore {
+        override suspend fun isRetired(remote: DeviceAddress, id: SessionInitiationId) =
+            transaction { sessionInitiations.isRetired(remote, id) }
+        override suspend fun retire(remote: DeviceAddress, id: SessionInitiationId) =
+            transaction { sessionInitiations.retire(remote, id) }
     }
 
     override val preKeys: PreKeyStore = object : PreKeyStore {
@@ -147,6 +158,15 @@ private class DatabaseView(private val queries: ClientStateQueries) : ClientStor
 
         override suspend fun remove(address: DeviceAddress) {
             queries.deleteSession(address.userId.value, address.deviceId.value)
+        }
+    }
+
+    override val sessionInitiations: SessionInitiationStore = object : SessionInitiationStore {
+        override suspend fun isRetired(remote: DeviceAddress, id: SessionInitiationId): Boolean =
+            queries.countRetiredSessionInitiation(remote.userId.value, remote.deviceId.value, id.bytes).awaitAsOne() > 0
+
+        override suspend fun retire(remote: DeviceAddress, id: SessionInitiationId) {
+            queries.insertRetiredSessionInitiation(remote.userId.value, remote.deviceId.value, id.bytes)
         }
     }
 

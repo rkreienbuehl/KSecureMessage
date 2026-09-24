@@ -1,0 +1,8 @@
+-- Schema version 2 to 3 (milestone 6): retired session initiations.
+-- Adds a table only; existing rows are kept.
+CREATE TABLE retired_session_initiation (
+    remote_user_id TEXT NOT NULL,
+    remote_device_id TEXT NOT NULL,
+    initiation_id BLOB NOT NULL CHECK (length(initiation_id) = 32),
+    PRIMARY KEY (remote_user_id, remote_device_id, initiation_id)
+);

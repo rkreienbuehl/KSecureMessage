@@ -24,4 +24,23 @@ sealed class SecureMessageClientException(message: String) : Exception(message) 
      */
     class IdentityChanged(val address: DeviceAddress) :
         SecureMessageClientException("Remote identity changed for $address")
+
+    /**
+     * [address] sent a message of a session initiation that was replaced
+     * earlier or lost a simultaneous-initiation collision (see
+     * docs/session-lifecycle.md). It can never become the current session
+     * again, so this also rejects replays. Nothing was changed.
+     */
+    class StaleSessionInitiation(val address: DeviceAddress) :
+        SecureMessageClientException("Stale session initiation from $address")
+
+    /**
+     * [address] started a session at the same time as this device, and this
+     * device's initiation won. The message was authenticated but not
+     * delivered: its session is not used. The losing initiation was retired;
+     * the current session and the local one-time prekeys are unchanged. Once
+     * [address] processes this device's initiation, both use one session.
+     */
+    class SessionCollision(val address: DeviceAddress) :
+        SecureMessageClientException("Session collision with $address, message not delivered")
 }
