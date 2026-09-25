@@ -289,7 +289,7 @@ requests for another address. Applications never build signatures.
 - First registration is not proof of human or account ownership.
 - No auth-key recovery, reset, rotation, deletion or multiple keys per device.
 - No persistent server storage: registrations, nonces, prekeys and mailboxes
-  live in `InMemoryServerStorage`.
+  live in `InMemoryServerStorage` (`storage:server:inmemory`).
 - The server still sees sender and recipient metadata; `POST /v1/messages`
   does not authenticate the envelope sender (no sealed sender).
 - Replay protection is at most once per signed request, not exactly-once

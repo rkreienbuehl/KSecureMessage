@@ -40,7 +40,8 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
-            implementation(project(":storage:inmemory"))
+            implementation(project(":storage:client:inmemory"))
+            implementation(project(":storage:server:inmemory"))
         }
     }
 }

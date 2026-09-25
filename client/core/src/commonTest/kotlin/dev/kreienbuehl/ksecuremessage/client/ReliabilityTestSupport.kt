@@ -13,7 +13,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.ProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.SecurePayload
 import dev.kreienbuehl.ksecuremessage.protocol.SecurePayloadCodec
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
-import dev.kreienbuehl.ksecuremessage.storage.inmemory.InMemoryClientStorage
+import dev.kreienbuehl.ksecuremessage.storage.client.inmemory.InMemoryClientStorage
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

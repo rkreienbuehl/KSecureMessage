@@ -9,7 +9,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.KodiumProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolException
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
-import dev.kreienbuehl.ksecuremessage.storage.inmemory.InMemoryClientStorage
+import dev.kreienbuehl.ksecuremessage.storage.client.inmemory.InMemoryClientStorage
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent

@@ -15,7 +15,7 @@ import dev.kreienbuehl.ksecuremessage.model.RatchetMessage
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.CiphertextMessageCodec
 import dev.kreienbuehl.ksecuremessage.protocol.KodiumProtocolEngine
-import dev.kreienbuehl.ksecuremessage.storage.inmemory.InMemoryClientStorage
+import dev.kreienbuehl.ksecuremessage.storage.client.inmemory.InMemoryClientStorage
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals

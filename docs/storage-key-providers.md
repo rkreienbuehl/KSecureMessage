@@ -247,7 +247,7 @@ iOS (`iosArm64`, `iosX64`, `iosSimulatorArm64`) and macOS (`macosArm64`,
   `loadOrCreateKey` refuses several keys, `removeKey` removes only that key
   (repeat: `false`), never the last key, and not in another namespace. The
   same contract also runs on the in-memory test key store in
-  `storage:sqldelight` (`MemoryStorageKeyProviderContractTest`).
+  `storage:client:sqldelight` (`MemoryStorageKeyProviderContractTest`).
 - Android: the contract and `AndroidStorageKeyProviderTest` (no raw key in
   the file, non-exportable Keystore key, missing alias leaves the file
   byte-identical and creates no alias, namespace-swapped entry fails,
@@ -268,7 +268,7 @@ iOS (`iosArm64`, `iosX64`, `iosSimulatorArm64`) and macOS (`macosArm64`,
 - Apple, data protection keychain: every `*DataProtection*` test runs only in
   the signed keychain host (next section) and fails, never skips, when the
   keychain is unusable there.
-- `PlatformKeyProviderStorageTest` (`storage:sqldelight`): new database and
+- `PlatformKeyProviderStorageTest` (`storage:client:sqldelight`): new database and
   restart, milestone 8 migration with a new platform key, encrypted database
   with lost or damaged provider state (fails twice, database unchanged, no
   replacement), database bound to an unknown key ID, and a storage key
@@ -304,7 +304,7 @@ test.kexe -> KeychainHost.app (Info.plist, bundle ID, entitlements, signature)
 
 Each target task runs, one host at a time: the provider tests
 (`:storage:keyprovider:apple`), the SQLDelight tests and the relaunch test
-(`:storage:sqldelight`), then `DataProtectionLeftoverCheck` (no
+(`:storage:client:sqldelight`), then `DataProtectionLeftoverCheck` (no
 `dev.kreienbuehl.ksecuremessage.storage.*` item left in the host's groups).
 Every run prints one result line per module:
 `KEYCHAIN HOST <module> <target>: PASSED (...)`, `FAILED — ...` or

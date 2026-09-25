@@ -122,7 +122,7 @@ Tests: `RemoteIdentityTrustTest` and `FirstContactAtomicityTest`
 ## Persistence
 
 Pins are stored in `ClientStorage.remoteIdentities` and survive restarts with
-a persistent adapter. `storage:sqldelight` keeps them in the
+a persistent adapter. `storage:client:sqldelight` keeps them in the
 `remote_identity` table (added in schema version 2, see
 [storage.md](storage.md)).
 

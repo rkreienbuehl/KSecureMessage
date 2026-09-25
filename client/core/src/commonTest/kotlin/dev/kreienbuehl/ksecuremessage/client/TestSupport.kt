@@ -26,7 +26,7 @@ import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionInitiationStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
-import dev.kreienbuehl.ksecuremessage.storage.inmemory.InMemoryServerStorage
+import dev.kreienbuehl.ksecuremessage.storage.server.inmemory.InMemoryServerStorage
 import kotlinx.coroutines.CompletableDeferred
 import kotlin.time.Clock
 import kotlin.time.Duration

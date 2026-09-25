@@ -21,7 +21,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyPublicationException
-import dev.kreienbuehl.ksecuremessage.storage.inmemory.InMemoryServerStorage
+import dev.kreienbuehl.ksecuremessage.storage.server.inmemory.InMemoryServerStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll

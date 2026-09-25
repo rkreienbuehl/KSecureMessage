@@ -8,7 +8,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.CiphertextMessageCodec
 import dev.kreienbuehl.ksecuremessage.protocol.KodiumProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.PreKeyFormat
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolEngine
-import dev.kreienbuehl.ksecuremessage.storage.inmemory.InMemoryClientStorage
+import dev.kreienbuehl.ksecuremessage.storage.client.inmemory.InMemoryClientStorage
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals

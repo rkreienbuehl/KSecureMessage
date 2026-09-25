@@ -10,7 +10,7 @@ import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.PreKeyFormat
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyPublicationException
-import dev.kreienbuehl.ksecuremessage.storage.inmemory.InMemoryServerStorage
+import dev.kreienbuehl.ksecuremessage.storage.server.inmemory.InMemoryServerStorage
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async

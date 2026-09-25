@@ -29,15 +29,20 @@ KSecureMessage/
 └── storage/
     ├── core/
     ├── encryption/
-    ├── inmemory/
+    ├── testing/
+    ├── client/
+    │   ├── inmemory/
+    │   └── sqldelight/
+    ├── server/
+    │   └── inmemory/
     ├── keyprovider/
     │   ├── android/
     │   └── apple/
-    ├── rotation/
-    │   └── core/
-    ├── sqldelight/
-    └── testing/
+    └── rotation/
+        └── core/
 ```
+
+Storage modules are split by side: `storage:client:*` holds local client persistence (`ClientStorage` adapters), `storage:server:*` server repository persistence (`ServerStorage` adapters), and `storage:core` the shared contracts both implement. `storage:encryption`, `storage:keyprovider:*` and `storage:rotation:core` are storage security infrastructure; today they serve only the persistent client storage (`storage:client:sqldelight`).
 
 ### `core:model`
 Shared serializable value types such as user/device addresses, prekey metadata, and encrypted envelopes.
@@ -60,17 +65,20 @@ JVM Ktor server routes/adapters for HTTP API v1, see [docs/prekey-publication.md
 ### `storage:core`
 Shared storage contracts.
 
-### `storage:inmemory`
-Simple in-memory implementations useful for tests and examples. Transactions are atomic.
+### `storage:client:inmemory`
+Non-persistent `InMemoryClientStorage` for tests and examples. Transactions are atomic.
 
-### `storage:sqldelight`
+### `storage:server:inmemory`
+Non-persistent `InMemoryServerStorage` (prekey, mailbox, device registration and authentication nonce repositories) for tests and examples. Each repository operation is atomic.
+
+### `storage:client:sqldelight`
 Persistent `ClientStorage` on SQLite via SQLDelight, for all client targets. The application supplies the platform driver and a `StorageKeyProvider`; key pairs, session state and pending message plaintext are stored as encrypted records, see [docs/storage.md](docs/storage.md) and [docs/storage-encryption.md](docs/storage-encryption.md). The storage key can be rotated explicitly, see [docs/storage-key-rotation.md](docs/storage-key-rotation.md).
 
 ### `storage:encryption`
-Record-level encryption of sensitive client storage records: AES-256-GCM (cryptography-kotlin) with associated data bound to record type and row key, the versioned record format, `StorageKeyProvider` and `StorageEncryptionKey`. Used by `storage:sqldelight`.
+Record-level encryption of sensitive client storage records: AES-256-GCM (cryptography-kotlin) with associated data bound to record type and row key, the versioned record format, `StorageKeyProvider` and `StorageEncryptionKey`. Used by `storage:client:sqldelight`.
 
 ### `storage:rotation:core`
-The storage key rotation state machine (`StorageKeyRotationManager`), its validated state, status and the `StorageKeyRotationBackend` contract a persistent storage adapter implements. No SQL or platform code; `storage:sqldelight` provides the SQLite backend. See [docs/storage-key-rotation.md](docs/storage-key-rotation.md#architecture).
+The storage key rotation state machine (`StorageKeyRotationManager`), its validated state, status and the `StorageKeyRotationBackend` contract a persistent storage adapter implements. No SQL or platform code; `storage:client:sqldelight` provides the SQLite backend. See [docs/storage-key-rotation.md](docs/storage-key-rotation.md#architecture).
 
 ### `storage:keyprovider:android`, `storage:keyprovider:apple`
 Platform `StorageKeyProvider`s: the storage key wrapped by an Android Keystore key, or stored in the Apple Keychain. See [docs/storage-key-providers.md](docs/storage-key-providers.md).
@@ -100,7 +108,7 @@ Milestone 1 done: `KodiumProtocolEngine` creates identities and prekeys, sets up
 
 Milestone 2 done: `CiphertextMessageCodec` encodes `RatchetMessage` and `PreKeyMessage` into a versioned binary wire format for `EncryptedEnvelope.payload` (see [docs/wire-format.md](docs/wire-format.md)). `SecureMessageClient` encrypts and sends through it and decrypts incoming envelopes, accepting a first-contact `PreKeyMessage` without an existing session. Local prekeys come from `ClientStorage.preKeys`; a consumed one-time prekey is removed in the same transaction that stores the new session.
 
-Milestone 3 done: the client owns its local protocol state. `initialize()` creates the identity, a current signed prekey and missing one-time prekeys in storage, and keeps whatever already exists. `currentPreKeyBundle()` and `publicOneTimePreKeys()` expose the public material for publication. `ClientStorage.transaction` is atomic in both adapters, and `storage:sqldelight` adds persistent storage. See [docs/storage.md](docs/storage.md).
+Milestone 3 done: the client owns its local protocol state. `initialize()` creates the identity, a current signed prekey and missing one-time prekeys in storage, and keeps whatever already exists. `currentPreKeyBundle()` and `publicOneTimePreKeys()` expose the public material for publication. `ClientStorage.transaction` is atomic in both adapters, and `storage:client:sqldelight` adds persistent storage. See [docs/storage.md](docs/storage.md).
 
 ```kotlin
 val client = SecureMessageClient(
@@ -117,7 +125,7 @@ client.publishPreKeys()
 
 Milestone 4 done: `client.publishPreKeys()` uploads the identity key, the current signed prekey and the public one-time prekeys. The server's `PreKeyRepository` applies a publication atomically, treats retries as no-ops and rejects identity and prekey ID conflicts. Each bundle fetch atomically hands out and consumes at most one one-time prekey (lowest ID first); a bundle without one is served when none are left. `server:ktor` and `client:ktor` implement the HTTP API v1. See [docs/prekey-publication.md](docs/prekey-publication.md).
 
-Milestone 5 done: remote identity trust on first use. The first identity key that sets up a session with a remote device, as initiator or responder, is pinned per `DeviceAddress` in the same transaction that stores the session; a failed first contact pins nothing. A different key for a pinned device fails with `SecureMessageClientException.IdentityChanged` and changes nothing. `ClientStorage.remoteIdentities` stores the pins; `storage:sqldelight` migrates its schema from version 1 to 2. TOFU detects identity changes after first contact but does not authenticate the remote party on first contact; safety numbers are not implemented. See [docs/identity-trust.md](docs/identity-trust.md).
+Milestone 5 done: remote identity trust on first use. The first identity key that sets up a session with a remote device, as initiator or responder, is pinned per `DeviceAddress` in the same transaction that stores the session; a failed first contact pins nothing. A different key for a pinned device fails with `SecureMessageClientException.IdentityChanged` and changes nothing. `ClientStorage.remoteIdentities` stores the pins; `storage:client:sqldelight` migrates its schema from version 1 to 2. TOFU detects identity changes after first contact but does not authenticate the remote party on first contact; safety numbers are not implemented. See [docs/identity-trust.md](docs/identity-trust.md).
 
 Milestone 6 done: session replacement and simultaneous initiation, on wire v1. Every session records the `SessionInitiationId` (SHA-256 over the authenticated X3DH inputs) that created it. A new initiation from the pinned identity atomically replaces the existing session. When both sides initiate at once, both keep the smaller ID, independent of arrival order and restarts. Replaced and losing initiations are retired persistently (`ClientStorage.sessionInitiations`, SQLDelight schema version 3) and rejected with `StaleSessionInitiation`, so a replayed old `PreKeyMessage` cannot roll a session back. A losing initiation's messages fail with `SessionCollision` and are not delivered. An initiation that never reached the device before cannot be recognized as old with wire v1. See [docs/session-lifecycle.md](docs/session-lifecycle.md).
 

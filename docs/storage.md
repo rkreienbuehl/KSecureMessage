@@ -194,7 +194,13 @@ extend it.
 
 ## Adapters
 
-### `storage:inmemory`
+Client storage adapters live under `storage:client:*`, server repository
+adapters under `storage:server:*`; the contracts they implement stay in
+`storage:core`. `storage:encryption`, `storage:keyprovider:*` and
+`storage:rotation:core` are storage security infrastructure; today they serve
+only the persistent client adapter.
+
+### `storage:client:inmemory`
 
 `InMemoryClientStorage` is not persistent. It is meant for tests and examples.
 Its committed state is one immutable snapshot. A transaction works on a copy
@@ -202,7 +208,7 @@ and replaces the snapshot only when the block returns normally. A failed
 block drops the copy. A `Mutex` serializes transactions. Byte arrays are
 copied on store and on load.
 
-### `storage:sqldelight`
+### `storage:client:sqldelight`
 
 `SqlDelightClientStorage` persists to SQLite through SQLDelight 2.4.0 with
 async code generation. It supports all client targets: JVM, Android, iOS,

@@ -85,7 +85,7 @@ hostTargets.forEach { (target, platform) ->
     if (extra.has("keychainHostLeftoverCheck")) {
         registerHost("${target}KeychainHostLeftoverCheck", "leftover", "Checks that no test Keychain items remain in the $target host's groups.").configure {
             // After every host run of this target, in any module.
-            mustRunAfter(listOf(":storage:keyprovider:apple", ":storage:sqldelight").map { "$it:${target}KeychainHostTest" })
+            mustRunAfter(listOf(":storage:keyprovider:apple", ":storage:client:sqldelight").map { "$it:${target}KeychainHostTest" })
         }
         registerHost("${target}KeychainHostPurge", "purge", "Deletes test Keychain items an interrupted $target host run left behind.")
     }

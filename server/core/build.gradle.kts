@@ -13,5 +13,5 @@ dependencies {
 
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation(project(":storage:inmemory"))
+    testImplementation(project(":storage:server:inmemory"))
 }

@@ -31,7 +31,7 @@ subprojects {
 // DataProtection Keychain tests in the signed keychain host
 // (apple-keychain-host/, docs/storage-key-providers.md): provider contract,
 // SQLDelight storage and relaunch, then the leftover check. Not part of build.
-val keychainHostModules = listOf(":storage:keyprovider:apple", ":storage:sqldelight")
+val keychainHostModules = listOf(":storage:keyprovider:apple", ":storage:client:sqldelight")
 listOf("macosArm64", "macosX64", "iosSimulatorArm64").forEach { target ->
     val tests = keychainHostModules.map { "$it:${target}KeychainHostTest" }
     tasks.register("${target}KeychainHostTest") {

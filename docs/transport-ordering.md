@@ -6,7 +6,7 @@ why it is needed, and where it is enforced. It is a follow-up to milestone 6
 are unchanged.
 
 Code: `SecureMessageClient.send` / `decrypt` (`client:core`),
-`MailboxRepository` (`storage:core`), `InMemoryServerStorage` (`storage:inmemory`),
+`MailboxRepository` (`storage:core`), `InMemoryServerStorage` (`storage:server:inmemory`),
 `SecureMessageServer.relay` / `receive` (`server:core`).
 Tests: `SessionReorderingTest` (`client:core`), `MailboxRepositoryContractTest`
 (`storage:testing`, run by `InMemoryMailboxRepositoryTest`),

@@ -9,9 +9,9 @@ metadata are readable without the key.
 
 Code: `storage/encryption` (`ClientRecordCipher`, `StorageKeyProvider`,
 `StorageEncryptionKey`, `StorageEncryptionException`), used by
-`storage/sqldelight` (`SqlDelightClientStorage.open`,
+`storage/client/sqldelight` (`SqlDelightClientStorage.open`,
 `LegacyPlaintextMigration`). Tests: `storage/encryption/src/commonTest`,
-`storage/sqldelight/src/sqliteTest` (`SqlDelightEncryptionTest`,
+`storage/client/sqldelight/src/sqliteTest` (`SqlDelightEncryptionTest`,
 `SqlDelightMigrationTest`).
 
 Nothing here touches the protocol: the wire format (outer v1),

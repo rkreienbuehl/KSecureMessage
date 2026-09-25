@@ -241,10 +241,10 @@ and never pruned. Version 1 states:
 | Established session | origin unknown (never guessed); step 6 |
 | Session without a pin (before milestone 5) | never replaced (step 5); see [identity-trust.md](identity-trust.md#sessions-from-before-pinning) |
 
-`storage:sqldelight` schema version 3 adds the `retired_session_initiation`
+`storage:client:sqldelight` schema version 3 adds the `retired_session_initiation`
 table (`2.sqm`, add only). The migration keeps identities, prekeys, sessions
 and pins. Schema version 4 (`3.sqm`) adds the nullable `signed_pre_key_id`
-column. `storage:inmemory` keeps the set in its transactional state.
+column. `storage:client:inmemory` keeps the set in its transactional state.
 
 ## Limitations
 

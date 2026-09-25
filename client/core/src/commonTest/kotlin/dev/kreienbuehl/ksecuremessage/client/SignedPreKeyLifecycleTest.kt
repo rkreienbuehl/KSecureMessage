@@ -10,7 +10,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.ProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolException
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.storage.SignedPreKeyInfo
-import dev.kreienbuehl.ksecuremessage.storage.inmemory.InMemoryClientStorage
+import dev.kreienbuehl.ksecuremessage.storage.client.inmemory.InMemoryClientStorage
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals

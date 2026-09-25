@@ -20,5 +20,6 @@ dependencies {
     testImplementation(libs.ktor.client.content.negotiation)
     // HTTP contract and end-to-end tests run the real client adapter against the routes.
     testImplementation(project(":client:ktor"))
-    testImplementation(project(":storage:inmemory"))
+    testImplementation(project(":storage:client:inmemory"))
+    testImplementation(project(":storage:server:inmemory"))
 }

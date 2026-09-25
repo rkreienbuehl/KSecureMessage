@@ -39,13 +39,13 @@ adapter can reuse it instead of copying it:
 | module | owns |
 |---|---|
 | `storage:rotation:core` | `StorageKeyRotationManager` (the state machine: step order, key ID allocation rule, provider calls, read-back check, zero-reference rule, which provider results are acceptable in which phase), `StorageKeyRotationState` (validated state per phase), `StorageKeyRotationBackend` (the contract), phase, status, in-progress exception |
-| `storage:sqldelight` | `SqlDelightStorageKeyRotationBackend`: the `storage_encryption` row and its phase encoding, SQL transactions and compare-and-set updates, key checks, re-encryption batches, `SEALED_COLUMNS` and the key reference scan; `SqlDelightClientStorage` delegates its three rotation functions to the manager |
+| `storage:client:sqldelight` | `SqlDelightStorageKeyRotationBackend`: the `storage_encryption` row and its phase encoding, SQL transactions and compare-and-set updates, key checks, re-encryption batches, `SEALED_COLUMNS` and the key reference scan; `SqlDelightClientStorage` delegates its three rotation functions to the manager |
 | `storage:keyprovider:*` | key material only (`createKey`, `key`, `removeKey`) |
 | `storage:encryption` | `StorageKeyId`, `StorageEncryptionKey`, `StorageKeyProvider`, record format v1, AES-GCM, associated data |
 
 Dependencies: `storage:encryption` ← `storage:rotation:core` ←
-`storage:sqldelight`. The rotation core has no SQL, no platform code and no
-AEAD. Each backend method is one atomic storage step; transitions are
+`storage:client:sqldelight`. The rotation core has no SQL, no platform code
+and no AEAD. Each backend method is one atomic storage step; transitions are
 compare-and-set on the state the manager read, and the manager calls the
 provider only between them, inside `exclusive { }`, which serializes the step
 with every storage transaction. The zero-reference proof stays atomic with the

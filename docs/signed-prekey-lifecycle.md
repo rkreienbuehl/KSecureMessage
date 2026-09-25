@@ -260,7 +260,7 @@ unsafe.
 
 ## Migration
 
-`storage:sqldelight` schema version 4 (`3.sqm`) only adds nullable columns:
+`storage:client:sqldelight` schema version 4 (`3.sqm`) only adds nullable columns:
 
 ```sql
 ALTER TABLE signed_pre_key ADD COLUMN created_at INTEGER;
@@ -286,7 +286,7 @@ The first `initialize()` after the upgrade applies a conservative policy
   pruned.
 
 Until that first `initialize()`, an unstamped key is treated as not expired.
-`storage:inmemory` always records timestamps.
+`storage:client:inmemory` always records timestamps.
 
 ## Limitations
 

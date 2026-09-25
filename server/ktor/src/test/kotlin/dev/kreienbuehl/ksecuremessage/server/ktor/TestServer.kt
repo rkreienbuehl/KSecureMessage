@@ -12,7 +12,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
 import dev.kreienbuehl.ksecuremessage.server.SecureMessageServer
-import dev.kreienbuehl.ksecuremessage.storage.inmemory.InMemoryServerStorage
+import dev.kreienbuehl.ksecuremessage.storage.server.inmemory.InMemoryServerStorage
 import io.ktor.client.HttpClient
 import io.ktor.client.request.header
 import io.ktor.client.request.request
