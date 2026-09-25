@@ -41,7 +41,10 @@ class PreKeyPublicationTest {
         suspend fun receiveText(): String = client.decryptRaw(network.receive(client.localAddress).single()).decodeToString()
     }
 
-    private suspend fun device(address: DeviceAddress) = Device(address).also { it.client.initialize() }
+    private suspend fun device(address: DeviceAddress) = Device(address).also {
+        it.client.initialize()
+        it.client.registerDevice()
+    }
 
     @Test
     fun publishFetchFirstContactAndReply() = runTest {

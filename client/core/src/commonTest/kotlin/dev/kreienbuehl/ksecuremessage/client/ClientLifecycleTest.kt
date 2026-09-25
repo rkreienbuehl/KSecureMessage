@@ -129,6 +129,7 @@ class ClientLifecycleTest {
         val storage = InMemoryClientStorage()
         val identity = engine.createIdentity()
         storage.identity.store(identity)
+        storage.deviceAuthentication.store(engine.createDeviceAuthenticationKey())
 
         val bob = client(BOB, storage)
         bob.initialize()
@@ -163,6 +164,7 @@ class ClientLifecycleTest {
         val storage = InMemoryClientStorage()
         val identity = engine.createIdentity()
         storage.identity.store(identity)
+        storage.deviceAuthentication.store(engine.createDeviceAuthenticationKey())
         storage.preKeys.storeCurrentSignedPreKey(engine.createSignedPreKey(identity, SignedPreKeyId(0)), Clock.System.now())
         storage.preKeys.storeOneTimePreKeys(engine.createOneTimePreKeys(OneTimePreKeyId(Int.MAX_VALUE - 1), 1))
 
@@ -181,6 +183,7 @@ class ClientLifecycleTest {
         val storage = InMemoryClientStorage()
         val identity = engine.createIdentity()
         storage.identity.store(identity)
+        storage.deviceAuthentication.store(engine.createDeviceAuthenticationKey())
         storage.preKeys.storeCurrentSignedPreKey(engine.createSignedPreKey(identity, SignedPreKeyId(Int.MAX_VALUE)), Clock.System.now())
         val client = client(BOB, storage)
         client.initialize()

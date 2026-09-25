@@ -2,6 +2,7 @@ package dev.kreienbuehl.ksecuremessage.client
 
 import dev.kreienbuehl.ksecuremessage.model.CiphertextMessage
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.MessageId
@@ -12,6 +13,7 @@ import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
 import dev.kreienbuehl.ksecuremessage.model.RatchetMessage
 import dev.kreienbuehl.ksecuremessage.protocol.CiphertextMessageCodec
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.PreKeyFormat
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolEngine
@@ -19,6 +21,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.ProtocolException
 import dev.kreienbuehl.ksecuremessage.protocol.SecurePayload
 import dev.kreienbuehl.ksecuremessage.protocol.SecurePayloadCodec
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
+import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
 import dev.kreienbuehl.ksecuremessage.protocol.SessionAcceptanceResult
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInfo
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
@@ -58,6 +61,14 @@ import kotlin.uuid.Uuid
  *
  * [initialize] and [rotateSignedPreKey] change local state only. Call
  * [publishPreKeys] afterwards to upload the public material.
+ *
+ * The server only accepts device-scoped requests from the registered device
+ * (docs/server-authentication.md). [initialize] creates the device
+ * authentication key, a signing key separate from the messaging identity;
+ * [registerDevice] registers its public half with the server, explicitly
+ * and once. [publishPreKeys] and [receive] then sign their requests with it;
+ * the application never handles signatures. Fetching bundles and sending
+ * envelopes need no authentication.
  *
  * Signed prekeys expire (docs/signed-prekey-lifecycle.md). A replaced signed
  * prekey stays usable for new sessions for
@@ -102,7 +113,7 @@ class SecureMessageClient(
     private val protocol: ProtocolEngine,
     private val transport: SecureMessageTransport,
     preKeyConfiguration: PreKeyConfiguration = PreKeyConfiguration(),
-    clock: Clock = Clock.System,
+    private val clock: Clock = Clock.System,
 ) {
     private val preKeyManager = PreKeyManager(protocol, preKeyConfiguration, clock)
 
@@ -122,9 +133,66 @@ class SecureMessageClient(
      * identity is never replaced. Safe to call repeatedly. No network I/O: call
      * [publishPreKeys] afterwards, a rotation changes the published signed
      * prekey.
+     *
+     * Also makes sure the device authentication key exists: it is created
+     * with the identity, or once for storage from before milestone 12. If an
+     * initialized storage lost the key, this throws
+     * [SecureMessageClientException.InconsistentStorage] instead of creating
+     * a new one, which the server would never accept. Never registers the
+     * device: call [registerDevice].
      */
     suspend fun initialize() {
         storage.transaction { with(preKeyManager) { ensureInitialized() } }
+    }
+
+    /**
+     * Registers this device's authentication public key with the server
+     * (docs/server-authentication.md), in a request signed with that key.
+     * Needed once before [publishPreKeys] and [receive]; calling it again is
+     * safe. Throws [SecureMessageTransportException.DeviceRegistrationConflict]
+     * if the server has another key for [localAddress]; there is no reset.
+     * The server trusts the first registration for an address.
+     */
+    suspend fun registerDevice() {
+        withRequestSigner { keyPair, signer ->
+            transport.registerDevice(DeviceRegistration(localAddress, keyPair.publicKey), signer)
+        }
+    }
+
+    /**
+     * Removes and returns the envelopes the server holds for this device, in
+     * an authenticated request. Pass them to [decrypt] one at a time, in this
+     * order (docs/transport-ordering.md).
+     */
+    suspend fun receive(): List<EncryptedEnvelope> =
+        withRequestSigner { _, signer -> transport.receive(localAddress, signer) }
+
+    /**
+     * Loads the device authentication key in its own transaction and runs
+     * [block], which does the network I/O, outside of it. The signer signs
+     * only requests for [localAddress], each with the current time and a
+     * fresh nonce.
+     */
+    private suspend fun <T> withRequestSigner(
+        block: suspend (DeviceAuthenticationKeyPair, ServerRequestSigner) -> T,
+    ): T {
+        val keyPair = storage.transaction { requireDeviceAuthenticationKey() }
+        return withRequestSigner(keyPair, block)
+    }
+
+    private suspend fun <T> withRequestSigner(
+        keyPair: DeviceAuthenticationKeyPair,
+        block: suspend (DeviceAuthenticationKeyPair, ServerRequestSigner) -> T,
+    ): T {
+        val signer = ServerRequestSigner { request ->
+            require(request.address == localAddress) { "Request is not for this device" }
+            ServerRequestAuthentication.sign(keyPair, request, clock.now())
+        }
+        try {
+            return block(keyPair, signer)
+        } finally {
+            keyPair.privateKey.fill(0)
+        }
     }
 
     /**
@@ -173,10 +241,15 @@ class SecureMessageClient(
      * are sent in several publications. Publishing again, also after a failed
      * or lost request, is safe: the server ignores keys it already has and
      * never hands out a one-time prekey twice.
+     *
+     * Every request is signed with the device authentication key; the device
+     * must be registered ([registerDevice]).
      */
     suspend fun publishPreKeys() {
+        lateinit var keyPair: DeviceAuthenticationKeyPair
         val publications = storage.transaction {
             val identity = requireIdentity()
+            keyPair = requireDeviceAuthenticationKey()
             val signedPreKey = preKeys.currentSignedPreKey() ?: throw SecureMessageClientException.NotInitialized()
             preKeys.publicOneTimePreKeys()
                 .chunked(PreKeyFormat.MAX_ONE_TIME_PRE_KEYS_PER_PUBLICATION)
@@ -186,7 +259,9 @@ class SecureMessageClient(
                 }
         }
         // Outside the transaction: it must not wait for the network.
-        for (publication in publications) transport.publishPreKeys(publication)
+        withRequestSigner(keyPair) { _, signer ->
+            for (publication in publications) transport.publishPreKeys(publication, signer)
+        }
     }
 
     /**

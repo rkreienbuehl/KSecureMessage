@@ -2,6 +2,7 @@ package dev.kreienbuehl.ksecuremessage.client
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
+import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
@@ -9,16 +10,22 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.model.UserId
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
+import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
+import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
+import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
+import dev.kreienbuehl.ksecuremessage.storage.DeviceAuthenticationKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.PendingOutboundStore
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.ProcessedInboundStore
 import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionInitiationStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
+import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
 import dev.kreienbuehl.ksecuremessage.storage.inmemory.InMemoryServerStorage
 import kotlinx.coroutines.CompletableDeferred
 import kotlin.time.Clock
@@ -35,9 +42,15 @@ internal class FakeNetwork : SecureMessageTransport {
     private val mailboxes = mutableMapOf<DeviceAddress, MutableList<EncryptedEnvelope>>()
 
     val publications = mutableListOf<PreKeyPublication>()
+    val registrations = mutableListOf<DeviceRegistration>()
+
+    /** Only records, without checking authentication. */
+    override suspend fun registerDevice(registration: DeviceRegistration, signer: ServerRequestSigner) {
+        registrations += registration
+    }
 
     /** Only records: these tests set [bundles] by hand, see [publish]. */
-    override suspend fun publishPreKeys(publication: PreKeyPublication) {
+    override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) {
         publications += publication
     }
 
@@ -53,8 +66,10 @@ internal class FakeNetwork : SecureMessageTransport {
         mailboxes.getOrPut(envelope.recipient) { mutableListOf() }.add(envelope)
     }
 
-    override suspend fun receive(address: DeviceAddress): List<EncryptedEnvelope> =
-        mailboxes.remove(address)?.toList().orEmpty()
+    override suspend fun receive(address: DeviceAddress, signer: ServerRequestSigner): List<EncryptedEnvelope> = receive(address)
+
+    /** Drains [address]'s mailbox directly, as the tests' stand-in for the device's authenticated drain. */
+    fun receive(address: DeviceAddress): List<EncryptedEnvelope> = mailboxes.remove(address)?.toList().orEmpty()
 
     /**
      * Makes the next [send] from [sender] suspend before it is enqueued, like
@@ -77,18 +92,56 @@ internal class FakeNetwork : SecureMessageTransport {
 }
 
 /**
- * Stands in for the relay server with the real server-side prekey semantics
- * of [InMemoryServerStorage]: publication is idempotent and every fetch
- * consumes one one-time prekey. [beforeNetworkCall] runs on every call.
+ * Stands in for the relay server with the real server-side prekey and
+ * registration semantics of [InMemoryServerStorage]: publication is
+ * idempotent, every fetch consumes one one-time prekey, and registration,
+ * publication and drain check the device's request signature against the
+ * registered key and claim the nonce (without a time window; the real
+ * checks are in server:core). The in-process "body" of a request is empty,
+ * except for registration, where it is the public key.
+ * [beforeNetworkCall] runs on every call.
  */
 internal class ServerBackedNetwork(
     private val beforeNetworkCall: () -> Unit = {},
 ) : SecureMessageTransport {
     val server = InMemoryServerStorage()
 
-    override suspend fun publishPreKeys(publication: PreKeyPublication) {
+    override suspend fun registerDevice(registration: DeviceRegistration, signer: ServerRequestSigner) {
         beforeNetworkCall()
+        val key = registration.publicKey
+        authenticate(registration.address, "PUT", ServerApiPaths.REGISTRATION, key, signer) { key }
+        try {
+            server.devices.register(registration)
+        } catch (e: DeviceRegistrationException.Conflict) {
+            throw SecureMessageTransportException.DeviceRegistrationConflict()
+        }
+    }
+
+    override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) {
+        beforeNetworkCall()
+        authenticate(publication.address, "PUT", ServerApiPaths.PRE_KEYS, ByteArray(0), signer)
         server.preKeys.publish(publication)
+    }
+
+    private suspend fun authenticate(
+        address: DeviceAddress,
+        method: String,
+        endpoint: String,
+        body: ByteArray,
+        signer: ServerRequestSigner,
+        verificationKey: suspend () -> ByteArray? = { server.devices.registration(address)?.publicKey },
+    ) {
+        val request = ServerRequest(address, method, ServerApiPaths.device(address, endpoint), body)
+        val authentication = signer.sign(request)
+        val key = verificationKey() ?: throw SecureMessageTransportException.AuthenticationFailed(
+            SecureMessageTransportException.AuthenticationFailure.NOT_REGISTERED,
+        )
+        if (!ServerRequestAuthentication.verify(key, request, authentication)) {
+            throw SecureMessageTransportException.AuthenticationFailed(SecureMessageTransportException.AuthenticationFailure.INVALID)
+        }
+        if (!server.authenticationNonces.claim(address, authentication.nonce.bytes, authentication.timestamp, Instant.DISTANT_PAST)) {
+            throw SecureMessageTransportException.AuthenticationFailed(SecureMessageTransportException.AuthenticationFailure.REPLAY)
+        }
     }
 
     override suspend fun fetchPreKeyBundle(address: DeviceAddress): PreKeyBundle {
@@ -101,10 +154,14 @@ internal class ServerBackedNetwork(
         server.mailboxes.enqueue(envelope)
     }
 
-    override suspend fun receive(address: DeviceAddress): List<EncryptedEnvelope> {
+    override suspend fun receive(address: DeviceAddress, signer: ServerRequestSigner): List<EncryptedEnvelope> {
         beforeNetworkCall()
+        authenticate(address, "GET", ServerApiPaths.MESSAGES, ByteArray(0), signer)
         return server.mailboxes.drain(address)
     }
+
+    /** Drains [address]'s mailbox directly, bypassing authentication, for tests. */
+    suspend fun receive(address: DeviceAddress): List<EncryptedEnvelope> = server.mailboxes.drain(address)
 }
 
 /** Delegates to [delegate] and tracks whether a transaction is running. */
@@ -144,6 +201,7 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
     var failRetire = false
     var failRetiredPrune = false
     var failSignedPreKeyStore = false
+    var failDeviceAuthenticationKeyStore = false
     var failSignedPreKeyRemoval = false
     var failLegacyStamp = false
     var failPendingStore = false
@@ -154,6 +212,7 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
     var sessionStoresBeforeFailure: Int? = null
 
     override val identity get() = delegate.identity
+    override val deviceAuthentication get() = delegate.deviceAuthentication
     override val remoteIdentities get() = delegate.remoteIdentities
     override val sessions get() = delegate.sessions
     override val sessionInitiations get() = delegate.sessionInitiations
@@ -166,6 +225,13 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
 
     private inner class FailingView(private val tx: ClientStorage) : ClientStorage {
         override val identity get() = tx.identity
+
+        override val deviceAuthentication: DeviceAuthenticationKeyStore = object : DeviceAuthenticationKeyStore by tx.deviceAuthentication {
+            override suspend fun store(keyPair: DeviceAuthenticationKeyPair) {
+                if (failDeviceAuthenticationKeyStore) throw StorageFailure()
+                tx.deviceAuthentication.store(keyPair)
+            }
+        }
 
         override val remoteIdentities: RemoteIdentityStore = object : RemoteIdentityStore by tx.remoteIdentities {
             override suspend fun store(address: DeviceAddress, identityKey: ByteArray) {

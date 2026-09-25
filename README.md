@@ -52,10 +52,10 @@ Client lifecycle contracts such as transport, session access, sending, receiving
 Kotlin Multiplatform Ktor client transport adapter.
 
 ### `server:core`
-Server-side repositories/services for public device information, prekey bundles, and encrypted envelopes. It should not decrypt client messages or own client session secrets. `PreKeyService` validates publications and hands out each one-time prekey at most once.
+Server-side repositories/services for public device information, prekey bundles, and encrypted envelopes. It should not decrypt client messages or own client session secrets. `PreKeyService` validates publications and hands out each one-time prekey at most once. `DeviceAuthenticator` verifies device-signed requests against registered device authentication keys, with a time window and single-use nonces (see [docs/server-authentication.md](docs/server-authentication.md)).
 
 ### `server:ktor`
-JVM Ktor server routes/adapters for HTTP API v1, see [docs/prekey-publication.md](docs/prekey-publication.md).
+JVM Ktor server routes/adapters for HTTP API v1, see [docs/prekey-publication.md](docs/prekey-publication.md) and [docs/server-authentication.md](docs/server-authentication.md).
 
 ### `storage:core`
 Shared storage contracts.
@@ -76,7 +76,7 @@ The storage key rotation state machine (`StorageKeyRotationManager`), its valida
 Platform `StorageKeyProvider`s: the storage key wrapped by an Android Keystore key, or stored in the Apple Keychain. See [docs/storage-key-providers.md](docs/storage-key-providers.md).
 
 ### `storage:testing`
-Shared `ClientStorage`, server `PreKeyRepository` and `StorageKeyProvider` contract tests that every adapter runs. Not published.
+Shared `ClientStorage`, server `PreKeyRepository`, `MailboxRepository`, `DeviceRegistrationRepository`, `AuthenticationNonceRepository` and `StorageKeyProvider` contract tests that every adapter runs. Not published.
 
 ## Coordinates
 
@@ -129,7 +129,7 @@ Milestone 8 done: logical message IDs, encrypted acknowledgements, duplicate sup
 
 ```kotlin
 val sent = client.send(bob, "hello".encodeToByteArray())   // pending until acknowledged
-for (envelope in transport.receive(client.localAddress)) {
+for (envelope in client.receive()) {                        // transport.receive before milestone 12
     when (val result = client.decrypt(envelope)) {
         is ReceiveResult.Message -> show(result.plaintext)    // once per logical message
         is ReceiveResult.Duplicate, is ReceiveResult.Acknowledgement -> Unit
@@ -165,9 +165,18 @@ while (storage.resumeStorageKeyRotation(maxRecords = 256).phase != StorageKeyRot
 
 The rotation state machine is now a separate module, `storage:rotation:core` (`StorageKeyRotationManager` over a `StorageKeyRotationBackend`); `SqlDelightClientStorage` implements the backend and keeps the same three functions. Phase, status and `StorageKeyRotationInProgressException` moved to the package `dev.kreienbuehl.ksecuremessage.storage.rotation`. No behavior, schema or format change.
 
+Milestone 12 done: authenticated server API and device ownership. Every device has a dedicated Ed25519 device authentication key, separate from its messaging identity key: created by `initialize()` (still local only), sealed at rest as record type 7, re-encrypted by storage key rotation, and never recreated after a loss (a pre-M12 installation, marked by SQLDelight schema version 8's migration, gets its first key exactly once; a lost or damaged key fails closed). `registerDevice()` explicitly registers the public key with the server, in a request signed with that key; the server keeps the first key for an address, treats the same key again as success and rejects any other (`409`), with no reset. Prekey publication and mailbox drain now require a signature over an explicit binary request description (domain `KSecureMessage-ServerAuth-v1`, address, method, canonical path, SHA-256 of the exact body bytes, epoch-millisecond timestamp, 16-byte random nonce), verified with the registered key, accepted within ±5 minutes and once per nonce and device; the client signs automatically. Bundle fetch and message submission stay public. This is trust on first registration, not account authentication, and independent of TOFU between peers. Breaking HTTP API v1 behavior change (same paths); wire, protocol, storage formats and messaging semantics are unchanged. See [docs/server-authentication.md](docs/server-authentication.md).
+
+```kotlin
+client.initialize()      // local: identity, device authentication key, prekeys
+client.registerDevice()  // once per device
+client.publishPreKeys()  // signed
+for (envelope in client.receive()) client.decrypt(envelope) // signed drain
+```
+
 ## Next implementation steps
 
-1. Authenticated server API, device re-registration, persistent server storage.
+1. Persistent server storage (registrations, nonces with bounded retention, prekeys, mailboxes), then device re-registration/reset with an explicit recovery policy.
 2. Safety numbers / manual identity verification, and a deliberate way to accept identity changes.
 3. An application commit boundary for received messages and bounded dedup retention.
 4. Sealed sender.

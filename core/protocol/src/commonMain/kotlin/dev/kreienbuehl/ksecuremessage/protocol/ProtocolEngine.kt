@@ -17,6 +17,13 @@ import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 interface ProtocolEngine {
     suspend fun createIdentity(): LocalIdentity
 
+    /**
+     * Creates the device authentication key pair (docs/server-authentication.md).
+     * Separate from the messaging identity: it only authenticates the device
+     * to the server, see [ServerRequestAuthentication].
+     */
+    suspend fun createDeviceAuthenticationKey(): DeviceAuthenticationKeyPair
+
     suspend fun createSignedPreKey(identity: LocalIdentity, id: SignedPreKeyId): SignedPreKeyPair
 
     /** Creates [count] one-time prekeys with consecutive IDs starting at [firstId]. */

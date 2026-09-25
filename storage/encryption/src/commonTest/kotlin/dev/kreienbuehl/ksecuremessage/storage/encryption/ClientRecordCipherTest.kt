@@ -6,6 +6,7 @@ import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.model.UserId
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
@@ -54,6 +55,23 @@ class ClientRecordCipherTest {
 
         assertContentEquals(bytes(8, 5), cipher.openPendingFrame(BOB, m1, cipher.sealPendingFrame(BOB, m1, bytes(8, 5))))
         cipher.verifyKeyCheck(cipher.sealKeyCheck())
+
+        val auth = cipher.openDeviceAuthenticationKey(cipher.sealDeviceAuthenticationKey(DeviceAuthenticationKeyPair(bytes(20), bytes(21))))
+        assertContentEquals(bytes(20), auth.publicKey)
+        assertContentEquals(bytes(21), auth.privateKey)
+    }
+
+    @Test
+    fun deviceAuthenticationKeyIsItsOwnRecordType() = runTest {
+        // Same plaintext layout and size as the identity record; only the record type differs.
+        val auth = cipher.sealDeviceAuthenticationKey(DeviceAuthenticationKeyPair(bytes(1), bytes(2)))
+        val identity = cipher.sealIdentity(LocalIdentity(bytes(1), bytes(2)))
+        assertEquals(identity.size, auth.size)
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openIdentity(auth) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openDeviceAuthenticationKey(identity) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { ClientRecordCipher(testKey(1, 100)).openDeviceAuthenticationKey(auth) }
+        val privateKey = ByteArray(32) { 0x5A }
+        assertFalse(cipher.sealDeviceAuthenticationKey(DeviceAuthenticationKeyPair(bytes(1), privateKey)).toHex().contains(privateKey.toHex()))
     }
 
     @Test
@@ -122,6 +140,7 @@ class ClientRecordCipherTest {
             cipher.sealOneTimePreKey(oneTime(1)) to { r -> cipher.openOneTimePreKey(OneTimePreKeyId(1), r) },
             cipher.sealSession(SecureSession(BOB, bytes(1))) to { r -> cipher.openSession(BOB, r) },
             cipher.sealPendingFrame(BOB, m1, bytes(1)) to { r -> cipher.openPendingFrame(BOB, m1, r) },
+            cipher.sealDeviceAuthenticationKey(DeviceAuthenticationKeyPair(bytes(1), bytes(2))) to { r -> cipher.openDeviceAuthenticationKey(r) },
         )
         for ((record, open) in records) {
             for (index in listOf(10, 21, 22, record.size - 17, record.size - 1)) {

@@ -226,6 +226,8 @@ Tables:
 
 - `storage_encryption`: one row with the storage format and the bound storage key ID
 - `local_identity`: one row, the sealed key pair
+- `device_authentication_key`: one row, the sealed device authentication key pair (schema version 8, milestone 12, [server-authentication.md](server-authentication.md))
+- `device_authentication_state`: one row, `awaits_upgrade_key` (plaintext flag: set by the version 8 migration when an identity existed without a key)
 - `signed_pre_key`: sealed key pair, with `created_at` and `replaced_at` (epoch milliseconds, nullable)
 - `one_time_pre_key`: sealed key pair
 - `pre_key_state`: one row holding the current signed prekey ID and both high-water marks
@@ -245,7 +247,7 @@ does not depend on Kodium internals. All IDs have a
 Open the storage with `SqlDelightClientStorage.open(driver, keyProvider)`.
 There is no unencrypted mode.
 
-The schema version is 6. Version 1 (milestones 3 and 4) had no
+The schema version is 8. Version 1 (milestones 3 and 4) had no
 `remote_identity` table; `1.sqm` adds it and changes nothing else. Version 2
 (milestone 5) had no `retired_session_initiation` table; `2.sqm` adds it and
 changes nothing else. Version 3 (milestone 6) had no lifecycle columns;
@@ -264,11 +266,19 @@ format 0, and the next `SqlDelightClientStorage.open` encrypts every
 sensitive record in one transaction, rebuilding the five sensitive tables
 ([storage-encryption.md](storage-encryption.md#migration-from-milestone-8)).
 Plaintext that the old version wrote may survive in free pages, the journal
-and backups.
+and backups. Version 6 (milestones 9 and 10) had no storage key rotation
+state; `6.sqm` adds it to `storage_encryption` ([storage-key-rotation.md](storage-key-rotation.md)).
+Version 7 (milestone 11) had no device authentication key; `7.sqm` creates
+`device_authentication_key` (empty) and `device_authentication_state`, whose
+flag is 1 if the database held an identity. The migration creates no key
+material; the next `initialize()` creates the key once, and a key that goes
+missing later fails closed ([server-authentication.md](server-authentication.md#telling-before-m12-apart-from-lost)).
+Frozen copies of versions 1–7 (`Version1Schema` … `Version7Schema`) back the
+migration tests.
 A driver created with `SqlDelightClientStorage.Schema`,
 as in the table above, reads SQLite's `user_version` on open and runs the
 migrations itself. An application that manages schema versions on its own
-calls `SqlDelightClientStorage.Schema.migrate(driver, oldVersion, 6)`.
+calls `SqlDelightClientStorage.Schema.migrate(driver, oldVersion, SqlDelightClientStorage.Schema.version)`.
 Existing identities, prekeys, sessions, pins and retired initiations are kept. Sessions from
 version 1 have no pin, see
 [identity-trust.md](identity-trust.md#sessions-from-before-pinning). Session

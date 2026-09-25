@@ -1,10 +1,12 @@
 package dev.kreienbuehl.ksecuremessage.storage
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
+import kotlin.time.Instant
 
 /**
  * Public prekey material of each device, as published by the devices. Holds
@@ -90,7 +92,53 @@ interface MailboxRepository {
     suspend fun drain(recipient: DeviceAddress): List<EncryptedEnvelope>
 }
 
+/**
+ * Device authentication public keys, one per [DeviceAddress]
+ * (docs/server-authentication.md). A registration is only ever added: it is
+ * never replaced or removed here. Atomic; byte arrays are copied at the
+ * boundary.
+ */
+interface DeviceRegistrationRepository {
+    suspend fun registration(address: DeviceAddress): DeviceRegistration?
+
+    /**
+     * Registers [registration] if its address has none. Returns `true` if it
+     * was stored, `false` if exactly this key is registered already. Throws
+     * [DeviceRegistrationException.Conflict] and changes nothing if another
+     * key is registered. Concurrent calls behave as if they ran one after the
+     * other: of several different keys for one address, exactly one wins.
+     */
+    suspend fun register(registration: DeviceRegistration): Boolean
+}
+
+/** A rejected device registration. Nothing was stored. Messages never contain key bytes. */
+sealed class DeviceRegistrationException(message: String) : Exception(message) {
+    /** The registration is malformed, for example a key of the wrong size. */
+    class InvalidRegistration(message: String) : DeviceRegistrationException(message)
+
+    /** The address is registered with a different key. There is no reset. */
+    class Conflict : DeviceRegistrationException("Device is registered with a different authentication key")
+}
+
+/**
+ * Nonces of accepted authenticated requests, per device, for replay
+ * protection (docs/server-authentication.md). Entries only need to live as
+ * long as their request timestamp is inside the server's validity window.
+ */
+interface AuthenticationNonceRepository {
+    /**
+     * In one atomic step: removes every entry (of any device) whose request
+     * timestamp is before [pruneBefore], then records [nonce] for [address]
+     * with [timestamp]. Returns `false`, and records nothing, if [nonce] is
+     * already recorded for [address]. Of concurrent claims of the same
+     * nonce for the same address, exactly one returns `true`.
+     */
+    suspend fun claim(address: DeviceAddress, nonce: ByteArray, timestamp: Instant, pruneBefore: Instant): Boolean
+}
+
 interface ServerStorage {
     val preKeys: PreKeyRepository
     val mailboxes: MailboxRepository
+    val devices: DeviceRegistrationRepository
+    val authenticationNonces: AuthenticationNonceRepository
 }

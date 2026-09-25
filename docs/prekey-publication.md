@@ -32,7 +32,8 @@ whatever server the bundle came from.
 
 ```kotlin
 client.initialize()        // local only: identity, signed prekey, one-time prekeys
-client.publishPreKeys()    // upload the public halves
+client.registerDevice()    // once: registers the device authentication key (milestone 12)
+client.publishPreKeys()    // upload the public halves, signed
 client.rotateSignedPreKey()// local only
 client.publishPreKeys()    // make the new signed prekey current on the server
 ```
@@ -133,16 +134,23 @@ yet.
 
 ## HTTP API v1
 
+Since milestone 12, prekey publication and mailbox drain are authenticated
+with the device authentication key, and devices register that key first
+(`PUT .../registration`). Headers, signed request format, status codes and
+the endpoint policy are in [server-authentication.md](server-authentication.md).
+This changed the behavior of API v1 on purpose; the paths stayed the same.
+
 JSON bodies. Binary fields are **Base64 strings, RFC 4648 standard alphabet
 with padding**. Decoded sizes are validated. Unknown JSON fields are rejected.
 Path segments are URL-encoded user and device IDs.
 
 | Method | Path | Body | Success |
 |--------|------|------|---------|
-| `PUT` | `/v1/devices/{user}/{device}/prekeys` | `PreKeyPublicationRequest` | `204 No Content` |
+| `PUT` | `/v1/devices/{user}/{device}/registration` | `{"publicKey": "<base64, 32 bytes>"}`, signed | `201 Created` / `204 No Content` |
+| `PUT` | `/v1/devices/{user}/{device}/prekeys` | `PreKeyPublicationRequest`, signed | `204 No Content` |
 | `GET` | `/v1/devices/{user}/{device}/prekey-bundle` | – | `200` `PreKeyBundleResponse` |
 | `POST` | `/v1/messages` | `EncryptedEnvelope` | `202 Accepted` |
-| `GET` | `/v1/devices/{user}/{device}/messages` | – | `200` list of `EncryptedEnvelope` |
+| `GET` | `/v1/devices/{user}/{device}/messages` | –, signed | `200` list of `EncryptedEnvelope` |
 
 ```json
 // PreKeyPublicationRequest (the address comes from the path)
@@ -170,6 +178,7 @@ Path segments are URL-encoded user and device IDs.
 | 409 | `identity_key_conflict` | different identity key |
 | 409 | `signed_pre_key_conflict` | same signed prekey ID with other bytes, or an older ID |
 | 409 | `one_time_pre_key_conflict` | available one-time prekey ID with another key |
+| 401 | `missing_authentication`, `invalid_authentication`, `expired_authentication`, `authentication_replay`, `device_not_registered` | authentication failed; checked before the body is parsed ([server-authentication.md](server-authentication.md)) |
 
 `KtorSecureMessageTransport` maps these statuses to
 `SecureMessageTransportException`: `DeviceNotFound`,
@@ -184,8 +193,11 @@ stays inside `EncryptedEnvelope.payload`.
 
 ## Known limitations
 
-- **No authentication.** Anyone can publish first for an unused address and
-  so claim it, or drain a device's one-time prekeys by fetching bundles.
+- **Trust on first registration.** Since milestone 12 only the registered
+  device can publish for its address, but whoever registers a free address
+  first owns it ([server-authentication.md](server-authentication.md)).
+  Bundle fetches stay public, so anyone can still drain a device's one-time
+  prekeys by fetching bundles.
 - **No device reset or re-registration.** A device that lost its identity
   cannot publish a new one for the same address (`409 identity_key_conflict`).
 - **Server identity checks are not trust.** The server's identity-key check

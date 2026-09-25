@@ -58,6 +58,7 @@ Not protected:
 
 | Record | Sensitive fields | Encrypted | Plaintext | Bound in associated data | Reason |
 |---|---|---|---|---|---|
+| Device authentication key (`device_authentication_key`, milestone 12) | Ed25519 private key | whole key pair (public + private) | row ID 0 | record type | Like the identity; see [server-authentication.md](server-authentication.md). The non-secret `device_authentication_state.awaits_upgrade_key` stays plaintext. |
 | Local identity (`local_identity`) | private key | whole key pair (public + private) | row ID 0 | record type | Sealing the pair keeps public and private halves consistent; the public key is not needed for lookup. |
 | Signed prekeys (`signed_pre_key`) | private key | public key, signature, private key | ID, `created_at`, `replaced_at` | record type, ID | Lifecycle SQL (rotation, stamping, expiry) works on the plaintext timestamps. |
 | One-time prekeys (`one_time_pre_key`) | private key | public key, private key | ID | record type, ID | Publication reads and authenticates every record, so a tampered public key is never published silently. |
@@ -138,6 +139,7 @@ the associated data, so version, algorithm and key ID are authenticated.
 | session | 4 | remote user ID (UTF-8), remote device ID (UTF-8) |
 | pending outbound | 5 | recipient user ID, recipient device ID, 16-byte logical message ID |
 | key check | 6 | none |
+| device authentication key | 7 | none (there is one; milestone 12) |
 
 The IDs and the domain string must never change. Because the record type is
 authenticated, a record moved to another type fails even when the plaintext
@@ -148,6 +150,8 @@ another row of the same type fails.
 ## Record plaintext
 
 - Identity: `u8 version = 1 | bytes(publicKey) | bytes(privateKey)`
+- Device authentication key: `u8 version = 1 | bytes(publicKey) | bytes(privateKey)`
+  (frozen vector in `StorageCipherTest.deviceAuthenticationKeyVector`)
 - Signed prekey: `u8 version = 1 | bytes(publicKey) | bytes(signature) | bytes(privateKey)`
 - One-time prekey: `u8 version = 1 | bytes(publicKey) | bytes(privateKey)`
 - Session: `SecureSession.state` as is (versioned inside)

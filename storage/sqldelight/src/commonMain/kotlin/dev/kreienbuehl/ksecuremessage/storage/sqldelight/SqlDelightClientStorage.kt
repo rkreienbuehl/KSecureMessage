@@ -11,12 +11,14 @@ import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
+import dev.kreienbuehl.ksecuremessage.storage.DeviceAuthenticationKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.IdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.PendingOutboundMessage
 import dev.kreienbuehl.ksecuremessage.storage.PendingOutboundStore
@@ -62,7 +64,8 @@ import kotlin.time.Instant
  * suspend on I/O or switch dispatchers. `SecureMessageClient` follows this.
  * Sealing and opening records is CPU work inside the transaction.
  *
- * The local identity, signed and one-time prekeys (whole key pairs), session
+ * The local identity, the device authentication key, signed and one-time
+ * prekeys (whole key pairs), session
  * state and pending message frames are stored as AES-256-GCM records bound
  * to their record type and row key. IDs, addresses, timestamps, high-water
  * marks, remote identity pins, retired initiations and processed message IDs
@@ -74,10 +77,12 @@ import kotlin.time.Instant
  * the `retired_session_initiation` table (milestone 6), version 4 nullable
  * signed prekey lifecycle columns (milestone 7), version 5 the
  * `pending_outbound_message` and `processed_inbound_message` tables
- * (milestone 8), version 6 the `storage_encryption` marker (milestone 9). A
- * driver created with [Schema] upgrades an older database on open; an
- * application that manages versions itself calls
- * `Schema.migrate(driver, oldVersion, 6)`. An upgraded database still holds
+ * (milestone 8), version 6 the `storage_encryption` marker (milestone 9),
+ * version 7 the storage key rotation state (milestone 11), version 8 the
+ * `device_authentication_key` and `device_authentication_state` tables
+ * (milestone 12, docs/server-authentication.md). A driver created with
+ * [Schema] upgrades an older database on open; an application that manages
+ * versions itself calls `Schema.migrate(driver, oldVersion, Schema.version)`. An upgraded database still holds
  * its milestone 8 plaintext until [open] encrypts it. Session state written
  * before milestone 6 stays readable; its format is versioned inside the
  * record. Timestamps are stored as epoch milliseconds.
@@ -104,6 +109,12 @@ class SqlDelightClientStorage private constructor(
     override val identity: IdentityStore = object : IdentityStore {
         override suspend fun identity() = transaction { identity.identity() }
         override suspend fun store(identity: LocalIdentity) = transaction { this.identity.store(identity) }
+    }
+
+    override val deviceAuthentication: DeviceAuthenticationKeyStore = object : DeviceAuthenticationKeyStore {
+        override suspend fun keyPair() = transaction { deviceAuthentication.keyPair() }
+        override suspend fun store(keyPair: DeviceAuthenticationKeyPair) = transaction { deviceAuthentication.store(keyPair) }
+        override suspend fun awaitsUpgradeKey() = transaction { deviceAuthentication.awaitsUpgradeKey() }
     }
 
     override val remoteIdentities: RemoteIdentityStore = object : RemoteIdentityStore {
@@ -441,6 +452,23 @@ private class DatabaseView(private val queries: ClientStateQueries, private val 
             check(queries.selectIdentity().awaitAsOneOrNull() == null) { "A local identity is already stored" }
             queries.insertIdentity(records.sealIdentity(identity))
         }
+    }
+
+    override val deviceAuthentication: DeviceAuthenticationKeyStore = object : DeviceAuthenticationKeyStore {
+        override suspend fun keyPair(): DeviceAuthenticationKeyPair? =
+            queries.selectDeviceAuthenticationKey().awaitAsOneOrNull()?.let { records.openDeviceAuthenticationKey(it) }
+
+        override suspend fun store(keyPair: DeviceAuthenticationKeyPair) {
+            // Existence only: a key that fails to open must not look absent.
+            check(queries.selectDeviceAuthenticationKey().awaitAsOneOrNull() == null) {
+                "A device authentication key is already stored"
+            }
+            queries.insertDeviceAuthenticationKey(records.sealDeviceAuthenticationKey(keyPair))
+            queries.clearDeviceAuthenticationAwaitsUpgradeKey()
+        }
+
+        override suspend fun awaitsUpgradeKey(): Boolean =
+            queries.selectDeviceAuthenticationAwaitsUpgradeKey().awaitAsOne() != 0L
     }
 
     override val remoteIdentities: RemoteIdentityStore = object : RemoteIdentityStore {

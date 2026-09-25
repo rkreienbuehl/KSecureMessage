@@ -69,6 +69,12 @@ internal class SqlDelightStorageKeyRotationBackend(
             }
         }
         if (budget > 0) {
+            queries.selectDeviceAuthenticationKeyToReseal(header).awaitAsOneOrNull()?.let { sealed ->
+                queries.updateDeviceAuthenticationKeyRecord(records.sealDeviceAuthenticationKey(records.openDeviceAuthenticationKey(sealed)))
+                budget--
+            }
+        }
+        if (budget > 0) {
             val rows = queries.selectSignedPreKeysToReseal(header, budget).awaitAsList()
             for (row in rows) {
                 val preKey = records.openSignedPreKey(SignedPreKeyId(row.id.toInt()), row.sealed_key_pair)

@@ -6,6 +6,7 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.model.UserId
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
@@ -45,7 +46,7 @@ private val K2 = StorageKeyId(2)
 private val K3 = StorageKeyId(3)
 
 /** Sealed records written by [StorageKeyRotationTest.populate], without the key checks. */
-private const val POPULATED_RECORDS = 10L
+private const val POPULATED_RECORDS = 11L
 
 /** Storage key rotation of SQLDelight storage (docs/storage-key-rotation.md), checked on the persisted bytes. */
 class StorageKeyRotationTest {
@@ -81,9 +82,13 @@ class StorageKeyRotationTest {
 
     private fun otpk(id: Int) = OneTimePreKeyPair(OneTimePreKeyId(id), ByteArray(32) { (id + 2).toByte() }, ByteArray(32) { (0x40 + id).toByte() })
 
-    /** One or more records of every sealed category: identity, grace and current SPK, OTPKs, sessions, pending frames. */
+    /**
+     * One or more records of every sealed category: identity, device authentication key, grace and current SPK,
+     * OTPKs, sessions, pending frames.
+     */
     private suspend fun populate(storage: ClientStorage) {
         storage.identity.store(LocalIdentity(ByteArray(32) { 0x11 }, ByteArray(32) { 0x5A }))
+        storage.deviceAuthentication.store(DeviceAuthenticationKeyPair(ByteArray(32) { 0x12 }, ByteArray(32) { 0x5B }))
         storage.preKeys.storeCurrentSignedPreKey(spk(1), Instant.fromEpochMilliseconds(1_000))
         storage.preKeys.storeCurrentSignedPreKey(spk(2), Instant.fromEpochMilliseconds(2_000)) // 1 enters its grace period
         storage.preKeys.storeOneTimePreKeys(listOf(otpk(10), otpk(11)))
@@ -100,6 +105,8 @@ class StorageKeyRotationTest {
     private suspend fun contents(storage: ClientStorage): String = buildString {
         val identity = storage.identity.identity()
         append("identity=${identity?.publicKey?.toHex()}/${identity?.privateKey?.toHex()};")
+        val auth = storage.deviceAuthentication.keyPair()
+        append("deviceAuthentication=${auth?.publicKey?.toHex()}/${auth?.privateKey?.toHex()};")
         for (info in storage.preKeys.signedPreKeyInfos()) {
             val key = assertNotNull(storage.preKeys.signedPreKey(info.id))
             append("spk=$info/${key.publicKey.toHex()}/${key.signature.toHex()}/${key.privateKey.toHex()};")
@@ -239,11 +246,11 @@ class StorageKeyRotationTest {
         val status = storage.resumeStorageKeyRotation(4)
         assertEquals(StorageKeyRotationPhase.MIGRATING, status.phase)
         assertEquals(POPULATED_RECORDS - 4, status.remainingRecords)
-        assertEquals(mapOf(1 to 6, 2 to 4), recordKeyIds().groupingBy { it }.eachCount())
+        assertEquals(mapOf(1 to 7, 2 to 4), recordKeyIds().groupingBy { it }.eachCount())
 
         // Restart in the middle: both keys are needed and both work.
         val restarted = open()
-        assertEquals(StorageKeyRotationStatus(StorageKeyRotationPhase.MIGRATING, K2, null, K1, 6), restarted.storageKeyRotationStatus())
+        assertEquals(StorageKeyRotationStatus(StorageKeyRotationPhase.MIGRATING, K2, null, K1, 7), restarted.storageKeyRotationStatus())
         assertEquals(before, contents(restarted))
 
         // New writes after the restart still use key 2.
@@ -258,12 +265,16 @@ class StorageKeyRotationTest {
     }
 
     @Test
-    fun migrationOrderIsIdentityPreKeysSessionsPending() = runTest {
+    fun migrationOrderIsIdentityAuthenticationKeyPreKeysSessionsPending() = runTest {
         val storage = open()
         populate(storage)
         storage.rotateStorageKey()
         storage.resumeStorageKeyRotation(1)
         assertEquals(listOf(2), keyIdsByColumn()["local_identity.sealed_identity"])
+        assertEquals(listOf(1), keyIdsByColumn()["device_authentication_key.sealed_key_pair"])
+        storage.resumeStorageKeyRotation(1)
+        assertEquals(listOf(2), keyIdsByColumn()["device_authentication_key.sealed_key_pair"])
+        assertEquals(listOf(1, 1), keyIdsByColumn()["signed_pre_key.sealed_key_pair"])
         storage.resumeStorageKeyRotation(2)
         assertEquals(listOf(2, 2), keyIdsByColumn()["signed_pre_key.sealed_key_pair"])
         storage.resumeStorageKeyRotation(4)
@@ -439,11 +450,12 @@ class StorageKeyRotationTest {
         assertFailsWith<StorageEncryptionException.AuthenticationFailed> { storage.resumeStorageKeyRotation(100) }
         assertEquals(List(POPULATED_RECORDS.toInt()) { 1 }, recordKeyIds())
         // Smaller batches commit up to the damaged record, then stop there.
-        storage.resumeStorageKeyRotation(3) // identity, both signed prekeys
+        storage.resumeStorageKeyRotation(3) // identity, device authentication key, signed prekey 1
         assertFailsWith<StorageEncryptionException.AuthenticationFailed> { storage.resumeStorageKeyRotation(3) }
+        storage.resumeStorageKeyRotation(1) // signed prekey 2
         storage.resumeStorageKeyRotation(1) // one-time prekey 10
         repeat(2) { assertFailsWith<StorageEncryptionException.AuthenticationFailed> { storage.resumeStorageKeyRotation(1) } }
-        assertEquals(mapOf(1 to 6, 2 to 4), recordKeyIds().groupingBy { it }.eachCount())
+        assertEquals(mapOf(1 to 6, 2 to 5), recordKeyIds().groupingBy { it }.eachCount())
         assertEquals(StorageKeyRotationPhase.MIGRATING, storage.storageKeyRotationStatus().phase)
         assertEquals(setOf(K1, K2), keys.ids(namespace), "the old key is kept")
     }
@@ -490,7 +502,7 @@ class StorageKeyRotationTest {
         val migrating = created.last()
         migrating.cancelAtSeal = migrating.seals + 3
         assertFailsWith<CancellationException> { storage.resumeStorageKeyRotation(5) }
-        assertEquals(mapOf(1 to 8, 2 to 2), recordKeyIds().groupingBy { it }.eachCount(), "only the cancelled batch rolled back")
+        assertEquals(mapOf(1 to 9, 2 to 2), recordKeyIds().groupingBy { it }.eachCount(), "only the cancelled batch rolled back")
         assertEquals(StorageKeyRotationPhase.MIGRATING, storage.storageKeyRotationStatus().phase)
 
         migrating.cancelAtSeal = null

@@ -17,6 +17,12 @@ internal class BinaryWriter {
         parts += byteArrayOf((value shr 24).toByte(), (value shr 16).toByte(), (value shr 8).toByte(), value.toByte())
     }
 
+    /** 64-bit big-endian. */
+    fun long(value: Long) {
+        int((value shr 32).toInt())
+        int(value.toInt())
+    }
+
     /** Raw bytes without a length prefix. */
     fun fixed(value: ByteArray) {
         parts += value

@@ -1,6 +1,7 @@
 package dev.kreienbuehl.ksecuremessage.client
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
@@ -43,9 +44,14 @@ internal class FlakyNetwork(val fake: FakeNetwork = FakeNetwork()) : SecureMessa
         for (storage in watched) assertEquals(0, storage.depth, "network call inside a storage transaction")
     }
 
-    override suspend fun publishPreKeys(publication: PreKeyPublication) {
+    override suspend fun registerDevice(registration: DeviceRegistration, signer: ServerRequestSigner) {
         checkNoTransaction()
-        fake.publishPreKeys(publication)
+        fake.registerDevice(registration, signer)
+    }
+
+    override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) {
+        checkNoTransaction()
+        fake.publishPreKeys(publication, signer)
     }
 
     override suspend fun fetchPreKeyBundle(address: DeviceAddress): PreKeyBundle {
@@ -61,7 +67,9 @@ internal class FlakyNetwork(val fake: FakeNetwork = FakeNetwork()) : SecureMessa
         sent += envelope
     }
 
-    override suspend fun receive(address: DeviceAddress): List<EncryptedEnvelope> {
+    override suspend fun receive(address: DeviceAddress, signer: ServerRequestSigner): List<EncryptedEnvelope> = receive(address)
+
+    fun receive(address: DeviceAddress): List<EncryptedEnvelope> {
         checkNoTransaction()
         return fake.receive(address)
     }

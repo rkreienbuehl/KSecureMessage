@@ -226,6 +226,7 @@ The authoritative check before a key is retired is a scan, not a counter.
 `SEALED_COLUMNS` lists every column that holds sealed records:
 
 - `local_identity.sealed_identity`
+- `device_authentication_key.sealed_key_pair` (milestone 12)
 - `signed_pre_key.sealed_key_pair`
 - `one_time_pre_key.sealed_key_pair`
 - `session.sealed_state`

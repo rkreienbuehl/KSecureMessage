@@ -1,5 +1,6 @@
 package dev.kreienbuehl.ksecuremessage.storage.encryption
 
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -29,6 +30,27 @@ class StorageCipherTest {
         assertEquals(vectorAssociatedData, EncryptedRecordFormat.associatedData(header, StorageRecordType.SESSION, fields).toHex())
         assertEquals(vectorRecord, fixedNonceCipher().seal(StorageRecordType.SESSION, fields, plaintext).toHex())
         assertContentEquals(plaintext, cipher.open(StorageRecordType.SESSION, fields, hex(vectorRecord)))
+    }
+
+    /**
+     * Record type 7 (milestone 12): the device authentication key pair,
+     * `version:u8 = 1 | bytes(publicKey) | bytes(privateKey)`, no row fields.
+     * Computed independently (Python `cryptography`, AESGCM). Frozen.
+     */
+    @Test
+    fun deviceAuthenticationKeyVector() = runTest {
+        val header = EncryptedRecordFormat.header(StorageKeyId(7))
+        assertEquals(
+            "4b534d52010100000007000000194b5365637572654d6573736167652d53746f726167652d76310700",
+            EncryptedRecordFormat.associatedData(header, StorageRecordType.DEVICE_AUTHENTICATION_KEY, emptyList()).toHex(),
+        )
+        val keyPair = DeviceAuthenticationKeyPair(ByteArray(32) { 0x11 }, ByteArray(32) { 0x22 })
+        val vector = "4b534d52010100000007a0a1a2a3a4a5a6a7a8a9aaabe7187c2d65da13ae737496c2166bd1cf61bd480183a6537d8d1f37976eba6410c3" +
+            "6756eebe22533d7fbe26ea2b58a1db6539646a40f2385c637c297c8652a792969ea74d1287c6c2d6175041e4e06246d3fdefb64732241fd7"
+        assertEquals(vector, AeadClientRecordCipher(fixedNonceCipher()).sealDeviceAuthenticationKey(keyPair).toHex())
+        val opened = ClientRecordCipher(key).openDeviceAuthenticationKey(hex(vector))
+        assertContentEquals(keyPair.publicKey, opened.publicKey)
+        assertContentEquals(keyPair.privateKey, opened.privateKey)
     }
 
     @Test
@@ -169,6 +191,6 @@ class StorageCipherTest {
             EncryptedRecordFormat.associatedData(EncryptedRecordFormat.header(StorageKeyId(2)), StorageRecordType.KEY_CHECK, emptyList()).toHex(),
         )
         assertEquals(all.size, all.toSet().size)
-        assertEquals(listOf<Byte>(1, 2, 3, 4, 5, 6), StorageRecordType.entries.map { it.id })
+        assertEquals(listOf<Byte>(1, 2, 3, 4, 5, 6, 7), StorageRecordType.entries.map { it.id })
     }
 }

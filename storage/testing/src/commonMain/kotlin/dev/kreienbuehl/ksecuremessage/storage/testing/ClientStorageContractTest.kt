@@ -6,6 +6,7 @@ import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.model.UserId
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
@@ -48,6 +49,48 @@ abstract class ClientStorageContractTest {
 
         assertFailsWith<IllegalStateException> { storage.identity.store(identity(2)) }
         assertContentEquals(bytes(1), storage.identity.identity()?.publicKey)
+    }
+
+    @Test
+    fun deviceAuthenticationKeyIsStoredOnceAndNeverReplaced() = runTest {
+        val storage = newStorage()
+        assertNull(storage.deviceAuthentication.keyPair())
+        assertFalse(storage.deviceAuthentication.awaitsUpgradeKey(), "a new storage has no pre-milestone-12 identity")
+
+        storage.deviceAuthentication.store(DeviceAuthenticationKeyPair(bytes(3), bytes(-3)))
+        assertContentEquals(bytes(3), storage.deviceAuthentication.keyPair()?.publicKey)
+        assertContentEquals(bytes(-3), storage.deviceAuthentication.keyPair()?.privateKey)
+
+        assertFailsWith<IllegalStateException> { storage.deviceAuthentication.store(DeviceAuthenticationKeyPair(bytes(4), bytes(-4))) }
+        assertFailsWith<IllegalStateException>("an identical key is refused too") {
+            storage.deviceAuthentication.store(DeviceAuthenticationKeyPair(bytes(3), bytes(-3)))
+        }
+        assertContentEquals(bytes(-3), storage.deviceAuthentication.keyPair()?.privateKey)
+        assertFalse(storage.deviceAuthentication.awaitsUpgradeKey())
+    }
+
+    @Test
+    fun deviceAuthenticationKeyIsCopiedAndRolledBack() = runTest {
+        val storage = newStorage()
+        val keyPair = DeviceAuthenticationKeyPair(bytes(3), bytes(-3))
+        assertFailsWith<Failure> {
+            storage.transaction {
+                identity.store(identity(1))
+                deviceAuthentication.store(keyPair)
+                assertContentEquals(bytes(-3), deviceAuthentication.keyPair()?.privateKey, "visible inside the transaction")
+                throw Failure()
+            }
+        }
+        assertNull(storage.deviceAuthentication.keyPair())
+        assertNull(storage.identity.identity())
+
+        storage.transaction {
+            identity.store(identity(1))
+            deviceAuthentication.store(keyPair)
+        }
+        keyPair.privateKey.fill(0)
+        storage.deviceAuthentication.keyPair()!!.privateKey.fill(0)
+        assertContentEquals(bytes(-3), storage.deviceAuthentication.keyPair()?.privateKey, "stored bytes are not aliased")
     }
 
     @Test

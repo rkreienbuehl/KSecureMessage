@@ -36,9 +36,25 @@ internal class PreKeyBundleResponse(
     val oneTimePreKey: OneTimePreKeyDto? = null,
 )
 
+/** Body of `PUT /v1/devices/{user}/{device}/registration`. The address is in the path. */
+@Serializable
+internal class DeviceRegistrationRequest(val publicKey: String)
+
 /** Body of 4xx responses. */
 @Serializable
 internal class ErrorResponse(val error: String)
+
+/**
+ * Request authentication headers, format version 1 (docs/server-authentication.md).
+ * Mirrored in server:ktor.
+ */
+internal object AuthHeaders {
+    const val VERSION = "X-KSecureMessage-Auth-Version"
+    const val TIMESTAMP = "X-KSecureMessage-Timestamp"
+    const val NONCE = "X-KSecureMessage-Nonce"
+    const val SIGNATURE = "X-KSecureMessage-Signature"
+    const val CURRENT_VERSION = "1"
+}
 
 internal fun PreKeyPublication.toRequest() = PreKeyPublicationRequest(
     identityKey = Base64.encode(identityKey),

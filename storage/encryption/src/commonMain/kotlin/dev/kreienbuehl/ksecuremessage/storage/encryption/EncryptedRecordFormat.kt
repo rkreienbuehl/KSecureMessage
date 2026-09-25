@@ -11,6 +11,7 @@ internal enum class StorageRecordType(val id: Byte) {
     SESSION(4),
     PENDING_OUTBOUND(5),
     KEY_CHECK(6),
+    DEVICE_AUTHENTICATION_KEY(7),
 }
 
 /**

@@ -21,6 +21,13 @@ internal object ProtocolConstants {
      */
     const val SESSION_INITIATION_DOMAIN = "KSecureMessage-SessionInitiation-v1"
 
+    /**
+     * Domain separator of the server request signature input
+     * ([ServerRequestAuthentication]). Registered devices and every signed
+     * request depend on it.
+     */
+    const val SERVER_AUTH_DOMAIN = "KSecureMessage-ServerAuth-v1"
+
     /** Size of an encoded public key: X25519 key followed by Ed25519 key. */
     const val PUBLIC_KEY_SIZE = 64
 }

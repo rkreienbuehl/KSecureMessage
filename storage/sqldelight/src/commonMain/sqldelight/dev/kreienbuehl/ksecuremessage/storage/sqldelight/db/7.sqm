@@ -1,0 +1,22 @@
+-- Schema version 7 to 8 (milestone 12): device authentication key
+-- (docs/server-authentication.md). Adds the table for the sealed key pair and
+-- a marker that tells a pre-milestone-12 installation apart from one that lost
+-- its key. The migration creates no key material: the next
+-- SecureMessageClient.initialize() creates the key.
+--
+-- awaits_upgrade_key: 1 if the database held a local identity before this
+-- migration (so it never had a key and may get its first one), 0 otherwise.
+-- Storing the key sets it to 0 for good. A database with an identity, no key
+-- and awaits_upgrade_key = 0 lost its key; the client then fails closed.
+CREATE TABLE device_authentication_key (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    sealed_key_pair BLOB NOT NULL
+);
+
+CREATE TABLE device_authentication_state (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    awaits_upgrade_key INTEGER NOT NULL
+);
+
+INSERT INTO device_authentication_state (id, awaits_upgrade_key)
+SELECT 0, EXISTS (SELECT 1 FROM local_identity);

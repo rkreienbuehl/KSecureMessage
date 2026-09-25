@@ -13,8 +13,11 @@ sealed class SecureMessageClientException(message: String, cause: Throwable? = n
     class PreKeyIdsExhausted(kind: String) : SecureMessageClientException("No unused $kind IDs left")
 
     /**
-     * The storage has prekeys but no local identity. A new identity would not
-     * match them, so the client refuses to create one.
+     * The storage is damaged in a way the client does not repair: prekeys or
+     * a device authentication key without a local identity (a new identity
+     * would not match them), or an initialized storage whose device
+     * authentication key is missing (a new key could not replace the one the
+     * server has registered; docs/server-authentication.md).
      */
     class InconsistentStorage(message: String) : SecureMessageClientException(message)
 

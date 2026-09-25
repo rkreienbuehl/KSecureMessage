@@ -5,6 +5,7 @@ import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
@@ -34,6 +35,32 @@ interface IdentityStore {
      * already: an identity is never replaced silently.
      */
     suspend fun store(identity: LocalIdentity)
+}
+
+/**
+ * The local device's authentication key pair (docs/server-authentication.md),
+ * separate from the messaging identity. There is at most one, and it is
+ * never replaced: the server binds the device address to its public key and
+ * has no way to accept another one.
+ */
+interface DeviceAuthenticationKeyStore {
+    suspend fun keyPair(): DeviceAuthenticationKeyPair?
+
+    /**
+     * Stores the key pair. Throws [IllegalStateException] if one exists
+     * already, also an identical one: a key is never replaced silently.
+     */
+    suspend fun store(keyPair: DeviceAuthenticationKeyPair)
+
+    /**
+     * `true` only for storage that held a local identity before device
+     * authentication keys existed (milestone 12) and has not stored a key
+     * since. Such an installation gets its first key from
+     * `SecureMessageClient.initialize`. For any other storage a missing key
+     * means it was lost, and a new one must not be created. Storing a key
+     * makes this `false` for good.
+     */
+    suspend fun awaitsUpgradeKey(): Boolean
 }
 
 /**
@@ -247,6 +274,7 @@ decrypted it.
  */
 interface ClientStorage {
     val identity: IdentityStore
+    val deviceAuthentication: DeviceAuthenticationKeyStore
     val remoteIdentities: RemoteIdentityStore
     val sessions: SessionStore
     val sessionInitiations: SessionInitiationStore

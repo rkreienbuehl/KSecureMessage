@@ -3,6 +3,7 @@ package dev.kreienbuehl.ksecuremessage.client
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolException
@@ -36,7 +37,9 @@ internal class PreKeyManager(
 
     /**
      * Creates whatever is missing and runs signed prekey maintenance:
-     * - the identity,
+     * - the identity together with the device authentication key, or the
+     *   device authentication key alone for storage from before milestone 12
+     *   (see [ensureDeviceAuthenticationKey]),
      * - timestamps for signed prekeys stored before milestone 7 (current: created
      *   now; older ones: grace period starts now),
      * - a current signed prekey, or a new one if the current one reached
@@ -49,7 +52,12 @@ internal class PreKeyManager(
      */
     suspend fun ClientStorage.ensureInitialized() {
         val now = now()
-        val localIdentity = identity.identity() ?: createIdentity()
+        val existing = identity.identity()
+        val localIdentity = if (existing == null) {
+            createIdentity().also { createDeviceAuthenticationKey() }
+        } else {
+            existing.also { ensureDeviceAuthenticationKey() }
+        }
         preKeys.stampLegacySignedPreKeys(now)
         val current = preKeys.signedPreKeyInfos().firstOrNull { it.isCurrent }
         if (current == null || isDueForRotation(current, now)) createSignedPreKey(localIdentity, now)
@@ -126,7 +134,31 @@ internal class PreKeyManager(
         if (preKeys.highestSignedPreKeyId() != null || preKeys.highestOneTimePreKeyId() != null) {
             throw SecureMessageClientException.InconsistentStorage("Prekeys are stored but the local identity is missing")
         }
+        if (deviceAuthentication.keyPair() != null) {
+            throw SecureMessageClientException.InconsistentStorage("A device authentication key is stored but the local identity is missing")
+        }
         return protocol.createIdentity().also { identity.store(it) }
+    }
+
+    /**
+     * An installation with an identity has its device authentication key
+     * already, unless it was set up before milestone 12: storage marks that
+     * case ([dev.kreienbuehl.ksecuremessage.storage.DeviceAuthenticationKeyStore.awaitsUpgradeKey]),
+     * and only then is a first key created. A key that is missing otherwise
+     * was lost; a new one could never replace the registration on the
+     * server, so this fails closed instead (docs/server-authentication.md).
+     * A stored key that does not open throws from storage.
+     */
+    private suspend fun ClientStorage.ensureDeviceAuthenticationKey() {
+        if (deviceAuthentication.keyPair() != null) return
+        if (!deviceAuthentication.awaitsUpgradeKey()) {
+            throw SecureMessageClientException.InconsistentStorage("The device authentication key is missing")
+        }
+        createDeviceAuthenticationKey()
+    }
+
+    private suspend fun ClientStorage.createDeviceAuthenticationKey() {
+        deviceAuthentication.store(protocol.createDeviceAuthenticationKey())
     }
 
     private suspend fun ClientStorage.createSignedPreKey(identity: LocalIdentity, now: Instant): SignedPreKeyPair {
@@ -140,6 +172,12 @@ internal class PreKeyManager(
         if (first + count - 1 > Int.MAX_VALUE) throw SecureMessageClientException.PreKeyIdsExhausted(kind)
         return first.toInt()
     }
+}
+
+/** Loads the device authentication key, which [SecureMessageClient.initialize] must have created. */
+internal suspend fun ClientStorage.requireDeviceAuthenticationKey(): DeviceAuthenticationKeyPair {
+    requireIdentity()
+    return deviceAuthentication.keyPair() ?: throw SecureMessageClientException.NotInitialized()
 }
 
 /** Loads the local identity, which [SecureMessageClient.initialize] must have created. */

@@ -5,7 +5,9 @@ import dev.kreienbuehl.ksecuremessage.client.ReceiveResult
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageClient
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageClientException
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransport
+import dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
@@ -641,7 +643,10 @@ class SqlDelightPersistenceTest {
                 client.currentPreKeyBundle().copy(oneTimePreKey = client.publicOneTimePreKeys().first())
         }
 
-        override suspend fun publishPreKeys(publication: PreKeyPublication) =
+        override suspend fun registerDevice(registration: DeviceRegistration, signer: ServerRequestSigner) =
+            error("These tests set bundles directly, see publish")
+
+        override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) =
             error("These tests set bundles directly, see publish")
 
         override suspend fun fetchPreKeyBundle(address: DeviceAddress) = bundles.getValue(address)
@@ -650,7 +655,9 @@ class SqlDelightPersistenceTest {
             mailboxes.getOrPut(envelope.recipient) { mutableListOf() }.add(envelope)
         }
 
-        override suspend fun receive(address: DeviceAddress) = mailboxes.remove(address)?.toList().orEmpty()
+        override suspend fun receive(address: DeviceAddress, signer: ServerRequestSigner) = receive(address)
+
+        fun receive(address: DeviceAddress) = mailboxes.remove(address)?.toList().orEmpty()
     }
 
     /** Fails every one-time prekey removal inside a transaction. */

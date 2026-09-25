@@ -1,6 +1,7 @@
 package dev.kreienbuehl.ksecuremessage.storage.inmemory
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
@@ -9,12 +10,17 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
+import dev.kreienbuehl.ksecuremessage.storage.AuthenticationNonceRepository
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
+import dev.kreienbuehl.ksecuremessage.storage.DeviceAuthenticationKeyStore
+import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
+import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationRepository
 import dev.kreienbuehl.ksecuremessage.storage.IdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.MailboxRepository
 import dev.kreienbuehl.ksecuremessage.storage.PendingOutboundMessage
@@ -41,7 +47,9 @@ import kotlin.time.Instant
  * Transactions are atomic: a transaction works on a copy of the committed
  * state and replaces it only when the block returns normally. A [Mutex]
  * serializes transactions. Byte arrays are copied on the way in and out, so
- * callers cannot change stored keys or sessions through an alias.
+ * callers cannot change stored keys or sessions through an alias. It never
+ * holds pre-milestone-12 state, so [DeviceAuthenticationKeyStore.awaitsUpgradeKey]
+ * is always `false`.
  */
 class InMemoryClientStorage : ClientStorage {
     private val mutex = Mutex()
@@ -50,6 +58,12 @@ class InMemoryClientStorage : ClientStorage {
     override val identity: IdentityStore = object : IdentityStore {
         override suspend fun identity() = transaction { identity.identity() }
         override suspend fun store(identity: LocalIdentity) = transaction { this.identity.store(identity) }
+    }
+
+    override val deviceAuthentication: DeviceAuthenticationKeyStore = object : DeviceAuthenticationKeyStore {
+        override suspend fun keyPair() = transaction { deviceAuthentication.keyPair() }
+        override suspend fun store(keyPair: DeviceAuthenticationKeyPair) = transaction { deviceAuthentication.store(keyPair) }
+        override suspend fun awaitsUpgradeKey() = transaction { deviceAuthentication.awaitsUpgradeKey() }
     }
 
     override val remoteIdentities: RemoteIdentityStore = object : RemoteIdentityStore {
@@ -134,6 +148,7 @@ class InMemoryClientStorage : ClientStorage {
 
 private data class State(
     val identity: LocalIdentity? = null,
+    val deviceAuthenticationKey: DeviceAuthenticationKeyPair? = null,
     val remoteIdentities: Map<DeviceAddress, ByteArray> = emptyMap(),
     val sessions: Map<DeviceAddress, SecureSession> = emptyMap(),
     /** Retired initiation to the local signed prekey it needs, if known. */
@@ -199,6 +214,17 @@ private class TransactionView(var state: State) : ClientStorage {
             check(state.identity == null) { "A local identity is already stored" }
             state = state.copy(identity = identity.copy())
         }
+    }
+
+    override val deviceAuthentication: DeviceAuthenticationKeyStore = object : DeviceAuthenticationKeyStore {
+        override suspend fun keyPair() = state.deviceAuthenticationKey?.copy()
+
+        override suspend fun store(keyPair: DeviceAuthenticationKeyPair) {
+            check(state.deviceAuthenticationKey == null) { "A device authentication key is already stored" }
+            state = state.copy(deviceAuthenticationKey = keyPair.copy())
+        }
+
+        override suspend fun awaitsUpgradeKey() = false
     }
 
     override val remoteIdentities: RemoteIdentityStore = object : RemoteIdentityStore {
@@ -330,6 +356,8 @@ private class TransactionView(var state: State) : ClientStorage {
 
 private fun LocalIdentity.copy() = LocalIdentity(publicKey.copyOf(), privateKey.copyOf())
 
+private fun DeviceAuthenticationKeyPair.copy() = DeviceAuthenticationKeyPair(publicKey.copyOf(), privateKey.copyOf())
+
 private fun SignedPreKeyPair.copy() = SignedPreKeyPair(id, publicKey.copyOf(), signature.copyOf(), privateKey.copyOf())
 
 private fun OneTimePreKeyPair.copy() = OneTimePreKeyPair(id, publicKey.copyOf(), privateKey.copyOf())
@@ -345,12 +373,65 @@ private fun SecureSession.copyState() = copy(state = state.copyOf())
  * are one queue per recipient behind another [Mutex], so enqueue and drain
  * are serialized too and each recipient's queue is in enqueue order. That is
  * stronger than the per (sender, recipient) order [MailboxRepository]
- * promises.
+ * promises. Device registrations and authentication nonces each keep their
+ * state behind their own [Mutex] as well, so registration and nonce claims
+ * are atomic.
  */
 class InMemoryServerStorage : ServerStorage {
     override val preKeys: PreKeyRepository = InMemoryPreKeyRepository()
 
     override val mailboxes: MailboxRepository = InMemoryMailboxRepository()
+
+    override val devices: DeviceRegistrationRepository = InMemoryDeviceRegistrationRepository()
+
+    override val authenticationNonces: AuthenticationNonceRepository = InMemoryAuthenticationNonceRepository()
+}
+
+private class InMemoryDeviceRegistrationRepository : DeviceRegistrationRepository {
+    private val mutex = Mutex()
+    private var registrations = mapOf<DeviceAddress, DeviceRegistration>()
+
+    // DeviceRegistration copies its key on the way in and out.
+    override suspend fun registration(address: DeviceAddress): DeviceRegistration? = mutex.withLock { registrations[address] }
+
+    override suspend fun register(registration: DeviceRegistration): Boolean = mutex.withLock {
+        val existing = registrations[registration.address]
+        when {
+            existing == null -> {
+                registrations = registrations + (registration.address to registration)
+                true
+            }
+            existing == registration -> false
+            else -> throw DeviceRegistrationException.Conflict()
+        }
+    }
+}
+
+/**
+ * Accepted nonces with their request timestamps. Pruning runs inside every
+ * claim, under the same lock, so the state never outgrows the nonces of the
+ * validity window.
+ */
+private class InMemoryAuthenticationNonceRepository : AuthenticationNonceRepository {
+    private val mutex = Mutex()
+    private var nonces = mapOf<Pair<DeviceAddress, NonceKey>, Instant>()
+
+    override suspend fun claim(address: DeviceAddress, nonce: ByteArray, timestamp: Instant, pruneBefore: Instant): Boolean =
+        mutex.withLock {
+            val kept = nonces.filterValues { it >= pruneBefore }
+            val key = address to NonceKey(nonce.copyOf())
+            if (key in kept) {
+                nonces = kept
+                return@withLock false
+            }
+            nonces = kept + (key to timestamp)
+            true
+        }
+
+    private class NonceKey(val bytes: ByteArray) {
+        override fun equals(other: Any?) = other is NonceKey && bytes.contentEquals(other.bytes)
+        override fun hashCode() = bytes.contentHashCode()
+    }
 }
 
 private class InMemoryMailboxRepository : MailboxRepository {

@@ -14,13 +14,12 @@ import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.PreKeyFormat
+import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
+import io.ktor.client.HttpClient
 import io.ktor.client.request.get
-import io.ktor.client.request.put
-import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
-import io.ktor.http.ContentType
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
-import io.ktor.http.contentType
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -38,6 +37,13 @@ import kotlin.test.assertNull
 
 class KSecureMessageRoutesTest {
     private val bob = DeviceAddress(UserId("bob"), DeviceId("laptop"))
+    private val bobDevice = TestDevice(bob)
+
+    /** The transport, with Bob registered. */
+    private suspend fun registered(http: HttpClient) = KtorSecureMessageTransport("", http).also { bobDevice.register(it) }
+
+    private suspend fun HttpClient.putPreKeys(body: String) =
+        raw(HttpMethod.Put, "/v1/devices/bob/laptop/prekeys", body.encodeToByteArray(), bobDevice.sign("PUT", ServerApiPaths.PRE_KEYS, body.encodeToByteArray()))
 
     private fun key(seed: Int, size: Int = PreKeyFormat.PUBLIC_KEY_SIZE) = ByteArray(size) { (seed + it).toByte() }
 
@@ -57,10 +63,10 @@ class KSecureMessageRoutesTest {
 
     @Test
     fun publishedKeysAreServedAsBase64AndConsumed() = testServer { storage, http ->
-        val transport = KtorSecureMessageTransport("", http)
+        val transport = registered(http)
         val published = publication()
-        transport.publishPreKeys(published)
-        transport.publishPreKeys(published)
+        transport.publishPreKeys(published, bobDevice.signer)
+        transport.publishPreKeys(published, bobDevice.signer)
         assertEquals(3, storage.preKeys.oneTimePreKeyCount(bob))
 
         val raw = http.get("/v1/devices/bob/laptop/prekey-bundle")
@@ -80,17 +86,14 @@ class KSecureMessageRoutesTest {
 
     @Test
     fun publishReturnsNoContent() = testServer { _, http ->
-        val response = http.put("/v1/devices/bob/laptop/prekeys") {
-            contentType(ContentType.Application.Json)
-            setBody(validJson())
-        }
-        assertEquals(HttpStatusCode.NoContent, response.status)
+        registered(http)
+        assertEquals(HttpStatusCode.NoContent, http.putPreKeys(validJson()).status)
     }
 
     @Test
     fun exhaustedInventoryReturnsBundleWithoutOneTimePreKey() = testServer { _, http ->
-        val transport = KtorSecureMessageTransport("", http)
-        transport.publishPreKeys(publication(oneTimePreKeys = IntRange.EMPTY))
+        val transport = registered(http)
+        transport.publishPreKeys(publication(oneTimePreKeys = IntRange.EMPTY), bobDevice.signer)
         val raw = Json.parseToJsonElement(http.get("/v1/devices/bob/laptop/prekey-bundle").bodyAsText()).jsonObject
         assertEquals(JsonNull, raw.getValue("oneTimePreKey"))
         assertNull(transport.fetchPreKeyBundle(bob).oneTimePreKey)
@@ -106,8 +109,8 @@ class KSecureMessageRoutesTest {
 
     @Test
     fun malformedRequestsAreBadRequestsAndChangeNothing() = testServer { storage, http ->
-        val transport = KtorSecureMessageTransport("", http)
-        transport.publishPreKeys(publication(oneTimePreKeys = 0..0))
+        val transport = registered(http)
+        transport.publishPreKeys(publication(oneTimePreKeys = 0..0), bobDevice.signer)
         val bodies = listOf(
             "not json",
             "{}",
@@ -117,27 +120,24 @@ class KSecureMessageRoutesTest {
             validJson(oneTimePreKeyId = -1),
         )
         for (body in bodies) {
-            val response = http.put("/v1/devices/bob/laptop/prekeys") {
-                contentType(ContentType.Application.Json)
-                setBody(body)
-            }
+            val response = http.putPreKeys(body)
             assertEquals(HttpStatusCode.BadRequest, response.status, body)
             assertEquals("""{"error":"invalid_publication"}""", response.bodyAsText())
         }
 
         val duplicate = publication(oneTimePreKeys = 5..5).let { it.copy(oneTimePreKeys = it.oneTimePreKeys + it.oneTimePreKeys) }
-        val rejected = assertFailsWith<SecureMessageTransportException.PublicationRejected> { transport.publishPreKeys(duplicate) }
+        val rejected = assertFailsWith<SecureMessageTransportException.PublicationRejected> { transport.publishPreKeys(duplicate, bobDevice.signer) }
         assertEquals(Reason.INVALID_PUBLICATION, rejected.reason)
         assertEquals(1, storage.preKeys.oneTimePreKeyCount(bob))
     }
 
     @Test
     fun conflictsAreReportedAndChangeNothing() = testServer { storage, http ->
-        val transport = KtorSecureMessageTransport("", http)
-        transport.publishPreKeys(publication(oneTimePreKeys = 0..2, signedPreKeyId = 5))
+        val transport = registered(http)
+        transport.publishPreKeys(publication(oneTimePreKeys = 0..2, signedPreKeyId = 5), bobDevice.signer)
 
         suspend fun rejection(publication: PreKeyPublication) =
-            assertFailsWith<SecureMessageTransportException.PublicationRejected> { transport.publishPreKeys(publication) }.reason
+            assertFailsWith<SecureMessageTransportException.PublicationRejected> { transport.publishPreKeys(publication, bobDevice.signer) }.reason
 
         assertEquals(Reason.IDENTITY_KEY_CONFLICT, rejection(publication(oneTimePreKeys = 3..4, identitySeed = 9, signedPreKeyId = 6)))
         assertEquals(Reason.SIGNED_PRE_KEY_CONFLICT, rejection(publication(oneTimePreKeys = 3..4, signedPreKeyId = 4)))
@@ -146,10 +146,7 @@ class KSecureMessageRoutesTest {
         }
         assertEquals(Reason.ONE_TIME_PRE_KEY_CONFLICT, rejection(conflicting))
 
-        val raw = http.put("/v1/devices/bob/laptop/prekeys") {
-            contentType(ContentType.Application.Json)
-            setBody(validJson(identityKey = Base64.encode(key(9))))
-        }
+        val raw = http.putPreKeys(validJson(identityKey = Base64.encode(key(9))))
         assertEquals(HttpStatusCode.Conflict, raw.status)
         assertEquals("""{"error":"identity_key_conflict"}""", raw.bodyAsText())
 
@@ -159,8 +156,8 @@ class KSecureMessageRoutesTest {
 
     @Test
     fun concurrentHttpFetchesNeverShareAOneTimePreKey() = testServer { _, http ->
-        val transport = KtorSecureMessageTransport("", http)
-        transport.publishPreKeys(publication(oneTimePreKeys = 0..9))
+        val transport = registered(http)
+        transport.publishPreKeys(publication(oneTimePreKeys = 0..9), bobDevice.signer)
 
         val ids = coroutineScope {
             List(20) { async { transport.fetchPreKeyBundle(bob).oneTimePreKey?.id?.value } }.awaitAll()
@@ -173,8 +170,10 @@ class KSecureMessageRoutesTest {
     @Test
     fun pathSegmentsAreEncoded() = testServer { storage, http ->
         val odd = DeviceAddress(UserId("bob/with slash"), DeviceId("dev?ice#1"))
-        val transport = KtorSecureMessageTransport("", http)
-        transport.publishPreKeys(publication().copy(address = odd))
+        val oddDevice = TestDevice(odd)
+        val transport = registered(http)
+        oddDevice.register(transport)
+        transport.publishPreKeys(publication().copy(address = odd), oddDevice.signer)
         assertEquals(3, storage.preKeys.oneTimePreKeyCount(odd))
         assertEquals(odd, transport.fetchPreKeyBundle(odd).address)
         assertEquals(0, storage.preKeys.oneTimePreKeyCount(bob))
@@ -182,9 +181,10 @@ class KSecureMessageRoutesTest {
 
     @Test
     fun eachSendersEnvelopesArriveInSendOrderOverHttp() = testServer { _, http ->
-        val transport = KtorSecureMessageTransport("", http)
+        val transport = registered(http)
         val senders = List(4) { DeviceAddress(UserId("sender-$it"), DeviceId("phone")) }
         val carol = DeviceAddress(UserId("carol"), DeviceId("tablet"))
+        val devices = listOf(bobDevice, TestDevice(carol)).onEach { it.register(transport) }.associateBy { it.address }
 
         // Each sender sends sequentially (as SecureMessageClient.send does);
         // the senders run concurrently, to two recipients.
@@ -208,14 +208,14 @@ class KSecureMessageRoutesTest {
         }
 
         for (recipient in listOf(bob, carol)) {
-            val received = transport.receive(recipient)
+            val received = transport.receive(recipient, devices.getValue(recipient).signer)
             assertEquals(senders.size * 25, received.size)
             for (sender in senders) {
                 val stream = received.filter { it.sender == sender }
                 assertEquals((0 until 25).map { "${sender.userId.value}#$it" }, stream.map { it.id.value })
                 assertContentEquals(byteArrayOf(24), stream.last().payload)
             }
-            assertEquals(emptyList(), transport.receive(recipient))
+            assertEquals(emptyList(), transport.receive(recipient, devices.getValue(recipient).signer))
         }
     }
 }

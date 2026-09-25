@@ -10,6 +10,7 @@ import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.KodiumProtocolEngine
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
@@ -40,6 +41,7 @@ private val CAROL = DeviceAddress(UserId("carol"), DeviceId("tablet"))
 
 private val SECRET_MESSAGE = "super-secret-pending-message".encodeToByteArray()
 private val IDENTITY_SECRET = ByteArray(32) { 0x5A }
+private val AUTH_SECRET = ByteArray(32) { 0x5B }
 private val SESSION_MARKER = "session-state-marker-0123456789".encodeToByteArray()
 
 /** Record encryption of SQLDelight storage, checked on the persisted bytes. */
@@ -75,6 +77,7 @@ class SqlDelightEncryptionTest {
     /** Every sensitive column value, raw. */
     private fun sealedValues(): List<ByteArray> =
         driver.blobs("SELECT sealed_identity FROM local_identity") +
+            driver.blobs("SELECT sealed_key_pair FROM device_authentication_key") +
             driver.blobs("SELECT sealed_key_pair FROM signed_pre_key") +
             driver.blobs("SELECT sealed_key_pair FROM one_time_pre_key") +
             driver.blobs("SELECT sealed_state FROM session") +
@@ -91,6 +94,7 @@ class SqlDelightEncryptionTest {
 
     private suspend fun populate(storage: ClientStorage) {
         storage.identity.store(LocalIdentity(ByteArray(32) { 0x11 }, IDENTITY_SECRET))
+        storage.deviceAuthentication.store(DeviceAuthenticationKeyPair(ByteArray(32) { 0x12 }, AUTH_SECRET))
         storage.preKeys.storeCurrentSignedPreKey(spk(1), Instant.fromEpochMilliseconds(1_000))
         storage.preKeys.storeCurrentSignedPreKey(spk(2), Instant.fromEpochMilliseconds(2_000))
         storage.preKeys.storeOneTimePreKeys(listOf(otpk(10), otpk(11)))
@@ -106,7 +110,8 @@ class SqlDelightEncryptionTest {
     fun newDatabaseStoresOnlyEncryptedRecords() = runTest {
         populate(reopen())
 
-        assertNoPlaintext(IDENTITY_SECRET, SESSION_MARKER, SECRET_MESSAGE, spk(1).privateKey, otpk(10).privateKey)
+        assertNoPlaintext(IDENTITY_SECRET, AUTH_SECRET, SESSION_MARKER, SECRET_MESSAGE, spk(1).privateKey, otpk(10).privateKey)
+        assertTrue(driver.blob("SELECT sealed_key_pair FROM device_authentication_key").isSealed())
         assertEquals(listOf(1L), driver.longs("SELECT format FROM storage_encryption"))
         assertEquals(listOf(1L), driver.longs("SELECT key_id FROM storage_encryption"))
         assertTrue(driver.blob("SELECT key_check FROM storage_encryption").isSealed())
@@ -114,6 +119,7 @@ class SqlDelightEncryptionTest {
         // Everything survives a restart.
         val after = reopen()
         assertContentEquals(IDENTITY_SECRET, after.identity.identity()?.privateKey)
+        assertContentEquals(AUTH_SECRET, after.deviceAuthentication.keyPair()?.privateKey)
         assertContentEquals(spk(1).privateKey, after.preKeys.signedPreKey(SignedPreKeyId(1))?.privateKey)
         assertContentEquals(spk(2).signature, after.preKeys.currentSignedPreKey()?.signature)
         assertContentEquals(otpk(11).privateKey, after.preKeys.oneTimePreKey(OneTimePreKeyId(11))?.privateKey)

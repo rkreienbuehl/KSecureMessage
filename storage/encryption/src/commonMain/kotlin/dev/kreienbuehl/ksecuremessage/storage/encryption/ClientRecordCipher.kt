@@ -4,6 +4,7 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
@@ -33,6 +34,10 @@ interface ClientRecordCipher {
     /** The whole identity key pair. */
     suspend fun sealIdentity(identity: LocalIdentity): ByteArray
     suspend fun openIdentity(sealed: ByteArray): LocalIdentity
+
+    /** The whole device authentication key pair (docs/server-authentication.md). */
+    suspend fun sealDeviceAuthenticationKey(keyPair: DeviceAuthenticationKeyPair): ByteArray
+    suspend fun openDeviceAuthenticationKey(sealed: ByteArray): DeviceAuthenticationKeyPair
 
     /** Public key, signature and private key, bound to the prekey ID. */
     suspend fun sealSignedPreKey(preKey: SignedPreKeyPair): ByteArray
@@ -90,6 +95,7 @@ object SealedRecords {
  * format:
  *
  * - identity: `version:u8 = 1 | bytes(publicKey) | bytes(privateKey)`
+ * - device authentication key: `version:u8 = 1 | bytes(publicKey) | bytes(privateKey)`
  * - signed prekey: `version:u8 = 1 | bytes(publicKey) | bytes(signature) | bytes(privateKey)`
  * - one-time prekey: `version:u8 = 1 | bytes(publicKey) | bytes(privateKey)`
  * - session: the session state as is (it has its own version)
@@ -112,6 +118,15 @@ internal class AeadClientRecordCipher(private val cipher: StorageCipher) : Clien
 
     override suspend fun openIdentity(sealed: ByteArray): LocalIdentity =
         openEncoded(StorageRecordType.LOCAL_IDENTITY, emptyList(), sealed) { LocalIdentity(bytes(), bytes()) }
+
+    override suspend fun sealDeviceAuthenticationKey(keyPair: DeviceAuthenticationKeyPair): ByteArray =
+        sealEncoded(StorageRecordType.DEVICE_AUTHENTICATION_KEY, emptyList()) {
+            bytes(keyPair.publicKey)
+            bytes(keyPair.privateKey)
+        }
+
+    override suspend fun openDeviceAuthenticationKey(sealed: ByteArray): DeviceAuthenticationKeyPair =
+        openEncoded(StorageRecordType.DEVICE_AUTHENTICATION_KEY, emptyList(), sealed) { DeviceAuthenticationKeyPair(bytes(), bytes()) }
 
     override suspend fun sealSignedPreKey(preKey: SignedPreKeyPair): ByteArray =
         sealEncoded(StorageRecordType.SIGNED_PRE_KEY, listOf(intBytes(preKey.id.value))) {

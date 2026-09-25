@@ -1,6 +1,7 @@
 package dev.kreienbuehl.ksecuremessage.server.ktor
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
@@ -37,6 +38,10 @@ internal class PreKeyBundleResponse(
     val oneTimePreKey: OneTimePreKeyDto? = null,
 )
 
+/** Body of `PUT /v1/devices/{user}/{device}/registration`. The address is in the path. */
+@Serializable
+internal class DeviceRegistrationRequest(val publicKey: String)
+
 /** Body of 4xx responses. */
 @Serializable
 internal class ErrorResponse(val error: String)
@@ -55,6 +60,21 @@ internal fun PreKeyPublicationRequest.toPublication(address: DeviceAddress) = Pr
     ),
     oneTimePreKeys = oneTimePreKeys.map { PublicOneTimePreKey(OneTimePreKeyId(it.id), Base64.decode(it.publicKey)) },
 )
+
+/** Throws [IllegalArgumentException] for invalid Base64. The key size is checked by the server. */
+internal fun DeviceRegistrationRequest.toRegistration(address: DeviceAddress) = DeviceRegistration(address, Base64.decode(publicKey))
+
+/**
+ * Request authentication headers, format version 1 (docs/server-authentication.md).
+ * Mirrored in client:ktor.
+ */
+internal object AuthHeaders {
+    const val VERSION = "X-KSecureMessage-Auth-Version"
+    const val TIMESTAMP = "X-KSecureMessage-Timestamp"
+    const val NONCE = "X-KSecureMessage-Nonce"
+    const val SIGNATURE = "X-KSecureMessage-Signature"
+    const val CURRENT_VERSION = "1"
+}
 
 internal fun PreKeyBundle.toResponse() = PreKeyBundleResponse(
     identityKey = Base64.encode(identityKey),
