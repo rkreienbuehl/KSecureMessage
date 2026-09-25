@@ -13,11 +13,11 @@ import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 import kotlin.time.Instant
 
 // Every store below except RemoteIdentityStore, SessionInitiationStore and ProcessedInboundStore holds
-// secret key material, ratchet state or application message content as raw bytes.
-// PendingOutboundStore holds the plaintext of sent messages until the recipient acknowledges them.
-// Adapters persist those bytes as they are; none of them encrypts at rest.
-// Protect the underlying database or files with platform means.
-// See docs/storage.md.
+// secret key material, ratchet state or application message content. The interfaces exchange them as
+// plaintext; PendingOutboundStore holds the plaintext of sent messages until the recipient acknowledges them.
+// A persistent adapter must encrypt them at rest (SqlDelightClientStorage seals them with storage:encryption,
+// see docs/storage-encryption.md) and must fail, never return null, when a stored record cannot be read.
+// InMemoryClientStorage persists nothing and does not encrypt. See docs/storage.md.
 
 interface SessionStore {
     suspend fun load(address: DeviceAddress): SecureSession?
@@ -189,7 +189,8 @@ class PendingOutboundMessage(
  * Sent application messages kept until the recipient acknowledges them, so
  * they can be encrypted and sent again. Keyed by (recipient, logical ID).
  *
- * **Holds application plaintext, unencrypted.** Entries are removed when the
+ * **Holds application plaintext** (encrypted at rest by persistent adapters,
+ * see docs/storage-encryption.md). Entries are removed when the
  * acknowledgement arrives, never because the transport accepted an envelope.
  */
 interface PendingOutboundStore {

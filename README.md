@@ -58,7 +58,10 @@ Shared storage contracts.
 Simple in-memory implementations useful for tests and examples. Transactions are atomic.
 
 ### `storage:sqldelight`
-Persistent `ClientStorage` on SQLite via SQLDelight, for all client targets. The application supplies the platform driver. Stores secret keys unencrypted, see [docs/storage.md](docs/storage.md).
+Persistent `ClientStorage` on SQLite via SQLDelight, for all client targets. The application supplies the platform driver and a `StorageKeyProvider`; key pairs, session state and pending message plaintext are stored as encrypted records, see [docs/storage.md](docs/storage.md) and [docs/storage-encryption.md](docs/storage-encryption.md).
+
+### `storage:encryption`
+Record-level encryption of sensitive client storage records: AES-256-GCM (cryptography-kotlin) with associated data bound to record type and row key, the versioned record format, `StorageKeyProvider` and `StorageEncryptionKey`. Used by `storage:sqldelight`.
 
 ### `storage:testing`
 Shared `ClientStorage` and server `PreKeyRepository` contract tests that every storage adapter runs. Not published.
@@ -75,6 +78,7 @@ Current dependency baseline:
 
 - Kotlin 2.4.20
 - Kodium 1.0.0
+- cryptography-kotlin 0.6.0 (storage encryption)
 - Ktor 3.6.0
 - SQLDelight 2.4.0
 
@@ -97,7 +101,7 @@ client.initialize()
 client.publishPreKeys()
 ```
 
-> Storage adapters persist private keys and session state unencrypted. Protect the database with platform means until encryption at rest is added.
+> Until milestone 9, storage adapters persisted private keys and session state unencrypted. See milestone 9 below.
 
 Milestone 4 done: `client.publishPreKeys()` uploads the identity key, the current signed prekey and the public one-time prekeys. The server's `PreKeyRepository` applies a publication atomically, treats retries as no-ops and rejects identity and prekey ID conflicts. Each bundle fetch atomically hands out and consumes at most one one-time prekey (lowest ID first); a bundle without one is served when none are left. `server:ktor` and `client:ktor` implement the HTTP API v1. See [docs/prekey-publication.md](docs/prekey-publication.md).
 
@@ -122,13 +126,20 @@ for (envelope in transport.receive(client.localAddress)) {
 client.retryPendingMessages(bob)                            // e.g. after a SessionCollision
 ```
 
-> Client storage now also holds the plaintext of sent messages until they are acknowledged. It is not encrypted.
+> Client storage now also holds the plaintext of sent messages until they are acknowledged. Milestone 9 encrypts it at rest in `SqlDelightClientStorage`.
+
+Milestone 9 done: record-level client storage encryption. `SqlDelightClientStorage.open(driver, keyProvider)` stores the identity and prekey key pairs, session state and pending message frames as AES-256-GCM records (cryptography-kotlin, random 96-bit nonces, 128-bit tags) in a versioned local format that names the storage key ID. The associated data binds each record to its record type and row key (prekey ID, remote address, recipient and logical message ID), so modified, swapped or cross-type records fail with `StorageEncryptionException` instead of reading as absent. The storage key is a dedicated 256-bit key from an application-supplied `StorageKeyProvider`, never stored in the database; there is no plaintext mode. A wrong key fails at open (key check record); a missing key fails with `KeyUnavailable`; no state is ever regenerated. SQLDelight schema version 6 adds a `storage_encryption` marker; the next `open` encrypts a milestone 8 database in one transaction, all or nothing. IDs, addresses, timestamps, pins, retired initiations and processed IDs remain plaintext metadata; row deletion, whole-database rollback and pre-upgrade plaintext left in SQLite pages or backups are not addressed. Platform key providers (Android Keystore, Apple Keychain) are not included. No wire, protocol or messaging API change. See [docs/storage-encryption.md](docs/storage-encryption.md).
+
+```kotlin
+val storage = SqlDelightClientStorage.open(driver, keyProvider) // keyProvider: platform key storage
+val client = SecureMessageClient(address, storage, KodiumProtocolEngine(), transport)
+```
 
 ## Next implementation steps
 
 1. Authenticated server API, device re-registration, persistent server storage.
 2. Safety numbers / manual identity verification, and a deliberate way to accept identity changes.
-3. Encryption at rest for client storage (keys, sessions and pending message plaintext).
+3. Platform storage key providers (Android Keystore, Apple Keychain) and storage key rotation.
 4. An application commit boundary for received messages and bounded dedup retention.
 5. Sealed sender.
 

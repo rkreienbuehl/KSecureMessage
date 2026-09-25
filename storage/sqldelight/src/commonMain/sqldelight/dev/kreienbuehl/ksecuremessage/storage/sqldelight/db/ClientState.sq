@@ -1,10 +1,28 @@
--- Local client state. Key material and session state are opaque BLOBs
--- produced by the ProtocolEngine and are stored unencrypted.
+-- Local client state. Columns named sealed_* hold encrypted storage records
+-- (docs/storage-encryption.md): key pairs, session state and pending message
+-- frames never reach the database in plaintext. IDs, addresses, timestamps
+-- and the other tables are plaintext metadata.
+--
+-- The sealed tables must stay identical to the DDL in
+-- LegacyPlaintextMigration.kt, which rebuilds them for databases from before
+-- schema version 6.
+
+-- Single row. format: 0 = milestone 8 plaintext, still to be encrypted
+-- (databases upgraded by 5.sqm); 1 = record encryption version 1. key_id is
+-- the storage key the records are sealed with and key_check a sealed empty
+-- record that proves that key; both NULL until the first open binds a key.
+CREATE TABLE storage_encryption (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    format INTEGER NOT NULL,
+    key_id INTEGER,
+    key_check BLOB
+);
+
+INSERT INTO storage_encryption (id, format) VALUES (0, 1);
 
 CREATE TABLE local_identity (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
-    public_key BLOB NOT NULL,
-    private_key BLOB NOT NULL
+    sealed_identity BLOB NOT NULL
 );
 
 -- created_at and replaced_at (epoch milliseconds) were added in schema
@@ -13,17 +31,14 @@ CREATE TABLE local_identity (
 -- Rows are deleted once their grace period is over.
 CREATE TABLE signed_pre_key (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id BETWEEN 0 AND 2147483647),
-    public_key BLOB NOT NULL,
-    signature BLOB NOT NULL,
-    private_key BLOB NOT NULL,
+    sealed_key_pair BLOB NOT NULL,
     created_at INTEGER,
     replaced_at INTEGER
 );
 
 CREATE TABLE one_time_pre_key (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id BETWEEN 0 AND 2147483647),
-    public_key BLOB NOT NULL,
-    private_key BLOB NOT NULL
+    sealed_key_pair BLOB NOT NULL
 );
 
 -- Single row. The highest_* columns are ID high-water marks: they keep their
@@ -40,7 +55,7 @@ INSERT INTO pre_key_state (id) VALUES (0);
 CREATE TABLE session (
     remote_user_id TEXT NOT NULL,
     remote_device_id TEXT NOT NULL,
-    state BLOB NOT NULL,
+    sealed_state BLOB NOT NULL,
     PRIMARY KEY (remote_user_id, remote_device_id)
 );
 
@@ -67,15 +82,15 @@ CREATE TABLE retired_session_initiation (
 );
 
 -- Sent application messages awaiting the recipient's acknowledgement.
--- frame is the encoded reliability frame: application PLAINTEXT, stored
--- unencrypted. AUTOINCREMENT keeps sequence numbers from being reused after
+-- sealed_frame is the encrypted reliability frame (it contains application
+-- plaintext). AUTOINCREMENT keeps sequence numbers from being reused after
 -- deletes, so they give the send order. Added in schema version 5, see 4.sqm.
 CREATE TABLE pending_outbound_message (
     sequence INTEGER PRIMARY KEY AUTOINCREMENT,
     recipient_user_id TEXT NOT NULL,
     recipient_device_id TEXT NOT NULL,
     message_id BLOB NOT NULL CHECK (length(message_id) = 16),
-    frame BLOB NOT NULL,
+    sealed_frame BLOB NOT NULL,
     UNIQUE (recipient_user_id, recipient_device_id, message_id)
 );
 
@@ -88,11 +103,22 @@ CREATE TABLE processed_inbound_message (
     PRIMARY KEY (sender_user_id, sender_device_id, message_id)
 );
 
+selectStorageEncryption:
+SELECT format, key_id, key_check FROM storage_encryption;
+
+bindStorageKey:
+UPDATE storage_encryption SET key_id = ?, key_check = ?;
+
+countSealedRecords:
+SELECT (SELECT count(*) FROM local_identity) + (SELECT count(*) FROM signed_pre_key)
+    + (SELECT count(*) FROM one_time_pre_key) + (SELECT count(*) FROM session)
+    + (SELECT count(*) FROM pending_outbound_message);
+
 selectIdentity:
-SELECT public_key, private_key FROM local_identity;
+SELECT sealed_identity FROM local_identity;
 
 insertIdentity:
-INSERT INTO local_identity (id, public_key, private_key) VALUES (0, ?, ?);
+INSERT INTO local_identity (id, sealed_identity) VALUES (0, ?);
 
 selectRemoteIdentity:
 SELECT identity_key FROM remote_identity WHERE remote_user_id = ? AND remote_device_id = ?;
@@ -102,10 +128,10 @@ insertRemoteIdentity:
 INSERT INTO remote_identity (remote_user_id, remote_device_id, identity_key) VALUES (?, ?, ?);
 
 selectSession:
-SELECT state FROM session WHERE remote_user_id = ? AND remote_device_id = ?;
+SELECT sealed_state FROM session WHERE remote_user_id = ? AND remote_device_id = ?;
 
 upsertSession:
-INSERT OR REPLACE INTO session (remote_user_id, remote_device_id, state) VALUES (?, ?, ?);
+INSERT OR REPLACE INTO session (remote_user_id, remote_device_id, sealed_state) VALUES (?, ?, ?);
 
 deleteSession:
 DELETE FROM session WHERE remote_user_id = ? AND remote_device_id = ?;
@@ -128,10 +154,10 @@ selectPreKeyState:
 SELECT current_signed_pre_key_id, highest_signed_pre_key_id, highest_one_time_pre_key_id FROM pre_key_state;
 
 selectSignedPreKey:
-SELECT id, public_key, signature, private_key FROM signed_pre_key WHERE id = ?;
+SELECT sealed_key_pair FROM signed_pre_key WHERE id = ?;
 
 insertSignedPreKey:
-INSERT INTO signed_pre_key (id, public_key, signature, private_key, created_at) VALUES (?, ?, ?, ?, ?);
+INSERT INTO signed_pre_key (id, sealed_key_pair, created_at) VALUES (?, ?, ?);
 
 -- Moves the current key into its grace period. Runs before makeSignedPreKeyCurrent.
 markCurrentSignedPreKeyReplaced:
@@ -156,16 +182,16 @@ makeSignedPreKeyCurrent:
 UPDATE pre_key_state SET current_signed_pre_key_id = :id, highest_signed_pre_key_id = :id;
 
 selectOneTimePreKey:
-SELECT id, public_key, private_key FROM one_time_pre_key WHERE id = ?;
+SELECT sealed_key_pair FROM one_time_pre_key WHERE id = ?;
 
-selectPublicOneTimePreKeys:
-SELECT id, public_key FROM one_time_pre_key ORDER BY id;
+selectOneTimePreKeys:
+SELECT id, sealed_key_pair FROM one_time_pre_key ORDER BY id;
 
 countOneTimePreKeys:
 SELECT count(*) FROM one_time_pre_key;
 
 insertOneTimePreKey:
-INSERT INTO one_time_pre_key (id, public_key, private_key) VALUES (?, ?, ?);
+INSERT INTO one_time_pre_key (id, sealed_key_pair) VALUES (?, ?);
 
 deleteOneTimePreKey:
 DELETE FROM one_time_pre_key WHERE id = ?;
@@ -174,14 +200,14 @@ setHighestOneTimePreKeyId:
 UPDATE pre_key_state SET highest_one_time_pre_key_id = ?;
 
 insertPendingOutbound:
-INSERT INTO pending_outbound_message (recipient_user_id, recipient_device_id, message_id, frame) VALUES (?, ?, ?, ?);
+INSERT INTO pending_outbound_message (recipient_user_id, recipient_device_id, message_id, sealed_frame) VALUES (?, ?, ?, ?);
 
 selectPendingOutbound:
-SELECT sequence, frame FROM pending_outbound_message
+SELECT sequence, sealed_frame FROM pending_outbound_message
 WHERE recipient_user_id = ? AND recipient_device_id = ? AND message_id = ?;
 
 selectPendingOutboundFor:
-SELECT sequence, message_id, frame FROM pending_outbound_message
+SELECT sequence, message_id, sealed_frame FROM pending_outbound_message
 WHERE recipient_user_id = ? AND recipient_device_id = ? ORDER BY sequence;
 
 deletePendingOutbound:

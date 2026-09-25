@@ -33,6 +33,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":storage:core"))
+            api(project(":storage:encryption"))
             api(libs.sqldelight.runtime)
             implementation(libs.sqldelight.async.extensions)
             implementation(libs.kotlinx.coroutines.core)

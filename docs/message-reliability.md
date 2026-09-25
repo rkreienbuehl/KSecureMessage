@@ -14,10 +14,13 @@ Code: `client/core/.../client/SecureMessageClient.kt` (`send`, `decrypt`,
 `core/protocol/.../protocol/SecurePayloadCodec.kt`, stores in
 `storage/core/.../storage/ClientStorage.kt`.
 
-> **Plaintext at rest.** Client storage now contains the plaintext of every
-> sent message until the recipient acknowledges it
-> (`PendingOutboundStore`). No adapter encrypts it. Protect the database like
-> the key material it already holds ([storage.md](storage.md#sensitive-data-at-rest)).
+> **Plaintext in storage.** Client storage contains the plaintext of every
+> sent message until the recipient acknowledges it (`PendingOutboundStore`).
+> Since milestone 9 `SqlDelightClientStorage` stores each pending frame as an
+> AES-256-GCM record bound to recipient and logical message ID
+> ([storage-encryption.md](storage-encryption.md)); the `PendingOutboundStore`
+> API still hands out plaintext frames. Sequence numbers, recipients and
+> logical IDs stay plaintext metadata.
 
 ## Four different events
 
@@ -269,7 +272,10 @@ is the sender's explicit retry.
   it. This grows with the number of received messages.
 
 SQLDelight schema version 5 (`4.sqm`) adds `pending_outbound_message` and
-`processed_inbound_message`; see [storage.md](storage.md).
+`processed_inbound_message`; see [storage.md](storage.md). Since schema
+version 6 the frame is stored encrypted (`sealed_frame`); the migration keeps
+logical IDs, recipients and sequence numbers, and retry and ACK work the same
+afterwards.
 
 ## API changes (breaking)
 
@@ -289,7 +295,9 @@ SQLDelight schema version 5 (`4.sqm`) adds `pending_outbound_message` and
 
 - No exactly-once application side effects; no application commit API.
 - Processed IDs are never pruned.
-- Pending plaintext is stored unencrypted.
+- Pending plaintext is encrypted at rest only by `SqlDelightClientStorage`
+  (milestone 9); plaintext written before the upgrade may survive in SQLite
+  free pages, journals and backups.
 - Retry is explicit; no background scheduler, no automatic retry after
   convergence.
 - A lost ACK is only recovered by a sender retry.

@@ -10,23 +10,26 @@ Lifecycle: `client/core/.../client/SecureMessageClient.kt` and `PreKeyManager.kt
 
 ## Sensitive data at rest
 
-**Storage adapters persist raw secret key material.** This covers the
-identity private key, signed and one-time prekey private keys, and session
-state (`SecureSession.state`, which contains the ratchet chain keys). Neither
-adapter encrypts these bytes. A persistent database is not a secure database.
-
-**Since milestone 8 client storage also contains application message
-content**: the plaintext of every sent message stays in
+Client storage holds secret key material (the identity private key, signed
+and one-time prekey private keys), session state (`SecureSession.state`,
+which contains the ratchet chain keys) and, since milestone 8, application
+message content: the plaintext of every sent message stays in
 `PendingOutboundStore` until the recipient acknowledges it
-([message-reliability.md](message-reliability.md)). It is stored
-unencrypted, like the keys. `ProcessedInboundStore` holds sender addresses
-and logical message IDs of received messages (metadata, no content).
+([message-reliability.md](message-reliability.md)). `ProcessedInboundStore`
+holds sender addresses and logical message IDs (metadata, no content).
 
-Until encryption at rest exists (a later milestone), the application must
-protect the storage with platform means. Examples are an app-private data
-directory, full-disk or file protection classes, or an encrypted SQLite build.
-Key bytes and session state never appear in logs, exception messages or
-`toString()`.
+**Since milestone 9 `SqlDelightClientStorage` encrypts these records** with
+AES-256-GCM under a storage key from an application-supplied
+`StorageKeyProvider`, bound to record type and row key
+([storage-encryption.md](storage-encryption.md)). This is record-level
+encryption, not database encryption: IDs, addresses, timestamps, pins,
+retired initiations and processed message IDs stay plaintext metadata, and
+row deletion or rollback of the whole database is not detected. The
+protection is only as good as the key storage. `InMemoryClientStorage` does
+not encrypt (it persists nothing).
+
+Key bytes, session state and message plaintext never appear in logs,
+exception messages or `toString()`.
 
 ## Client lifecycle
 
@@ -221,21 +224,28 @@ the instance.
 
 Tables:
 
-- `local_identity`: one row
-- `signed_pre_key`, with `created_at` and `replaced_at` (epoch milliseconds, nullable)
-- `one_time_pre_key`
+- `storage_encryption`: one row with the storage format and the bound storage key ID
+- `local_identity`: one row, the sealed key pair
+- `signed_pre_key`: sealed key pair, with `created_at` and `replaced_at` (epoch milliseconds, nullable)
+- `one_time_pre_key`: sealed key pair
 - `pre_key_state`: one row holding the current signed prekey ID and both high-water marks
-- `session`: keyed by remote user and device ID
+- `session`: sealed state, keyed by remote user and device ID
 - `remote_identity`: pinned remote identity public keys, keyed by remote user and device ID
 - `retired_session_initiation`: retired 32-byte session initiation IDs, keyed by remote user, device ID and initiation ID, with the nullable local `signed_pre_key_id` used for pruning
-- `pending_outbound_message`: `sequence INTEGER PRIMARY KEY AUTOINCREMENT` (never reused), recipient user and device ID, 16-byte `message_id`, and the encoded frame (**application plaintext**); unique per recipient and message ID
+- `pending_outbound_message`: `sequence INTEGER PRIMARY KEY AUTOINCREMENT` (never reused), recipient user and device ID, 16-byte `message_id`, and the sealed frame (encrypted; the frame holds the application plaintext); unique per recipient and message ID
 - `processed_inbound_message`: sender user and device ID and 16-byte `message_id`
 
-Keys and session state are opaque BLOBs, and the schema does not depend on
-Kodium internals. All IDs have a `CHECK (id BETWEEN 0 AND 2147483647)`
-constraint.
+Since schema version 6 the key pairs, session state and pending frames are
+in `sealed_*` columns holding encrypted storage records, and
+`storage_encryption` (one row) records the storage format and the bound
+storage key ID ([storage-encryption.md](storage-encryption.md)). The schema
+does not depend on Kodium internals. All IDs have a
+`CHECK (id BETWEEN 0 AND 2147483647)` constraint.
 
-The schema version is 5. Version 1 (milestones 3 and 4) had no
+Open the storage with `SqlDelightClientStorage.open(driver, keyProvider)`.
+There is no unencrypted mode.
+
+The schema version is 6. Version 1 (milestones 3 and 4) had no
 `remote_identity` table; `1.sqm` adds it and changes nothing else. Version 2
 (milestone 5) had no `retired_session_initiation` table; `2.sqm` adds it and
 changes nothing else. Version 3 (milestone 6) had no lifecycle columns;
@@ -248,11 +258,17 @@ full grace period then, and nothing is deleted on that first start
 Version 4 (milestone 7) had no reliability tables; `4.sqm` creates
 `pending_outbound_message` and `processed_inbound_message`, empty, and
 changes nothing else. Messages from before the upgrade are neither pending
-nor processed.
+nor processed. Version 5 (milestone 8) stored key pairs, session state and
+pending frames in plaintext; `5.sqm` only adds `storage_encryption` with
+format 0, and the next `SqlDelightClientStorage.open` encrypts every
+sensitive record in one transaction, rebuilding the five sensitive tables
+([storage-encryption.md](storage-encryption.md#migration-from-milestone-8)).
+Plaintext that the old version wrote may survive in free pages, the journal
+and backups.
 A driver created with `SqlDelightClientStorage.Schema`,
 as in the table above, reads SQLite's `user_version` on open and runs the
 migrations itself. An application that manages schema versions on its own
-calls `SqlDelightClientStorage.Schema.migrate(driver, oldVersion, 5)`.
+calls `SqlDelightClientStorage.Schema.migrate(driver, oldVersion, 6)`.
 Existing identities, prekeys, sessions, pins and retired initiations are kept. Sessions from
 version 1 have no pin, see
 [identity-trust.md](identity-trust.md#sessions-from-before-pinning). Session
@@ -265,7 +281,11 @@ restart that continues an existing session, remote trust across restarts,
 replay protection and simultaneous-initiation resolution across restarts, the
 signed prekey lifecycle (grace, expiry, pruning, clock set back) across
 restarts, pending messages, duplicate suppression and collision recovery
-across restarts, and migrating version 1, 2, 3 and 4 databases.
+across restarts, and migrating version 1, 2, 3 and 4 databases. Since
+milestone 9 they also check the persisted bytes: sensitive columns hold only
+encrypted records, corrupted and swapped records fail closed, wrong and
+missing keys fail at open, encryption failures roll back, and a milestone 8
+database migrates completely or not at all.
 JS/Wasm have no SQLDelight tests: the web worker driver needs a browser worker.
 The linuxX64 and mingwX64 test binaries link against the target's `libsqlite3`,
 so they are only linked and run on a Linux or Windows host.
@@ -281,4 +301,6 @@ so they are only linked and run on a Linux or Windows host.
 - A secure or monotonic clock for the signed prekey lifecycle.
 - Pruning of processed message IDs (kept forever, see
   [message-reliability.md](message-reliability.md#storage)).
-- Encryption at rest, including of pending message plaintext.
+- Platform storage key providers, storage key rotation, rollback protection
+  and integrity of plaintext metadata
+  ([storage-encryption.md](storage-encryption.md#not-covered)).

@@ -8,7 +8,7 @@ class SqlDelightClientStorageTest : ClientStorageContractTest() {
     private val databases = mutableListOf<TestDatabase>()
 
     override suspend fun newStorage(): ClientStorage =
-        SqlDelightClientStorage(TestDatabase().also { databases += it }.open())
+        openStorage(TestDatabase().also { databases += it }.open())
 
     @AfterTest
     fun closeDatabases() {

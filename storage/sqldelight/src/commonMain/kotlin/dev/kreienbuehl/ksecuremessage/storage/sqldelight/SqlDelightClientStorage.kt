@@ -27,47 +27,60 @@ import dev.kreienbuehl.ksecuremessage.storage.SessionInitiationStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
 import dev.kreienbuehl.ksecuremessage.storage.SignedPreKeyInfo
 import dev.kreienbuehl.ksecuremessage.storage.sqldelight.db.ClientStateQueries
+import dev.kreienbuehl.ksecuremessage.storage.encryption.ClientRecordCipher
+import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionException
+import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionKey
+import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId
+import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyProvider
 import dev.kreienbuehl.ksecuremessage.storage.sqldelight.db.KSecureMessageDatabase
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.CoroutineContext
 import kotlin.time.Instant
 
 /**
- * Persistent [ClientStorage] on SQLite through SQLDelight.
+ * Persistent [ClientStorage] on SQLite through SQLDelight, with record-level
+ * encryption of the sensitive records (docs/storage-encryption.md).
  *
- * The application creates the [SqlDriver] for its platform with [Schema]
- * (for example `JdbcSqliteDriver`, `AndroidSqliteDriver`,
- * `NativeSqliteDriver`), and closes it. Every [transaction] is a real SQLite
- * transaction: if the block throws, SQLite rolls back all of its writes. A
- * [Mutex] serializes transactions of this instance; use one instance per
- * database.
+ * Open it with [open]. The application creates the [SqlDriver] for its
+ * platform with [Schema] (for example `JdbcSqliteDriver`,
+ * `AndroidSqliteDriver`, `NativeSqliteDriver`), and closes it. Every
+ * [transaction] is a real SQLite transaction: if the block throws, SQLite
+ * rolls back all of its writes. A [Mutex] serializes transactions of this
+ * instance; use one instance per database.
  *
  * The JVM and native drivers bind a transaction to the thread that started
  * it. Transaction blocks must not move to another thread, so they must not
  * suspend on I/O or switch dispatchers. `SecureMessageClient` follows this.
+ * Sealing and opening records is CPU work inside the transaction.
  *
- * Private keys, session state and the plaintext of sent messages awaiting
- * acknowledgement are stored as plain BLOBs. This adapter does not encrypt
- * them: protect the database file with platform means.
+ * The local identity, signed and one-time prekeys (whole key pairs), session
+ * state and pending message frames are stored as AES-256-GCM records bound
+ * to their record type and row key. IDs, addresses, timestamps, high-water
+ * marks, remote identity pins, retired initiations and processed message IDs
+ * stay plaintext metadata. There is no unencrypted mode. A record that does
+ * not authenticate throws [StorageEncryptionException]; it is never treated
+ * as missing.
  *
  * Schema version 2 added the `remote_identity` table (milestone 5), version 3
  * the `retired_session_initiation` table (milestone 6), version 4 nullable
  * signed prekey lifecycle columns (milestone 7), version 5 the
  * `pending_outbound_message` and `processed_inbound_message` tables
- * (milestone 8). A driver created with [Schema] upgrades an older database on
- * open; an application that manages versions itself calls
- * `Schema.migrate(driver, oldVersion, 5)`. The
- * migrations only add tables and nullable columns. Session state written
- * before milestone 6 stays readable; its format is versioned inside the BLOB.
- * Timestamps are stored as epoch milliseconds.
+ * (milestone 8), version 6 the `storage_encryption` marker (milestone 9). A
+ * driver created with [Schema] upgrades an older database on open; an
+ * application that manages versions itself calls
+ * `Schema.migrate(driver, oldVersion, 6)`. An upgraded database still holds
+ * its milestone 8 plaintext until [open] encrypts it. Session state written
+ * before milestone 6 stays readable; its format is versioned inside the
+ * record. Timestamps are stored as epoch milliseconds.
  */
-class SqlDelightClientStorage(driver: SqlDriver) : ClientStorage {
+class SqlDelightClientStorage private constructor(driver: SqlDriver, records: ClientRecordCipher) : ClientStorage {
     private val database = KSecureMessageDatabase(driver)
     private val mutex = Mutex()
-    private val view = DatabaseView(database.clientStateQueries)
+    private val view = DatabaseView(database.clientStateQueries, records)
 
     override val identity: IdentityStore = object : IdentityStore {
         override suspend fun identity() = transaction { identity.identity() }
@@ -152,30 +165,139 @@ class SqlDelightClientStorage(driver: SqlDriver) : ClientStorage {
     companion object {
         /** Database schema, for creating the platform [SqlDriver]. */
         val Schema: SqlSchema<QueryResult.AsyncValue<Unit>> get() = KSecureMessageDatabase.Schema
+
+        private const val FORMAT_LEGACY_PLAINTEXT = 0L
+        private const val FORMAT_RECORD_ENCRYPTION_V1 = 1L
+
+        /**
+         * Opens the database behind [driver] with the storage key from
+         * [keyProvider]. Fails closed with [StorageEncryptionException]:
+         *
+         * - The database has a bound key: [StorageKeyProvider.key] must
+         *   return it (else [StorageEncryptionException.KeyUnavailable]) and
+         *   it must be the right key (else
+         *   [StorageEncryptionException.AuthenticationFailed]). No key is
+         *   created.
+         * - A new database: [StorageKeyProvider.loadOrCreateKey] supplies the
+         *   key, which is bound to the database.
+         * - A database upgraded from schema version 5 or older still holds
+         *   plaintext: the key comes from [StorageKeyProvider.loadOrCreateKey]
+         *   and every sensitive record is encrypted in one transaction before
+         *   this returns. If anything fails, the database stays as it was and
+         *   the next open tries again.
+         *
+         * The provider is called outside any database transaction.
+         */
+        suspend fun open(driver: SqlDriver, keyProvider: StorageKeyProvider): SqlDelightClientStorage =
+            open(driver, keyProvider, ::ClientRecordCipher)
+
+        /** [open] with a replaceable record cipher, for failure injection in tests. */
+        internal suspend fun open(
+            driver: SqlDriver,
+            keyProvider: StorageKeyProvider,
+            cipherFactory: (StorageEncryptionKey) -> ClientRecordCipher,
+        ): SqlDelightClientStorage {
+            val database = KSecureMessageDatabase(driver)
+            val queries = database.clientStateQueries
+            val state = queries.selectStorageEncryption().awaitAsOne()
+            val keyId = state.key_id
+            val records = when {
+                state.format == FORMAT_RECORD_ENCRYPTION_V1 && keyId != null -> {
+                    val id = storageKeyId(keyId)
+                    val key = provide("Storage key ${id.value} is not available") { keyProvider.key(id) }
+                    if (key.id != id) throw StorageEncryptionException.KeyUnavailable("Provider returned another storage key than ${id.value}")
+                    val records = cipherFactory(key)
+                    records.verifyKeyCheck(state.key_check ?: throw StorageEncryptionException.MalformedRecord("Missing key check record"))
+                    records
+                }
+                state.format == FORMAT_RECORD_ENCRYPTION_V1 -> {
+                    val records = cipherFactory(provide("No storage key could be provided") { keyProvider.loadOrCreateKey() })
+                    val keyCheck = records.sealKeyCheck()
+                    database.transaction {
+                        val current = queries.selectStorageEncryption().awaitAsOne()
+                        if (current.format != FORMAT_RECORD_ENCRYPTION_V1 || current.key_id != null) {
+                            throw IllegalStateException("Storage encryption state changed while opening")
+                        }
+                        // Records exist only once a key is bound. Records without one mean
+                        // a modified database; binding a key now could hide that.
+                        if (queries.countSealedRecords().awaitAsOne() != 0L) {
+                            throw StorageEncryptionException.KeyUnavailable("Storage has encrypted records but no bound storage key")
+                        }
+                        queries.bindStorageKey(records.keyId.value.toLong(), keyCheck)
+                    }
+                    records
+                }
+                state.format == FORMAT_LEGACY_PLAINTEXT -> {
+                    val records = cipherFactory(provide("No storage key could be provided") { keyProvider.loadOrCreateKey() })
+                    val keyCheck = records.sealKeyCheck()
+                    database.transaction {
+                        val current = queries.selectStorageEncryption().awaitAsOne()
+                        if (current.format != FORMAT_LEGACY_PLAINTEXT) {
+                            throw IllegalStateException("Storage encryption state changed while opening")
+                        }
+                        LegacyPlaintextMigration(driver, records).run()
+                        driver.execute(null, "UPDATE storage_encryption SET format = ?, key_id = ?, key_check = ?", 3) {
+                            bindLong(0, FORMAT_RECORD_ENCRYPTION_V1)
+                            bindLong(1, records.keyId.value.toLong())
+                            bindBytes(2, keyCheck)
+                        }.await()
+                    }
+                    records
+                }
+                else -> throw StorageEncryptionException.UnsupportedFormat("Unsupported storage encryption format ${state.format}")
+            }
+            return SqlDelightClientStorage(driver, records)
+        }
+
+        private fun storageKeyId(value: Long): StorageKeyId {
+            if (value !in 0..Int.MAX_VALUE) throw StorageEncryptionException.MalformedRecord("Invalid storage key ID")
+            return StorageKeyId(value.toInt())
+        }
+
+        private suspend fun provide(message: String, load: suspend () -> StorageEncryptionKey?): StorageEncryptionKey {
+            val key = try {
+                load()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: StorageEncryptionException) {
+                throw e
+            } catch (e: Exception) {
+                throw StorageEncryptionException.KeyUnavailable(message, e)
+            }
+            return key ?: throw StorageEncryptionException.KeyUnavailable(message)
+        }
     }
 }
 
 /** Store implementations. Only used inside a database transaction. */
-private class DatabaseView(private val queries: ClientStateQueries) : ClientStorage {
+private class DatabaseView(private val queries: ClientStateQueries, private val records: ClientRecordCipher) : ClientStorage {
     override val pendingOutbound: PendingOutboundStore = object : PendingOutboundStore {
         override suspend fun store(recipient: DeviceAddress, id: LogicalMessageId, frame: ByteArray): Long {
-            require(get(recipient, id) == null) { "Message is already pending" }
-            queries.insertPendingOutbound(recipient.userId.value, recipient.deviceId.value, id.toByteArray(), frame.copyOf())
-            return checkNotNull(get(recipient, id)).sequence
+            require(
+                queries.selectPendingOutbound(recipient.userId.value, recipient.deviceId.value, id.toByteArray()).awaitAsOneOrNull() == null,
+            ) { "Message is already pending" }
+            val sealed = records.sealPendingFrame(recipient, id, frame)
+            queries.insertPendingOutbound(recipient.userId.value, recipient.deviceId.value, id.toByteArray(), sealed)
+            return queries.selectPendingOutbound(recipient.userId.value, recipient.deviceId.value, id.toByteArray()).awaitAsOne().sequence
         }
 
-        override suspend fun get(recipient: DeviceAddress, id: LogicalMessageId): PendingOutboundMessage? =
-            queries.selectPendingOutbound(recipient.userId.value, recipient.deviceId.value, id.toByteArray()) { sequence, frame ->
-                PendingOutboundMessage(recipient, id, sequence, frame)
-            }.awaitAsOneOrNull()
+        override suspend fun get(recipient: DeviceAddress, id: LogicalMessageId): PendingOutboundMessage? {
+            val row = queries.selectPendingOutbound(recipient.userId.value, recipient.deviceId.value, id.toByteArray())
+                .awaitAsOneOrNull() ?: return null
+            return PendingOutboundMessage(recipient, id, row.sequence, records.openPendingFrame(recipient, id, row.sealed_frame))
+        }
 
         override suspend fun list(recipient: DeviceAddress): List<PendingOutboundMessage> =
-            queries.selectPendingOutboundFor(recipient.userId.value, recipient.deviceId.value) { sequence, messageId, frame ->
-                PendingOutboundMessage(recipient, LogicalMessageId.fromByteArray(messageId), sequence, frame)
-            }.awaitAsList()
+            queries.selectPendingOutboundFor(recipient.userId.value, recipient.deviceId.value).awaitAsList().map { row ->
+                val id = LogicalMessageId.fromByteArray(row.message_id)
+                PendingOutboundMessage(recipient, id, row.sequence, records.openPendingFrame(recipient, id, row.sealed_frame))
+            }
 
         override suspend fun remove(recipient: DeviceAddress, id: LogicalMessageId): Boolean {
-            if (get(recipient, id) == null) return false
+            // Existence only: an entry is removed without being opened.
+            if (queries.selectPendingOutbound(recipient.userId.value, recipient.deviceId.value, id.toByteArray()).awaitAsOneOrNull() == null) {
+                return false
+            }
             queries.deletePendingOutbound(recipient.userId.value, recipient.deviceId.value, id.toByteArray())
             return true
         }
@@ -192,11 +314,12 @@ private class DatabaseView(private val queries: ClientStateQueries) : ClientStor
 
     override val identity: IdentityStore = object : IdentityStore {
         override suspend fun identity(): LocalIdentity? =
-            queries.selectIdentity { publicKey, privateKey -> LocalIdentity(publicKey, privateKey) }.awaitAsOneOrNull()
+            queries.selectIdentity().awaitAsOneOrNull()?.let { records.openIdentity(it) }
 
         override suspend fun store(identity: LocalIdentity) {
-            check(identity() == null) { "A local identity is already stored" }
-            queries.insertIdentity(identity.publicKey, identity.privateKey)
+            // Existence only: an identity that fails to open must not look absent.
+            check(queries.selectIdentity().awaitAsOneOrNull() == null) { "A local identity is already stored" }
+            queries.insertIdentity(records.sealIdentity(identity))
         }
     }
 
@@ -217,10 +340,10 @@ private class DatabaseView(private val queries: ClientStateQueries) : ClientStor
     override val sessions: SessionStore = object : SessionStore {
         override suspend fun load(address: DeviceAddress): SecureSession? =
             queries.selectSession(address.userId.value, address.deviceId.value).awaitAsOneOrNull()
-                ?.let { SecureSession(address, it) }
+                ?.let { records.openSession(address, it) }
 
         override suspend fun store(session: SecureSession) {
-            queries.upsertSession(session.remote.userId.value, session.remote.deviceId.value, session.state)
+            queries.upsertSession(session.remote.userId.value, session.remote.deviceId.value, records.sealSession(session))
         }
 
         override suspend fun remove(address: DeviceAddress) {
@@ -251,16 +374,19 @@ private class DatabaseView(private val queries: ClientStateQueries) : ClientStor
 
     override val preKeys: PreKeyStore = object : PreKeyStore {
         override suspend fun signedPreKey(id: SignedPreKeyId): SignedPreKeyPair? =
-            queries.selectSignedPreKey(id.value.toLong(), ::signedPreKeyPair).awaitAsOneOrNull()
+            queries.selectSignedPreKey(id.value.toLong()).awaitAsOneOrNull()?.let { records.openSignedPreKey(id, it) }
 
         override suspend fun currentSignedPreKey(): SignedPreKeyPair? =
-            state().current_signed_pre_key_id?.let { queries.selectSignedPreKey(it, ::signedPreKeyPair).awaitAsOne() }
+            state().current_signed_pre_key_id?.let {
+                val id = SignedPreKeyId(it.toInt())
+                records.openSignedPreKey(id, queries.selectSignedPreKey(it).awaitAsOne())
+            }
 
         override suspend fun storeCurrentSignedPreKey(preKey: SignedPreKeyPair, createdAt: Instant) {
             require(preKey.id.value > (highestSignedPreKeyId()?.value ?: -1)) { "Signed prekey ID already used" }
             val id = preKey.id.value.toLong()
             val millis = createdAt.toEpochMilliseconds()
-            queries.insertSignedPreKey(id, preKey.publicKey, preKey.signature, preKey.privateKey, millis)
+            queries.insertSignedPreKey(id, records.sealSignedPreKey(preKey), millis)
             queries.markCurrentSignedPreKeyReplaced(millis)
             queries.makeSignedPreKeyCurrent(id)
         }
@@ -293,14 +419,13 @@ private class DatabaseView(private val queries: ClientStateQueries) : ClientStor
             state().highest_signed_pre_key_id?.let { SignedPreKeyId(it.toInt()) }
 
         override suspend fun oneTimePreKey(id: OneTimePreKeyId): OneTimePreKeyPair? =
-            queries.selectOneTimePreKey(id.value.toLong()) { rowId, publicKey, privateKey ->
-                OneTimePreKeyPair(OneTimePreKeyId(rowId.toInt()), publicKey, privateKey)
-            }.awaitAsOneOrNull()
+            queries.selectOneTimePreKey(id.value.toLong()).awaitAsOneOrNull()?.let { records.openOneTimePreKey(id, it) }
 
+        // Public keys are inside the sealed records too, so publishing reads and authenticates every record.
         override suspend fun publicOneTimePreKeys(): List<PublicOneTimePreKey> =
-            queries.selectPublicOneTimePreKeys { id, publicKey ->
-                PublicOneTimePreKey(OneTimePreKeyId(id.toInt()), publicKey)
-            }.awaitAsList()
+            queries.selectOneTimePreKeys().awaitAsList().map { row ->
+                records.openOneTimePreKey(OneTimePreKeyId(row.id.toInt()), row.sealed_key_pair).toPublic()
+            }
 
         override suspend fun oneTimePreKeyCount(): Int = queries.countOneTimePreKeys().awaitAsOne().toInt()
 
@@ -311,7 +436,7 @@ private class DatabaseView(private val queries: ClientStateQueries) : ClientStor
             val highest = highestOneTimePreKeyId()?.value ?: -1
             require(ids.all { it > highest }) { "One-time prekey ID already used" }
             for (preKey in preKeys) {
-                queries.insertOneTimePreKey(preKey.id.value.toLong(), preKey.publicKey, preKey.privateKey)
+                queries.insertOneTimePreKey(preKey.id.value.toLong(), records.sealOneTimePreKey(preKey))
             }
             queries.setHighestOneTimePreKeyId(ids.max().toLong())
         }
@@ -328,6 +453,3 @@ private class DatabaseView(private val queries: ClientStateQueries) : ClientStor
 
     override suspend fun <T> transaction(block: suspend ClientStorage.() -> T): T = block()
 }
-
-private fun signedPreKeyPair(id: Long, publicKey: ByteArray, signature: ByteArray, privateKey: ByteArray) =
-    SignedPreKeyPair(SignedPreKeyId(id.toInt()), publicKey, signature, privateKey)

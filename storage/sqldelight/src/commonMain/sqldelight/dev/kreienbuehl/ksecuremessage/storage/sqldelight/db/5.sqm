@@ -1,0 +1,15 @@
+-- Schema version 5 to 6 (milestone 9): record-level storage encryption.
+-- Only adds the storage_encryption marker, with format 0: the sensitive
+-- tables still hold milestone 8 plaintext. SQL cannot encrypt, and this
+-- migration runs when the driver opens, without a key. The next
+-- SqlDelightClientStorage.open, which has the key, rebuilds the sensitive
+-- tables with encrypted records and sets format 1, in one transaction (see
+-- LegacyPlaintextMigration.kt). Nothing is read or changed here.
+CREATE TABLE storage_encryption (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    format INTEGER NOT NULL,
+    key_id INTEGER,
+    key_check BLOB
+);
+
+INSERT INTO storage_encryption (id, format) VALUES (0, 0);

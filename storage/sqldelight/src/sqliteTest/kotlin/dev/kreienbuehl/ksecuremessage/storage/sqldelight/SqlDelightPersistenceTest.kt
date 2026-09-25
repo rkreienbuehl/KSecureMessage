@@ -57,9 +57,9 @@ class SqlDelightPersistenceTest {
     fun close() = database.close()
 
     /** Closes the open connection and opens a new one on the same file. */
-    private fun reopen(): SqlDelightClientStorage {
+    private suspend fun reopen(): SqlDelightClientStorage {
         database.closeOpenDrivers()
-        return SqlDelightClientStorage(database.open())
+        return openStorage(database.open())
     }
 
     private suspend fun ClientStorage.oneTimePreKeyIds() = preKeys.publicOneTimePreKeys().map { it.id.value }
@@ -211,7 +211,7 @@ class SqlDelightPersistenceTest {
         old.execute(null, "INSERT INTO session (remote_user_id, remote_device_id, state) VALUES ('alice', 'phone', X'0506')", 0)
         database.closeOpenDrivers()
 
-        val migrated = SqlDelightClientStorage(database.open())
+        val migrated = openStorage(database.open())
         assertContentEquals(byteArrayOf(1, 2), migrated.identity.identity()?.publicKey)
         assertContentEquals(byteArrayOf(5, 6), migrated.sessions.load(ALICE)?.state)
         assertNull(migrated.remoteIdentities.identityKey(ALICE), "a pin is never invented for an old session")
@@ -231,7 +231,7 @@ class SqlDelightPersistenceTest {
         old.execute(null, "INSERT INTO one_time_pre_key (id, public_key, private_key) VALUES (4, X'09', X'0A')", 0)
         database.closeOpenDrivers()
 
-        val migrated = SqlDelightClientStorage(database.open())
+        val migrated = openStorage(database.open())
         assertContentEquals(byteArrayOf(1, 2), migrated.identity.identity()?.publicKey)
         assertContentEquals(byteArrayOf(5, 6), migrated.sessions.load(ALICE)?.state)
         assertContentEquals(byteArrayOf(7, 8), migrated.remoteIdentities.identityKey(ALICE))
@@ -262,7 +262,7 @@ class SqlDelightPersistenceTest {
         }
         database.closeOpenDrivers()
 
-        val migrated = SqlDelightClientStorage(database.open())
+        val migrated = openStorage(database.open())
         assertContentEquals(byteArrayOf(1, 2), migrated.identity.identity()?.publicKey)
         assertEquals(SignedPreKeyId(1), migrated.preKeys.currentSignedPreKey()?.id)
         assertContentEquals(byteArrayOf(0x12), migrated.preKeys.signedPreKey(SignedPreKeyId(0))?.privateKey)
@@ -483,7 +483,7 @@ class SqlDelightPersistenceTest {
         ) { bindBytes(0, initiation.bytes) }
         database.closeOpenDrivers()
 
-        val migrated = SqlDelightClientStorage(database.open())
+        val migrated = openStorage(database.open())
         assertContentEquals(byteArrayOf(1, 2), migrated.identity.identity()?.publicKey)
         assertEquals(SignedPreKeyId(1), migrated.preKeys.currentSignedPreKey()?.id)
         assertContentEquals(byteArrayOf(0x12), migrated.preKeys.signedPreKey(SignedPreKeyId(0))?.privateKey)

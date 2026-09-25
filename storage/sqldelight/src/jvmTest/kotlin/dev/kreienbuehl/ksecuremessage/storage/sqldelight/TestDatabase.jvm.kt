@@ -9,8 +9,12 @@ import java.util.Properties
 
 private fun file(name: String) = File(System.getProperty("java.io.tmpdir"), name)
 
-actual fun openTestDriver(name: String, schema: SqlSchema<QueryResult.Value<Unit>>): SqlDriver =
-    JdbcSqliteDriver("jdbc:sqlite:${file(name).absolutePath}", Properties(), schema)
+actual fun openTestDriver(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, foreignKeys: Boolean): SqlDriver =
+    JdbcSqliteDriver(
+        "jdbc:sqlite:${file(name).absolutePath}",
+        Properties().apply { if (foreignKeys) setProperty("foreign_keys", "true") },
+        schema,
+    )
 
 actual fun deleteTestDatabase(name: String) {
     file(name).delete()
