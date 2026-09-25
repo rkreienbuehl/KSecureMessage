@@ -10,6 +10,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryCodec
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryRequest
 import dev.kreienbuehl.ksecuremessage.protocol.KodiumProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
+import dev.kreienbuehl.ksecuremessage.protocol.VerificationState
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.DeviceAuthenticationKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.client.inmemory.InMemoryClientStorage
@@ -118,6 +119,33 @@ class DeviceAuthenticationRecoveryTest {
         val message = laptop.decrypt(laptop.receive().single())
         assertEquals("while lost", assertIs<ReceiveResult.Message>(message).plaintext.decodeToString())
         laptop.publishPreKeys()
+    }
+
+    @Test
+    fun recoveryLeavesMessagingIdentityVerificationUnchanged() = runTest {
+        lostLaptop()
+        bob.markRemoteIdentityVerified(bob.safetyNumber(LAPTOP))
+        laptop.markRemoteIdentityVerified(laptop.safetyNumber(BOB))
+        val bobsView = assertNotNull(bob.remoteIdentityTrust(LAPTOP))
+        val bobsNumber = bob.safetyNumber(LAPTOP)
+        val laptopsView = assertNotNull(laptop.remoteIdentityTrust(BOB))
+        val laptopsNumber = laptop.safetyNumber(BOB)
+        val messagingIdentity = assertNotNull(laptopStorage.identity.identity()).publicKey
+
+        recover()
+
+        // Server authentication changed; the messaging identity, both safety numbers and both verifications did not.
+        assertContentEquals(messagingIdentity, laptopStorage.identity.identity()?.publicKey)
+        assertEquals(bobsView, bob.remoteIdentityTrust(LAPTOP))
+        assertEquals(VerificationState.VERIFIED, bob.remoteIdentityTrust(LAPTOP)?.verification)
+        assertEquals(bobsNumber, bob.safetyNumber(LAPTOP))
+        assertEquals(laptopsView, laptop.remoteIdentityTrust(BOB))
+        assertEquals(laptopsNumber, laptop.safetyNumber(BOB))
+        assertEquals(bob.safetyNumber(LAPTOP), laptop.safetyNumber(BOB))
+
+        val laptop = laptop
+        laptop.initialize()
+        assertEquals("while lost", assertIs<ReceiveResult.Message>(laptop.decrypt(laptop.receive().single())).plaintext.decodeToString())
     }
 
     @Test

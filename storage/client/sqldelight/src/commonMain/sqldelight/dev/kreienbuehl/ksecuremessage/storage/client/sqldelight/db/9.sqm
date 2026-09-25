@@ -1,0 +1,5 @@
+-- Schema version 9 to 10 (milestone 15): manual verification state of each
+-- pinned remote identity (docs/identity-verification.md). 0 = unverified,
+-- 1 = verified; integers leave room for later states. Every existing pin
+-- becomes unverified: no verification is guessed. Public data, not sealed.
+ALTER TABLE remote_identity ADD COLUMN verification INTEGER NOT NULL DEFAULT 0 CHECK (verification IN (0, 1));

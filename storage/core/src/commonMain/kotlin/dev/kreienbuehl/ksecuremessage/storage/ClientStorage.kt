@@ -11,6 +11,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
+import dev.kreienbuehl.ksecuremessage.protocol.VerificationState
 import kotlin.time.Instant
 
 // Every store below except RemoteIdentityStore, SessionInitiationStore and ProcessedInboundStore holds
@@ -90,23 +91,58 @@ interface DeviceAuthenticationKeyStore {
 }
 
 /**
+ * A pinned remote identity key and whether the user verified exactly this key
+ * (docs/identity-verification.md). [identityKey] is a copy.
+ */
+class RemoteIdentityRecord(
+    val identityKey: ByteArray,
+    val verification: VerificationState,
+)
+
+/**
  * Remote identity keys pinned on first contact (trust on first use, see
  * docs/identity-trust.md). One public identity key per remote [DeviceAddress];
  * two devices of the same user have separate entries.
  *
- * Keys are public, but a pin is security state: it is only ever added, never
- * replaced or removed here. The client pins a key only after the first
- * contact with it succeeded cryptographically.
+ * Keys are public, but a pin is security state: it is never removed and never
+ * replaced silently. The client pins a key only after the first contact with
+ * it succeeded cryptographically, and replaces it only when the application
+ * explicitly accepted an identity change ([replace]).
+ *
+ * Each pin carries a [VerificationState] that belongs to exactly the pinned
+ * key: a new pin starts [VerificationState.UNVERIFIED], and so does a
+ * replaced one. Verification is never carried over to another key.
  */
 interface RemoteIdentityStore {
     suspend fun identityKey(address: DeviceAddress): ByteArray?
 
+    /** The pin of [address] with its verification state, or `null`. */
+    suspend fun record(address: DeviceAddress): RemoteIdentityRecord?
+
     /**
-     * Pins [identityKey] for [address]. Storing the key that is already
-     * pinned does nothing. Throws [IllegalStateException] if a different key
-     * is pinned: a pin is never replaced silently.
+     * Pins [identityKey] for [address] as [VerificationState.UNVERIFIED].
+     * Storing the key that is already pinned does nothing (its verification
+     * state stays). Throws [IllegalStateException] if a different key is
+     * pinned: a pin is never replaced silently.
      */
     suspend fun store(address: DeviceAddress, identityKey: ByteArray)
+
+    /**
+     * Sets the verification state of the pin of [address], but only if the
+     * pinned key is [identityKey]. Throws [IllegalStateException] and changes
+     * nothing if there is no pin or another key is pinned.
+     */
+    suspend fun setVerification(address: DeviceAddress, identityKey: ByteArray, verification: VerificationState)
+
+    /**
+     * Replaces the pin of [address] with [newIdentityKey] as
+     * [VerificationState.UNVERIFIED], but only if [expectedIdentityKey] is
+     * pinned (compare-and-set). Throws [IllegalStateException] and changes
+     * nothing if there is no pin or another key is pinned, and
+     * [IllegalArgumentException] if both keys are equal. Only for an identity
+     * change the application explicitly accepted.
+     */
+    suspend fun replace(address: DeviceAddress, expectedIdentityKey: ByteArray, newIdentityKey: ByteArray)
 }
 
 /**
@@ -286,9 +322,10 @@ interface ProcessedInboundStore {
  * removed together with storing the session it created. A remote identity is
  * pinned in the same transaction that stores the first session with it. A
  * replaced session and the retired initiation are written together. A sent
-message becomes pending together with the ratchet step that encrypted it; an
-accepted message is marked processed together with the ratchet step that
-decrypted it.
+ * message becomes pending together with the ratchet step that encrypted it; an
+ * accepted message is marked processed together with the ratchet step that
+ * decrypted it. An accepted identity change replaces the pin, removes the
+ * session and retires its initiation together.
  *
  * Rules for the block:
  * - Use the receiver's stores, not those of the outer storage object.

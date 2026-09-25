@@ -148,16 +148,22 @@ Every implementation must provide:
   session. The first remote identity pin commits with the same transaction
   (see [identity-trust.md](identity-trust.md)). A replaced session, its
   retired initiation and the consumed one-time prekey commit together too
-  (see [session-lifecycle.md](session-lifecycle.md)).
+  (see [session-lifecycle.md](session-lifecycle.md)). An accepted identity
+  change replaces the pin, removes the session and retires its initiation
+  in one transaction (see [identity-verification.md](identity-verification.md)).
 - **Nesting.** A `transaction` call inside a running transaction of the same
   storage joins it, through the receiver or the storage object.
 - **Single-call writes.** Store calls outside `transaction` behave as
   single-call transactions.
 - **No identity replacement.** `IdentityStore.store` fails if an identity
   exists.
-- **No pin replacement.** `RemoteIdentityStore.store` is a no-op for the key
-  already pinned for an address and fails with `IllegalStateException` for a
-  different key. Pins are per `DeviceAddress` and are never removed.
+- **No silent pin replacement.** `RemoteIdentityStore.store` is a no-op for
+  the key already pinned for an address and fails with
+  `IllegalStateException` for a different key. Pins are per `DeviceAddress`
+  and are never removed. New pins are `UNVERIFIED`.
+  `setVerification` and `replace` are compare-and-set on the pinned key;
+  `replace` (only for an explicitly accepted identity change) makes the new
+  pin `UNVERIFIED`. A verification never moves to another key.
 - **Retired initiations are kept until pruned.** `SessionInitiationStore.retire`
   is idempotent (the first entry wins), and entries are per `DeviceAddress`.
   Each entry may name a local signed prekey. Entries are removed only by
@@ -238,7 +244,7 @@ Tables:
 - `one_time_pre_key`: sealed key pair
 - `pre_key_state`: one row holding the current signed prekey ID and both high-water marks
 - `session`: sealed state, keyed by remote user and device ID
-- `remote_identity`: pinned remote identity public keys, keyed by remote user and device ID
+- `remote_identity`: pinned remote identity public keys, keyed by remote user and device ID, with `verification` (0 unverified, 1 verified; schema version 10)
 - `retired_session_initiation`: retired 32-byte session initiation IDs, keyed by remote user, device ID and initiation ID, with the nullable local `signed_pre_key_id` used for pruning
 - `pending_outbound_message`: `sequence INTEGER PRIMARY KEY AUTOINCREMENT` (never reused), recipient user and device ID, 16-byte `message_id`, and the sealed frame (encrypted; the frame holds the application plaintext); unique per recipient and message ID
 - `processed_inbound_message`: sender user and device ID and 16-byte `message_id`
@@ -253,7 +259,7 @@ does not depend on Kodium internals. All IDs have a
 Open the storage with `SqlDelightClientStorage.open(driver, keyProvider)`.
 There is no unencrypted mode.
 
-The schema version is 8. Version 1 (milestones 3 and 4) had no
+The schema version is 10. Version 1 (milestones 3 and 4) had no
 `remote_identity` table; `1.sqm` adds it and changes nothing else. Version 2
 (milestone 5) had no `retired_session_initiation` table; `2.sqm` adds it and
 changes nothing else. Version 3 (milestone 6) had no lifecycle columns;
@@ -279,7 +285,13 @@ Version 7 (milestone 11) had no device authentication key; `7.sqm` creates
 flag is 1 if the database held an identity. The migration creates no key
 material; the next `initialize()` creates the key once, and a key that goes
 missing later fails closed ([server-authentication.md](server-authentication.md#telling-before-m12-apart-from-lost)).
-Frozen copies of versions 1–7 (`Version1Schema` … `Version7Schema`) back the
+Version 8 (milestones 12 and 13) had no pending recovery key; `8.sqm` creates
+`device_authentication_recovery_key`, empty ([device-recovery.md](device-recovery.md)).
+Version 9 (milestone 14) had no verification state; `9.sqm` adds
+`remote_identity.verification` with default 0, so every existing pin becomes
+unverified and nothing else changes
+([identity-verification.md](identity-verification.md#storage)).
+Frozen copies of versions 1–9 (`Version1Schema` … `Version9Schema`) back the
 migration tests.
 A driver created with `SqlDelightClientStorage.Schema`,
 as in the table above, reads SQLite's `user_version` on open and runs the
@@ -308,8 +320,8 @@ so they are only linked and run on a Linux or Windows host.
 
 ## Not covered yet
 
-- Safety numbers, manual verification, and accepting a changed remote
-  identity (TOFU itself is described in [identity-trust.md](identity-trust.md)).
+- Messaging identity recovery, reset or backup (a changed remote identity
+  can be accepted, see [identity-verification.md](identity-verification.md)).
 - Tracking locally what the server handed out (the server tombstones consumed
   one-time prekey IDs instead, see [prekey-publication.md](prekey-publication.md)).
 - Pruning of retired session initiations that name no local signed prekey

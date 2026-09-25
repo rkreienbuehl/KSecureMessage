@@ -17,6 +17,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
+import dev.kreienbuehl.ksecuremessage.protocol.VerificationState
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.DeviceAuthenticationKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.IdentityStore
@@ -24,6 +25,7 @@ import dev.kreienbuehl.ksecuremessage.storage.PendingOutboundMessage
 import dev.kreienbuehl.ksecuremessage.storage.PendingOutboundStore
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.ProcessedInboundStore
+import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityRecord
 import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionInitiationStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
@@ -80,7 +82,10 @@ import kotlin.time.Instant
  * (milestone 8), version 6 the `storage_encryption` marker (milestone 9),
  * version 7 the storage key rotation state (milestone 11), version 8 the
  * `device_authentication_key` and `device_authentication_state` tables
- * (milestone 12, docs/server-authentication.md). A driver created with
+ * (milestone 12, docs/server-authentication.md), version 9 the
+ * `device_authentication_recovery_key` table (milestone 14,
+ * docs/device-recovery.md), version 10 the `remote_identity.verification`
+ * column (milestone 15, docs/identity-verification.md). A driver created with
  * [Schema] upgrades an older database on open; an application that manages
  * versions itself calls `Schema.migrate(driver, oldVersion, Schema.version)`. An upgraded database still holds
  * its milestone 8 plaintext until [open] encrypts it. Session state written
@@ -124,8 +129,13 @@ class SqlDelightClientStorage private constructor(
 
     override val remoteIdentities: RemoteIdentityStore = object : RemoteIdentityStore {
         override suspend fun identityKey(address: DeviceAddress) = transaction { remoteIdentities.identityKey(address) }
+        override suspend fun record(address: DeviceAddress) = transaction { remoteIdentities.record(address) }
         override suspend fun store(address: DeviceAddress, identityKey: ByteArray) =
             transaction { remoteIdentities.store(address, identityKey) }
+        override suspend fun setVerification(address: DeviceAddress, identityKey: ByteArray, verification: VerificationState) =
+            transaction { remoteIdentities.setVerification(address, identityKey, verification) }
+        override suspend fun replace(address: DeviceAddress, expectedIdentityKey: ByteArray, newIdentityKey: ByteArray) =
+            transaction { remoteIdentities.replace(address, expectedIdentityKey, newIdentityKey) }
     }
 
     override val sessions: SessionStore = object : SessionStore {
@@ -520,6 +530,23 @@ private class DatabaseView(private val queries: ClientStateQueries, private val 
             }
             queries.insertRemoteIdentity(address.userId.value, address.deviceId.value, identityKey.copyOf())
         }
+
+        override suspend fun record(address: DeviceAddress): RemoteIdentityRecord? =
+            queries.selectRemoteIdentityRecord(address.userId.value, address.deviceId.value).awaitAsOneOrNull()
+                ?.let { RemoteIdentityRecord(it.identity_key, verificationState(it.verification)) }
+
+        override suspend fun setVerification(address: DeviceAddress, identityKey: ByteArray, verification: VerificationState) {
+            val pinned = checkNotNull(identityKey(address)) { "No remote identity is pinned" }
+            check(pinned.contentEquals(identityKey)) { "Another remote identity is pinned" }
+            queries.updateRemoteIdentityVerification(verificationCode(verification), address.userId.value, address.deviceId.value, pinned)
+        }
+
+        override suspend fun replace(address: DeviceAddress, expectedIdentityKey: ByteArray, newIdentityKey: ByteArray) {
+            require(!expectedIdentityKey.contentEquals(newIdentityKey)) { "The new identity key is the pinned one" }
+            val pinned = checkNotNull(identityKey(address)) { "No remote identity is pinned" }
+            check(pinned.contentEquals(expectedIdentityKey)) { "Another remote identity is pinned" }
+            queries.replaceRemoteIdentity(newIdentityKey.copyOf(), address.userId.value, address.deviceId.value, pinned)
+        }
     }
 
     override val sessions: SessionStore = object : SessionStore {
@@ -637,4 +664,20 @@ private class DatabaseView(private val queries: ClientStateQueries, private val 
     }
 
     override suspend fun <T> transaction(block: suspend ClientStorage.() -> T): T = block()
+}
+
+// Stored codes of remote_identity.verification (schema version 10, 9.sqm).
+private const val UNVERIFIED_CODE = 0L
+private const val VERIFIED_CODE = 1L
+
+private fun verificationCode(state: VerificationState): Long = when (state) {
+    VerificationState.UNVERIFIED -> UNVERIFIED_CODE
+    VerificationState.VERIFIED -> VERIFIED_CODE
+}
+
+/** Fails closed: an unknown code is never read as verified. */
+private fun verificationState(code: Long): VerificationState = when (code) {
+    UNVERIFIED_CODE -> VerificationState.UNVERIFIED
+    VERIFIED_CODE -> VerificationState.VERIFIED
+    else -> throw IllegalStateException("Unknown remote identity verification state")
 }

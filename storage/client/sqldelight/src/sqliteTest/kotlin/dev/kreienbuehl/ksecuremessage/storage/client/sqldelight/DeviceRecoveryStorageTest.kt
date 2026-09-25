@@ -205,9 +205,9 @@ class DeviceRecoveryStorageTest {
         database.closeOpenDrivers()
 
         val storage = reopen()
-        assertEquals(listOf(9L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(10L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
-        assertEquals(before, after - "device_authentication_recovery_key", "no existing row changes")
+        assertEquals(before.withUnverifiedPins(), after - "device_authentication_recovery_key", "no existing row changes")
         assertEquals(emptyList(), after.getValue("device_authentication_recovery_key"))
         assertNull(storage.deviceAuthentication.pendingRecoveryKeyPair())
     }
@@ -216,6 +216,7 @@ class DeviceRecoveryStorageTest {
     fun downgradedDatabaseMatchesTheVersion8Fixture() = runTest {
         laptop(reopen()).initialize()
         driver.exec("DROP TABLE device_authentication_recovery_key")
+        driver.exec("ALTER TABLE remote_identity DROP COLUMN verification")
         driver.exec("PRAGMA user_version = 8")
         val downgraded = driver.tables().associateWith { driver.columns(it) }
         val fixture = TestDatabase()

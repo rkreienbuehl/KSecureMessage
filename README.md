@@ -196,12 +196,24 @@ val authorization = otherDevice.authorizeDeviceRecovery(request) // transferred 
 lostDevice.completeDeviceAuthenticationRecovery(authorization)
 ```
 
+Milestone 15 done: safety numbers, manual verification and explicit identity-change acceptance. Two devices derive the same safety number from both device addresses and messaging identity keys (SHA-256, domain `KSecureMessage-SafetyNumber-v1`, canonical order by address encoding), shown as 60 digits in 12 groups or as a versioned binary payload for a QR code; vectors are frozen. Each pin has a local verification state (`UNVERIFIED` on first use, `VERIFIED` only after the user confirmed the safety number of exactly that key). Changed identities still fail with `IdentityChanged`, which now names the pinned and the presented key; only `acceptRemoteIdentityChange` replaces a pin, by compare-and-set on the old key, installing exactly the confirmed key as unverified and removing and retiring the old session in one transaction. Pending messages survive and are retried on the new session. Client-local only: no server or wire change. Client schema version 10 (`9.sqm`). See [docs/identity-verification.md](docs/identity-verification.md).
+
+```kotlin
+val number = client.safetyNumber(bob)           // number.displayString / number.encode() for a QR code
+client.compareSafetyNumber(bob, scannedPayload) // MATCH, MISMATCH or DIFFERENT_DEVICES; changes nothing
+client.markRemoteIdentityVerified(number)       // only after the user confirmed
+
+try { client.decrypt(envelope) } catch (e: SecureMessageClientException.IdentityChanged) {
+    // show client.safetyNumber(e.change) to the user; only if they approve:
+    client.acceptRemoteIdentityChange(e.change)
+}
+```
+
 ## Next implementation steps
 
-1. Safety numbers / manual identity verification, and a deliberate way to accept identity changes (needed before messaging identity recovery can be safe).
-2. Account-level recovery for the last device (recovery key or code) and routine device authentication key rotation; a PostgreSQL server adapter if multi-node deployment is needed.
-3. An application commit boundary for received messages and bounded dedup retention.
-4. Sealed sender.
+1. Account-level recovery for the last device (recovery key or code) and routine device authentication key rotation; a PostgreSQL server adapter if multi-node deployment is needed.
+2. An application commit boundary for received messages and bounded dedup retention.
+3. Sealed sender.
 
 ## Gradle wrapper
 

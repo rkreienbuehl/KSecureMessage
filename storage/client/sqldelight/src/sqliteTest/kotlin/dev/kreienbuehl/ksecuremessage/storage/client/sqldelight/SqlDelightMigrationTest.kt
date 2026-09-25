@@ -22,6 +22,7 @@ import dev.kreienbuehl.ksecuremessage.storage.encryption.SealedRecords
 import dev.kreienbuehl.ksecuremessage.storage.encryption.ClientRecordCipher
 import dev.kreienbuehl.ksecuremessage.storage.SignedPreKeyInfo
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
+import dev.kreienbuehl.ksecuremessage.protocol.VerificationState
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
@@ -385,13 +386,14 @@ class SqlDelightMigrationTest {
 
         val storage = reopen()
         assertEquals(StorageKeyRotationStatus(StorageKeyRotationPhase.STABLE, StorageKeyId(1), null, null, 0), storage.storageKeyRotationStatus())
-        assertEquals(listOf(9L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(10L), driver.longs("PRAGMA user_version"))
         // Every row is unchanged; storage_encryption only gained the rotation columns, the
         // device authentication tables of schema version 8 mark the identity as awaiting its key,
         // and the recovery table of schema version 9 is empty.
         val after = driver.dump()
         val authTables = setOf("device_authentication_key", "device_authentication_state", "device_authentication_recovery_key")
-        assertEquals(before - "storage_encryption", after - "storage_encryption" - authTables)
+        assertEquals(before.withUnverifiedPins() - "storage_encryption", after - "storage_encryption" - authTables)
+        assertEquals(listOf("'alice'|'phone'|X'${ByteArray(32) { 8 }.toHex().uppercase()}'|0"), after.getValue("remote_identity"), "the pin is kept, unverified")
         assertEquals(emptyList(), after.getValue("device_authentication_key"))
         assertEquals(emptyList(), after.getValue("device_authentication_recovery_key"))
         assertEquals(listOf("0|1"), after.getValue("device_authentication_state"))
@@ -402,6 +404,7 @@ class SqlDelightMigrationTest {
         assertContentEquals(ByteArray(32) { 7 }, storage.preKeys.oneTimePreKey(OneTimePreKeyId(8))?.privateKey)
         assertContentEquals(byteArrayOf(9, 9), storage.sessions.load(ALICE)?.state)
         assertContentEquals(ByteArray(32) { 8 }, storage.remoteIdentities.identityKey(ALICE))
+        assertEquals(VerificationState.UNVERIFIED, storage.remoteIdentities.record(ALICE)?.verification)
         assertTrue(storage.sessionInitiations.isRetired(DAVE, SessionInitiationId(ByteArray(32) { 7 })))
         assertEquals(PENDING_TEXT, storage.pendingOutbound.get(ALICE, pendingId)?.frame?.decodeToString())
         assertTrue(storage.processedInbound.isProcessed(ALICE, LogicalMessageId.fromByteArray(ByteArray(16) { 1 })))

@@ -11,6 +11,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
+import dev.kreienbuehl.ksecuremessage.protocol.VerificationState
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.DeviceAuthenticationKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.IdentityStore
@@ -18,6 +19,7 @@ import dev.kreienbuehl.ksecuremessage.storage.PendingOutboundMessage
 import dev.kreienbuehl.ksecuremessage.storage.PendingOutboundStore
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.ProcessedInboundStore
+import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityRecord
 import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionInitiationStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
@@ -61,8 +63,13 @@ class InMemoryClientStorage : ClientStorage {
 
     override val remoteIdentities: RemoteIdentityStore = object : RemoteIdentityStore {
         override suspend fun identityKey(address: DeviceAddress) = transaction { remoteIdentities.identityKey(address) }
+        override suspend fun record(address: DeviceAddress) = transaction { remoteIdentities.record(address) }
         override suspend fun store(address: DeviceAddress, identityKey: ByteArray) =
             transaction { remoteIdentities.store(address, identityKey) }
+        override suspend fun setVerification(address: DeviceAddress, identityKey: ByteArray, verification: VerificationState) =
+            transaction { remoteIdentities.setVerification(address, identityKey, verification) }
+        override suspend fun replace(address: DeviceAddress, expectedIdentityKey: ByteArray, newIdentityKey: ByteArray) =
+            transaction { remoteIdentities.replace(address, expectedIdentityKey, newIdentityKey) }
     }
 
     override val sessions: SessionStore = object : SessionStore {
@@ -139,11 +146,14 @@ class InMemoryClientStorage : ClientStorage {
     }
 }
 
+private class PinnedIdentity(val key: ByteArray, val verification: VerificationState)
+
 private data class State(
     val identity: LocalIdentity? = null,
     val deviceAuthenticationKey: DeviceAuthenticationKeyPair? = null,
     val pendingRecoveryKey: DeviceAuthenticationKeyPair? = null,
-    val remoteIdentities: Map<DeviceAddress, ByteArray> = emptyMap(),
+    /** Pinned keys with their verification state; the key arrays are never shared with callers. */
+    val remoteIdentities: Map<DeviceAddress, PinnedIdentity> = emptyMap(),
     val sessions: Map<DeviceAddress, SecureSession> = emptyMap(),
     /** Retired initiation to the local signed prekey it needs, if known. */
     val retiredInitiations: Map<DeviceAddress, Map<SessionInitiationId, SignedPreKeyId?>> = emptyMap(),
@@ -238,15 +248,35 @@ private class TransactionView(var state: State) : ClientStorage {
     }
 
     override val remoteIdentities: RemoteIdentityStore = object : RemoteIdentityStore {
-        override suspend fun identityKey(address: DeviceAddress) = state.remoteIdentities[address]?.copyOf()
+        override suspend fun identityKey(address: DeviceAddress) = state.remoteIdentities[address]?.key?.copyOf()
+
+        override suspend fun record(address: DeviceAddress) =
+            state.remoteIdentities[address]?.let { RemoteIdentityRecord(it.key.copyOf(), it.verification) }
 
         override suspend fun store(address: DeviceAddress, identityKey: ByteArray) {
             val pinned = state.remoteIdentities[address]
             if (pinned != null) {
-                check(pinned.contentEquals(identityKey)) { "A different remote identity is already pinned" }
+                check(pinned.key.contentEquals(identityKey)) { "A different remote identity is already pinned" }
                 return
             }
-            state = state.copy(remoteIdentities = state.remoteIdentities + (address to identityKey.copyOf()))
+            pin(address, PinnedIdentity(identityKey.copyOf(), VerificationState.UNVERIFIED))
+        }
+
+        override suspend fun setVerification(address: DeviceAddress, identityKey: ByteArray, verification: VerificationState) {
+            val pinned = checkNotNull(state.remoteIdentities[address]) { "No remote identity is pinned" }
+            check(pinned.key.contentEquals(identityKey)) { "Another remote identity is pinned" }
+            pin(address, PinnedIdentity(pinned.key, verification))
+        }
+
+        override suspend fun replace(address: DeviceAddress, expectedIdentityKey: ByteArray, newIdentityKey: ByteArray) {
+            require(!expectedIdentityKey.contentEquals(newIdentityKey)) { "The new identity key is the pinned one" }
+            val pinned = checkNotNull(state.remoteIdentities[address]) { "No remote identity is pinned" }
+            check(pinned.key.contentEquals(expectedIdentityKey)) { "Another remote identity is pinned" }
+            pin(address, PinnedIdentity(newIdentityKey.copyOf(), VerificationState.UNVERIFIED))
+        }
+
+        private fun pin(address: DeviceAddress, pinned: PinnedIdentity) {
+            state = state.copy(remoteIdentities = state.remoteIdentities + (address to pinned))
         }
     }
 

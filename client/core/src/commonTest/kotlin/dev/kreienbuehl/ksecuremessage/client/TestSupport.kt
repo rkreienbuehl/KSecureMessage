@@ -19,6 +19,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
+import dev.kreienbuehl.ksecuremessage.protocol.VerificationState
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.DeviceAuthenticationKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.PendingOutboundStore
@@ -248,6 +249,9 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
     var failSessionStore = false
     var failOneTimePreKeyRemoval = false
     var failRemoteIdentityStore = false
+    var failRemoteIdentityReplace = false
+    var failVerificationUpdate = false
+    var failSessionRemoval = false
     var failRetire = false
     var failRetiredPrune = false
     var failSignedPreKeyStore = false
@@ -300,6 +304,16 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
                 if (failRemoteIdentityStore) throw StorageFailure()
                 tx.remoteIdentities.store(address, identityKey)
             }
+
+            override suspend fun replace(address: DeviceAddress, expectedIdentityKey: ByteArray, newIdentityKey: ByteArray) {
+                if (failRemoteIdentityReplace) throw StorageFailure()
+                tx.remoteIdentities.replace(address, expectedIdentityKey, newIdentityKey)
+            }
+
+            override suspend fun setVerification(address: DeviceAddress, identityKey: ByteArray, verification: VerificationState) {
+                if (failVerificationUpdate) throw StorageFailure()
+                tx.remoteIdentities.setVerification(address, identityKey, verification)
+            }
         }
 
         override val sessions: SessionStore = object : SessionStore by tx.sessions {
@@ -310,6 +324,11 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
                     sessionStoresBeforeFailure = it - 1
                 }
                 tx.sessions.store(session)
+            }
+
+            override suspend fun remove(address: DeviceAddress) {
+                if (failSessionRemoval) throw StorageFailure()
+                tx.sessions.remove(address)
             }
         }
 

@@ -99,11 +99,15 @@ CREATE TABLE session (
 );
 
 -- Remote identity keys pinned on first contact (TOFU). Public keys. Rows are
--- only inserted, never replaced. Added in schema version 2, see 1.sqm.
+-- never deleted; a key is replaced only by an explicitly accepted identity
+-- change. Added in schema version 2, see 1.sqm. verification (version 10,
+-- 9.sqm; last column like ALTER TABLE adds it): 0 unverified, 1 verified,
+-- always for exactly the pinned key.
 CREATE TABLE remote_identity (
     remote_user_id TEXT NOT NULL,
     remote_device_id TEXT NOT NULL,
     identity_key BLOB NOT NULL,
+    verification INTEGER NOT NULL DEFAULT 0 CHECK (verification IN (0, 1)),
     PRIMARY KEY (remote_user_id, remote_device_id)
 );
 
@@ -269,9 +273,22 @@ UPDATE device_authentication_state SET awaits_upgrade_key = 0;
 selectRemoteIdentity:
 SELECT identity_key FROM remote_identity WHERE remote_user_id = ? AND remote_device_id = ?;
 
+selectRemoteIdentityRecord:
+SELECT identity_key, verification FROM remote_identity WHERE remote_user_id = ? AND remote_device_id = ?;
+
 -- Plain INSERT: the primary key rejects a second pin for the same device.
 insertRemoteIdentity:
-INSERT INTO remote_identity (remote_user_id, remote_device_id, identity_key) VALUES (?, ?, ?);
+INSERT INTO remote_identity (remote_user_id, remote_device_id, identity_key, verification) VALUES (?, ?, ?, 0);
+
+-- Guarded by the pinned key: verification never moves to another key.
+updateRemoteIdentityVerification:
+UPDATE remote_identity SET verification = ?
+WHERE remote_user_id = ? AND remote_device_id = ? AND identity_key = ?;
+
+-- Compare-and-set on the expected key; the new key starts unverified.
+replaceRemoteIdentity:
+UPDATE remote_identity SET identity_key = ?, verification = 0
+WHERE remote_user_id = ? AND remote_device_id = ? AND identity_key = ?;
 
 selectSession:
 SELECT sealed_state FROM session WHERE remote_user_id = ? AND remote_device_id = ?;

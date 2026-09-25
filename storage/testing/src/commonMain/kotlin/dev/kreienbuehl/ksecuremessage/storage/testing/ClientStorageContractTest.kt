@@ -12,6 +12,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
+import dev.kreienbuehl.ksecuremessage.protocol.VerificationState
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.SignedPreKeyInfo
 import kotlinx.coroutines.test.runTest
@@ -192,6 +193,120 @@ abstract class ClientStorageContractTest {
         // Not pinned, so a different key can still be the first one.
         storage.remoteIdentities.store(alice, bytes(2))
         assertContentEquals(bytes(2), storage.remoteIdentities.identityKey(alice))
+    }
+
+    @Test
+    fun newPinIsUnverifiedAndVerificationRoundTrips() = runTest {
+        val storage = newStorage()
+        assertNull(storage.remoteIdentities.record(alice))
+        storage.remoteIdentities.store(alice, bytes(1))
+        assertRecord(storage, alice, bytes(1), VerificationState.UNVERIFIED)
+
+        storage.remoteIdentities.setVerification(alice, bytes(1), VerificationState.VERIFIED)
+        assertRecord(storage, alice, bytes(1), VerificationState.VERIFIED)
+        storage.remoteIdentities.store(alice, bytes(1))
+        assertRecord(storage, alice, bytes(1), VerificationState.VERIFIED, "storing the same key again keeps its verification")
+
+        storage.remoteIdentities.setVerification(alice, bytes(1), VerificationState.UNVERIFIED)
+        assertRecord(storage, alice, bytes(1), VerificationState.UNVERIFIED)
+    }
+
+    @Test
+    fun verificationIsBoundToThePinnedKey() = runTest {
+        val storage = newStorage()
+        assertFailsWith<IllegalStateException> { storage.remoteIdentities.setVerification(alice, bytes(1), VerificationState.VERIFIED) }
+        assertNull(storage.remoteIdentities.record(alice), "no pin is created")
+
+        storage.remoteIdentities.store(alice, bytes(1))
+        assertFailsWith<IllegalStateException> { storage.remoteIdentities.setVerification(alice, bytes(2), VerificationState.VERIFIED) }
+        assertRecord(storage, alice, bytes(1), VerificationState.UNVERIFIED)
+    }
+
+    @Test
+    fun verificationIsPerDevice() = runTest {
+        val storage = newStorage()
+        val bobPhone = DeviceAddress(UserId("bob"), DeviceId("phone"))
+        storage.remoteIdentities.store(bob, bytes(1))
+        storage.remoteIdentities.store(bobPhone, bytes(2))
+        storage.remoteIdentities.setVerification(bob, bytes(1), VerificationState.VERIFIED)
+        assertRecord(storage, bob, bytes(1), VerificationState.VERIFIED)
+        assertRecord(storage, bobPhone, bytes(2), VerificationState.UNVERIFIED)
+    }
+
+    @Test
+    fun replacedPinStartsUnverified() = runTest {
+        val storage = newStorage()
+        storage.remoteIdentities.store(alice, bytes(1))
+        storage.remoteIdentities.store(bob, bytes(5))
+        storage.remoteIdentities.setVerification(alice, bytes(1), VerificationState.VERIFIED)
+        storage.remoteIdentities.setVerification(bob, bytes(5), VerificationState.VERIFIED)
+
+        storage.remoteIdentities.replace(alice, bytes(1), bytes(2))
+        assertRecord(storage, alice, bytes(2), VerificationState.UNVERIFIED, "verification never moves to the new key")
+        assertContentEquals(bytes(2), storage.remoteIdentities.identityKey(alice))
+        assertRecord(storage, bob, bytes(5), VerificationState.VERIFIED, "other devices are not touched")
+
+        // The old key is gone: verifying it or storing it fails.
+        assertFailsWith<IllegalStateException> { storage.remoteIdentities.setVerification(alice, bytes(1), VerificationState.VERIFIED) }
+        assertFailsWith<IllegalStateException> { storage.remoteIdentities.store(alice, bytes(1)) }
+        storage.remoteIdentities.setVerification(alice, bytes(2), VerificationState.VERIFIED)
+        assertRecord(storage, alice, bytes(2), VerificationState.VERIFIED)
+    }
+
+    @Test
+    fun replaceIsACompareAndSet() = runTest {
+        val storage = newStorage()
+        assertFailsWith<IllegalStateException> { storage.remoteIdentities.replace(alice, bytes(1), bytes(2)) }
+        assertNull(storage.remoteIdentities.record(alice), "replace never creates a pin")
+
+        storage.remoteIdentities.store(alice, bytes(1))
+        storage.remoteIdentities.setVerification(alice, bytes(1), VerificationState.VERIFIED)
+        storage.remoteIdentities.replace(alice, bytes(1), bytes(2))
+        // A second change based on the old pin loses.
+        assertFailsWith<IllegalStateException> { storage.remoteIdentities.replace(alice, bytes(1), bytes(3)) }
+        assertRecord(storage, alice, bytes(2), VerificationState.UNVERIFIED)
+        assertFailsWith<IllegalArgumentException> { storage.remoteIdentities.replace(alice, bytes(2), bytes(2)) }
+        assertRecord(storage, alice, bytes(2), VerificationState.UNVERIFIED)
+    }
+
+    @Test
+    fun remoteIdentityBytesAreCopied() = runTest {
+        val storage = newStorage()
+        val key = bytes(1)
+        storage.remoteIdentities.store(alice, key)
+        key[0] = 99
+        assertContentEquals(bytes(1), storage.remoteIdentities.record(alice)?.identityKey)
+        storage.remoteIdentities.record(alice)!!.identityKey[0] = 99
+        storage.remoteIdentities.identityKey(alice)!![0] = 99
+        assertContentEquals(bytes(1), storage.remoteIdentities.identityKey(alice))
+
+        val replacement = bytes(2)
+        storage.remoteIdentities.replace(alice, bytes(1), replacement)
+        replacement[0] = 99
+        assertContentEquals(bytes(2), storage.remoteIdentities.identityKey(alice))
+    }
+
+    @Test
+    fun rolledBackTransactionKeepsPinAndVerification() = runTest {
+        val storage = newStorage()
+        storage.remoteIdentities.store(alice, bytes(1))
+        storage.remoteIdentities.setVerification(alice, bytes(1), VerificationState.VERIFIED)
+        assertFailsWith<Failure> {
+            storage.transaction {
+                remoteIdentities.replace(alice, bytes(1), bytes(2))
+                assertRecord(this, alice, bytes(2), VerificationState.UNVERIFIED)
+                throw Failure()
+            }
+        }
+        assertRecord(storage, alice, bytes(1), VerificationState.VERIFIED)
+
+        assertFailsWith<Failure> {
+            storage.transaction {
+                remoteIdentities.setVerification(alice, bytes(1), VerificationState.UNVERIFIED)
+                throw Failure()
+            }
+        }
+        assertRecord(storage, alice, bytes(1), VerificationState.VERIFIED)
     }
 
     @Test
@@ -673,6 +788,18 @@ abstract class ClientStorageContractTest {
 
     companion object {
         /** 32 fake key bytes derived from [seed]. Negative seeds stand for private keys. */
+        suspend fun assertRecord(
+            storage: ClientStorage,
+            address: DeviceAddress,
+            key: ByteArray,
+            verification: VerificationState,
+            message: String? = null,
+        ) {
+            val record = assertNotNull(storage.remoteIdentities.record(address), message)
+            assertContentEquals(key, record.identityKey, message)
+            assertEquals(verification, record.verification, message)
+        }
+
         fun bytes(seed: Int): ByteArray = ByteArray(32) { (seed * 31 + it).toByte() }
 
         fun identity(seed: Int) = LocalIdentity(publicKey = bytes(seed), privateKey = bytes(-seed))

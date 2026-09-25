@@ -69,6 +69,7 @@ class DeviceAuthenticationStorageTest {
         driver.exec("DROP TABLE device_authentication_key")
         driver.exec("DROP TABLE device_authentication_state")
         driver.exec("DROP TABLE device_authentication_recovery_key")
+        driver.exec("ALTER TABLE remote_identity DROP COLUMN verification")
         driver.exec("PRAGMA user_version = 7")
     }
 
@@ -125,9 +126,9 @@ class DeviceAuthenticationStorageTest {
         database.closeOpenDrivers()
 
         val storage = reopen()
-        assertEquals(listOf(9L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(10L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
-        assertEquals(before, after - AUTH_TABLES, "no existing row changes")
+        assertEquals(before.withUnverifiedPins(), after - AUTH_TABLES, "no existing row changes")
         assertEquals(emptyList(), after.getValue("device_authentication_key"), "SQL creates no key material")
         assertEquals(1L, awaitsUpgradeKeyColumn())
         assertTrue(storage.deviceAuthentication.awaitsUpgradeKey())
@@ -182,7 +183,7 @@ class DeviceAuthenticationStorageTest {
 
         // Opening migrates the schema; nothing but the new tables changes, and no key is created yet.
         val migrated = reopen()
-        assertEquals(before, driver.dump() - AUTH_TABLES)
+        assertEquals(before.withUnverifiedPins(), driver.dump() - AUTH_TABLES)
         assertTrue(migrated.deviceAuthentication.awaitsUpgradeKey())
         assertNull(migrated.deviceAuthentication.keyPair())
 
@@ -191,7 +192,7 @@ class DeviceAuthenticationStorageTest {
         assertFalse(migrated.deviceAuthentication.awaitsUpgradeKey())
         assertEquals(0L, awaitsUpgradeKeyColumn())
         assertContentEquals(identity.privateKey, migrated.identity.identity()?.privateKey, "the identity is kept")
-        assertEquals(before - "one_time_pre_key" - "pre_key_state", driver.dump() - AUTH_TABLES - "one_time_pre_key" - "pre_key_state")
+        assertEquals(before.withUnverifiedPins() - "one_time_pre_key" - "pre_key_state", driver.dump() - AUTH_TABLES - "one_time_pre_key" - "pre_key_state")
 
         // Exactly once: later starts keep that key.
         repeat(2) {

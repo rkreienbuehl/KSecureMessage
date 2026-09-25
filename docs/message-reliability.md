@@ -188,6 +188,15 @@ processing received envelopes, after a `SessionCollision`, or when it
 suspects a lost ACK. `pendingMessages(remote)` lists what is still pending
 (with plaintext copies).
 
+**Identity changes.** Accepting a changed remote identity
+(`acceptRemoteIdentityChange`, [identity-verification.md](identity-verification.md#pending-and-processed-messages))
+removes the session with that device but keeps its pending messages and all
+processed IDs. The next retry fetches a bundle of the accepted identity (or
+uses the session it started meanwhile) and sends the stored frames again
+with their logical IDs; the new device's ACKs clear them. Without a session,
+a bundle with an identity that was not accepted makes the retry fail with
+`IdentityChanged`, and the messages stay pending.
+
 **Readiness.** A retry always encrypts on the session the client has now.
 The client never keeps a session it knows lost a collision: the winning
 `PreKeyMessage` replaces it in the same transaction. Before that message

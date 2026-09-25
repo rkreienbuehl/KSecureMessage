@@ -3,6 +3,8 @@ package dev.kreienbuehl.ksecuremessage.client
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
+import dev.kreienbuehl.ksecuremessage.protocol.PublicIdentityKey
+import dev.kreienbuehl.ksecuremessage.protocol.SafetyNumber
 
 /** Lifecycle and local-state failures of [SecureMessageClient]. Messages never contain key material. */
 sealed class SecureMessageClientException(message: String, cause: Throwable? = null) : Exception(message, cause) {
@@ -25,10 +27,47 @@ sealed class SecureMessageClientException(message: String, cause: Throwable? = n
      * [address] presented an identity key that differs from the one pinned on
      * first contact (see docs/identity-trust.md). Nothing was changed: the pin,
      * any existing session and the local one-time prekeys stay as they were.
-     * The keys themselves are not part of the exception.
+     *
+     * [change] names the pinned and the presented public identity key, so the
+     * application can show the change, compare
+     * [SecureMessageClient.safetyNumber] for it with the other device and, only
+     * if the user decides so, pass it to
+     * [SecureMessageClient.acceptRemoteIdentityChange]
+     * (docs/identity-verification.md). The presented key is unauthenticated:
+     * it is what the message or bundle claimed. The message text contains no
+     * key material.
      */
-    class IdentityChanged(val address: DeviceAddress) :
-        SecureMessageClientException("Remote identity changed for $address")
+    class IdentityChanged(val change: RemoteIdentityChange) :
+        SecureMessageClientException("Remote identity changed for ${change.remote}") {
+        val address: DeviceAddress get() = change.remote
+
+        /** The key pinned for [address]. */
+        val pinnedIdentityKey: PublicIdentityKey get() = change.previousIdentityKey
+
+        /** The different key [address] presented. */
+        val presentedIdentityKey: PublicIdentityKey get() = change.presentedIdentityKey
+    }
+
+    /**
+     * No identity key is pinned for [address] yet: there was no successful
+     * first contact. Safety numbers and verification need a pin; the client
+     * never fetches a bundle to create one. Nothing was changed.
+     */
+    class RemoteIdentityNotKnown(val address: DeviceAddress) :
+        SecureMessageClientException("No identity is pinned for $address")
+
+    /**
+     * The identity pinned for [address] is not the one the call expected: an
+     * identity change was accepted in the meantime (or the call was based on
+     * an outdated [RemoteIdentityChange] or [SafetyNumber]). Nothing was
+     * changed. Show the current state to the user again.
+     */
+    class RemoteIdentityConflict(val address: DeviceAddress) :
+        SecureMessageClientException("The identity pinned for $address is not the expected one")
+
+    /** A scanned safety number payload could not be decoded. Nothing was changed. */
+    class InvalidSafetyNumberPayload(cause: Throwable) :
+        SecureMessageClientException("Invalid safety number payload", cause)
 
     /**
      * [address] sent a message of a session initiation that was replaced

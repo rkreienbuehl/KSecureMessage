@@ -35,7 +35,10 @@ DeviceAddress → device authentication public key
 It never changes, and never implies anything about:
 
 - the messaging identity key (X3DH), signed prekeys, one-time prekeys;
-- TOFU pins, on this device or on peers (docs/identity-trust.md);
+- TOFU pins and their manual verification state, on this device or on
+  peers (docs/identity-trust.md, docs/identity-verification.md): safety
+  numbers are derived from messaging identity keys only, so a recovery
+  changes no safety number and no verification;
 - Double Ratchet sessions, retired session initiations;
 - pending outbound messages and processed inbound message IDs;
 - the device's mailbox on the server.
@@ -378,7 +381,9 @@ laptop.receive()
 - Whoever controls another registered device of the user (a compromised or
   stolen device) can recover, and so take over, the user's other devices'
   server authentication. There is no human or account ownership proof.
-- No messaging identity or session recovery, no backup, no TOFU reset.
+- No messaging identity or session recovery, no backup, no TOFU reset. A
+  peer can accept a new messaging identity only explicitly
+  (docs/identity-verification.md); device recovery never does that.
 - No admin override, no password/OAuth/e-mail/SMS/recovery-phrase recovery.
 - No routine auth-key rotation, no device deletion.
 - No sealed sender; the server still sees routing metadata.

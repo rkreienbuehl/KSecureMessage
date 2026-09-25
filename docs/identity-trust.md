@@ -16,8 +16,8 @@ The client remembers the first cryptographically valid identity key it sees
 for a remote device and rejects a different key for that device later. If the
 server hands out an attacker's keys before the first contact, the client pins
 the attacker's key. TOFU cannot detect that. Only out-of-band verification
-can, and it is not implemented yet: there are no safety numbers, fingerprints,
-QR codes or verified/unverified states.
+can: safety numbers and the verified/unverified state are described in
+[identity-verification.md](identity-verification.md).
 
 Why this is needed: signed prekey verification proves only that the signed
 prekey belongs to the identity key *in the same bundle*. A malicious server
@@ -35,24 +35,29 @@ the same user have separate pins and may have different identity keys.
 
 | Situation | Result |
 |---|---|
-| No pin, first contact succeeds cryptographically | key is pinned together with the new session |
+| No pin, first contact succeeds cryptographically | key is pinned, `UNVERIFIED`, together with the new session |
 | Same key as pinned | accepted |
-| Different key than pinned | `SecureMessageClientException.IdentityChanged(address)`, nothing changes |
+| Different key than pinned | `SecureMessageClientException.IdentityChanged`, nothing changes |
 | First contact fails (malformed bundle, bad signature, tampered or forged message, storage failure) | nothing is pinned |
 
-A pin is never replaced or removed. There is no API to accept a changed
-identity, reset trust or forget a device. Device reset and re-registration
-are out of scope for now. A new *session* from the pinned identity is
+A pin is never removed and never replaced by message or bundle processing.
+Only `SecureMessageClient.acceptRemoteIdentityChange`, called by the
+application after the user approved a specific change, replaces it
+(compare-and-set on the old key; the old session is removed and its
+initiation retired; the new pin is `UNVERIFIED`), see
+[identity-verification.md](identity-verification.md#identity-changes).
+There is no API to reset trust or forget a device. A new *session* from the pinned identity is
 accepted and replaces the old one; the identity check runs first, so a
 different identity never reaches session replacement or collision handling
 (see [session-lifecycle.md](session-lifecycle.md)).
 
-`IdentityChanged` carries the address only. Its message is
-`Remote identity changed for <address>`. It does not contain either key.
+`IdentityChanged` carries a `RemoteIdentityChange`: the address, the pinned
+key and the presented key, as structured public-key fields for the
+application. Its message is `Remote identity changed for <address>` and does
+not contain either key.
 
 `SecureMessageClient.remoteIdentityKey(address)` returns the pinned key, or
-`null`. It is public key material and is meant for later verification
-features.
+`null`; `remoteIdentityTrust(address)` adds its verification state.
 
 ## Initiator
 
@@ -115,7 +120,12 @@ commit wins, and the other one fails with `IdentityChanged`. As a second
 barrier, `RemoteIdentityStore.store` refuses to overwrite a different key and
 the SQLDelight table has a primary key on the address.
 
-Tests: `RemoteIdentityTrustTest` and `FirstContactAtomicityTest`
+Accepting identity changes is serialized the same way and is a
+compare-and-set on the pinned key, so of two competing acceptances only one
+succeeds.
+
+Tests: `RemoteIdentityTrustTest`, `FirstContactAtomicityTest`,
+`IdentityVerificationTest` and `IdentityChangeAcceptanceTest`
 (`client:core`), the `ClientStorageContractTest` cases for remote identities,
 `SqlDelightPersistenceTest`, and `HttpEndToEndTest` (`server:ktor`).
 
@@ -124,7 +134,7 @@ Tests: `RemoteIdentityTrustTest` and `FirstContactAtomicityTest`
 Pins are stored in `ClientStorage.remoteIdentities` and survive restarts with
 a persistent adapter. `storage:client:sqldelight` keeps them in the
 `remote_identity` table (added in schema version 2, see
-[storage.md](storage.md)).
+[storage.md](storage.md); the `verification` column since schema version 10).
 
 ## Sessions from before pinning
 
@@ -143,10 +153,10 @@ session state contains both identity keys as associated data, so a narrow
 
 ## Limitations
 
-- First contact is not authenticated (see above).
-- No safety numbers or manual verification.
-- No way to accept a legitimate identity change (reinstall, device reset).
-  The only outcome is `IdentityChanged`.
-- No authenticated server API.
-- Pinned keys are stored unencrypted like all client state. They are public
-  keys, but they identify contacts.
+- First contact is not authenticated (see above). Manual verification
+  ([identity-verification.md](identity-verification.md)) closes the gap only
+  if the user compares safety numbers.
+- An identity change is accepted only explicitly, per device; there is no
+  automatic reset.
+- Pinned keys are stored unencrypted (not sealed) even in the SQLDelight
+  adapter. They are public keys, but they identify contacts.

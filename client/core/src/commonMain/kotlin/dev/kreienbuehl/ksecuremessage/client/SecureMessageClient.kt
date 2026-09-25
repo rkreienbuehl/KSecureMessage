@@ -22,6 +22,10 @@ import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.PreKeyFormat
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolException
+import dev.kreienbuehl.ksecuremessage.protocol.PublicIdentityKey
+import dev.kreienbuehl.ksecuremessage.protocol.SafetyNumber
+import dev.kreienbuehl.ksecuremessage.protocol.SafetyNumberCodec
+import dev.kreienbuehl.ksecuremessage.protocol.SafetyNumberComparison
 import dev.kreienbuehl.ksecuremessage.protocol.SecurePayload
 import dev.kreienbuehl.ksecuremessage.protocol.SecurePayloadCodec
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
@@ -29,6 +33,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
 import dev.kreienbuehl.ksecuremessage.protocol.SessionAcceptanceResult
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInfo
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
+import dev.kreienbuehl.ksecuremessage.protocol.VerificationState
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -115,8 +120,16 @@ import kotlin.uuid.Uuid
  * [completeDeviceAuthenticationRecovery] on the lost device again. This
  * replaces the server authentication key only, never the messaging identity.
  *
- * Not handled yet: identity changes cannot be accepted, pending messages are
- * not retried automatically, and prekeys are not published automatically.
+ * Identities can be verified manually and changes accepted explicitly
+ * (docs/identity-verification.md): [safetyNumber] gives a value both devices
+ * derive alike for the user to compare, [markRemoteIdentityVerified] records
+ * the user's confirmation for exactly the pinned key, and
+ * [acceptRemoteIdentityChange] installs a new identity the user approved,
+ * resetting the session and the verification. Nothing here happens
+ * automatically.
+ *
+ * Not handled yet: pending messages are not retried automatically, and
+ * prekeys are not published automatically.
  */
 class SecureMessageClient(
     val localAddress: DeviceAddress,
@@ -431,6 +444,144 @@ class SecureMessageClient(
     suspend fun remoteIdentityKey(remote: DeviceAddress): ByteArray? = storage.transaction {
         requireIdentity()
         remoteIdentities.identityKey(remote)
+    }
+
+    /**
+     * The trust state of [remote]: pinned identity key and verification
+     * state, or `null` if nothing is pinned yet (docs/identity-verification.md).
+     */
+    suspend fun remoteIdentityTrust(remote: DeviceAddress): RemoteIdentityTrust? = storage.transaction {
+        requireIdentity()
+        remoteIdentities.record(remote)?.let { RemoteIdentityTrust(remote, PublicIdentityKey(it.identityKey), it.verification) }
+    }
+
+    /**
+     * The safety number of this device and [remote], from the local identity
+     * key and the key **pinned** for [remote] (docs/identity-verification.md).
+     * Both devices derive the same value. Show [SafetyNumber.displayString]
+     * or [SafetyNumber.encode] (for example as a QR code) and let the user
+     * compare it with the other device. Throws
+     * [SecureMessageClientException.RemoteIdentityNotKnown] if nothing is
+     * pinned; never fetches a bundle. Changes nothing.
+     */
+    suspend fun safetyNumber(remote: DeviceAddress): SafetyNumber = storage.transaction { currentSafetyNumber(remote) }
+
+    /**
+     * The safety number [change]'s presented key would have, so the user can
+     * compare it with the other device before accepting the change. Changes
+     * nothing and trusts nothing.
+     */
+    suspend fun safetyNumber(change: RemoteIdentityChange): SafetyNumber {
+        val identity = storage.transaction { requireIdentity() }
+        return SafetyNumber.derive(localAddress, localIdentityKey(identity), change.remote, change.presentedIdentityKey)
+    }
+
+    /**
+     * Compares the safety number of [remote] with [scanned], the payload the
+     * other device shows ([SafetyNumber.encode]). Never changes trust state,
+     * also on a match: call [markRemoteIdentityVerified] once the user
+     * confirmed. Throws [SecureMessageClientException.InvalidSafetyNumberPayload]
+     * for a payload that does not decode and
+     * [SecureMessageClientException.RemoteIdentityNotKnown] if nothing is
+     * pinned.
+     */
+    suspend fun compareSafetyNumber(remote: DeviceAddress, scanned: ByteArray): SafetyNumberComparison {
+        val payload = try {
+            SafetyNumberCodec.decode(scanned)
+        } catch (e: IllegalArgumentException) {
+            throw SecureMessageClientException.InvalidSafetyNumberPayload(e)
+        }
+        return safetyNumber(remote).compare(payload)
+    }
+
+    /**
+     * Records that the user compared [safetyNumber] with the other device and
+     * confirmed it: the pinned identity of the remote device in it becomes
+     * [VerificationState.VERIFIED]. Bound to that exact key: if the pin
+     * changed since [safetyNumber] was derived, this throws
+     * [SecureMessageClientException.RemoteIdentityConflict] and changes
+     * nothing. A later accepted identity change resets it to
+     * [VerificationState.UNVERIFIED].
+     */
+    suspend fun markRemoteIdentityVerified(safetyNumber: SafetyNumber) {
+        val remote = when (localAddress) {
+            safetyNumber.first -> safetyNumber.second
+            safetyNumber.second -> safetyNumber.first
+            else -> throw IllegalArgumentException("The safety number does not involve this device")
+        }
+        storage.transaction {
+            if (currentSafetyNumber(remote) != safetyNumber) throw SecureMessageClientException.RemoteIdentityConflict(remote)
+            val pinned = checkNotNull(remoteIdentities.identityKey(remote))
+            remoteIdentities.setVerification(remote, pinned, VerificationState.VERIFIED)
+        }
+    }
+
+    /**
+     * Makes the pinned identity of [remote] [VerificationState.UNVERIFIED]
+     * again, for example when the user withdraws a verification. The pin
+     * stays. Throws [SecureMessageClientException.RemoteIdentityNotKnown].
+     */
+    suspend fun markRemoteIdentityUnverified(remote: DeviceAddress) {
+        storage.transaction {
+            requireIdentity()
+            val pinned = remoteIdentities.identityKey(remote) ?: throw SecureMessageClientException.RemoteIdentityNotKnown(remote)
+            remoteIdentities.setVerification(remote, pinned, VerificationState.UNVERIFIED)
+        }
+    }
+
+    /**
+     * Accepts [change], an identity change the user explicitly approved
+     * (docs/identity-verification.md). Never called by the client itself:
+     * until this runs, every message and bundle with the new key fails with
+     * [SecureMessageClientException.IdentityChanged].
+     *
+     * Only if [RemoteIdentityChange.previousIdentityKey] is still pinned, in
+     * one transaction: the session with the remote device is removed and its
+     * initiation retired (so neither it nor a replay of its PreKeyMessages
+     * can come back), and the pin becomes exactly
+     * [RemoteIdentityChange.presentedIdentityKey], never a key fetched now,
+     * as [VerificationState.UNVERIFIED]. Otherwise it throws
+     * [SecureMessageClientException.RemoteIdentityConflict] (for example a
+     * second, competing acceptance) or
+     * [SecureMessageClientException.RemoteIdentityNotKnown] and changes
+     * nothing. Other devices' sessions and pins are not touched.
+     *
+     * Pending messages to the device stay pending and processed message IDs
+     * stay processed: [retryPendingMessages] sends pending messages again,
+     * with their logical IDs, on a new session with the new identity. The
+     * envelope that raised [SecureMessageClientException.IdentityChanged]
+     * changed nothing, so it can be passed to [decrypt] again. No network I/O.
+     */
+    suspend fun acceptRemoteIdentityChange(change: RemoteIdentityChange) {
+        val remote = change.remote
+        // Serialized with sends, retries and acknowledgements: none of them
+        // sees the session disappear between its steps.
+        sendMutex.withLock {
+            storage.transaction {
+                requireIdentity()
+                val pinned = remoteIdentities.identityKey(remote) ?: throw SecureMessageClientException.RemoteIdentityNotKnown(remote)
+                if (!change.previousIdentityKey.contentEquals(pinned)) throw SecureMessageClientException.RemoteIdentityConflict(remote)
+                sessions.load(remote)?.let { session ->
+                    val info = protocol.sessionInfo(session)
+                    session.state.fill(0)
+                    info.initiationId?.let { sessionInitiations.retire(remote, it, info.acceptedSignedPreKeyId) }
+                    sessions.remove(remote)
+                }
+                remoteIdentities.replace(remote, pinned, change.presentedIdentityKey.bytes)
+            }
+        }
+    }
+
+    /** The safety number with the pinned identity of [remote]. Runs inside a transaction. */
+    private suspend fun ClientStorage.currentSafetyNumber(remote: DeviceAddress): SafetyNumber {
+        val identity = requireIdentity()
+        val pinned = remoteIdentities.identityKey(remote) ?: throw SecureMessageClientException.RemoteIdentityNotKnown(remote)
+        return SafetyNumber.derive(localAddress, localIdentityKey(identity), remote, PublicIdentityKey(pinned))
+    }
+
+    private fun localIdentityKey(identity: LocalIdentity): PublicIdentityKey {
+        identity.privateKey.fill(0)
+        return PublicIdentityKey(identity.publicKey)
     }
 
     suspend fun ensureSession(remote: DeviceAddress): SecureSession {
@@ -807,6 +958,7 @@ class SecureMessageClient(
         // The session and the pin are stored under remote, so the bundle must
         // be for it.
         if (bundle.address != remote) throw ProtocolException.InvalidPreKeyBundle("Prekey bundle is for another device")
+        if (bundle.identityKey.size != PublicIdentityKey.SIZE) throw ProtocolException.InvalidPreKeyBundle("Identity key has an invalid size")
         val pinned = checkRemoteIdentity(remote, bundle.identityKey)
         // Verifies the bundle (key sizes, signed prekey signature) first, so an
         // invalid bundle is never pinned. The caller stores the session in the

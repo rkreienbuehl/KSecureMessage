@@ -43,6 +43,15 @@ fun SqlDriver.dump(): Map<String, List<String?>> = tables().associateWith { tabl
     strings("SELECT ${names.joinToString(" || '|' || ") { "quote(\"$it\")" }} FROM \"$table\" ORDER BY 1")
 }
 
+/**
+ * A [dump] of a database from before schema version 10 as migration leaves
+ * it: every remote identity pin gained `verification` 0 (unverified).
+ */
+fun Map<String, List<String?>>.withUnverifiedPins(): Map<String, List<String?>> {
+    val pins = get("remote_identity") ?: return this
+    return this + ("remote_identity" to pins.map { "$it|0" })
+}
+
 fun ByteArray.toHex(): String = joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
 
 fun ByteArray.flipped(index: Int): ByteArray = copyOf().also { it[index] = (it[index].toInt() xor 0x01).toByte() }

@@ -43,6 +43,13 @@ internal object ProtocolConstants {
     /** Domain separator of [DeviceRecoveryId]. Recorded by the server for idempotent retries. */
     const val DEVICE_RECOVERY_ID_DOMAIN = "KSecureMessage-DeviceRecoveryId-v1"
 
+    /**
+     * Domain separator of the safety number fingerprint ([SafetyNumber]).
+     * Every safety number users compared and every verification payload
+     * depend on it.
+     */
+    const val SAFETY_NUMBER_DOMAIN = "KSecureMessage-SafetyNumber-v1"
+
     /** Size of an encoded public key: X25519 key followed by Ed25519 key. */
     const val PUBLIC_KEY_SIZE = 64
 }
