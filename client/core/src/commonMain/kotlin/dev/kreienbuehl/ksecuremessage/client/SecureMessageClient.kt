@@ -14,6 +14,10 @@ import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
 import dev.kreienbuehl.ksecuremessage.model.RatchetMessage
 import dev.kreienbuehl.ksecuremessage.protocol.CiphertextMessageCodec
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecovery
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryCodec
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryRequest
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.PreKeyFormat
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolEngine
@@ -104,6 +108,13 @@ import kotlin.uuid.Uuid
  * [decrypt] one sender's envelopes one at a time, in the order
  * [SecureMessageTransport.receive] returned them.
  *
+ * A device whose device authentication key is lost can be recovered by
+ * another registered device of the same user (docs/device-recovery.md):
+ * [prepareDeviceAuthenticationRecovery] on the lost device,
+ * [authorizeDeviceRecovery] on the other one,
+ * [completeDeviceAuthenticationRecovery] on the lost device again. This
+ * replaces the server authentication key only, never the messaging identity.
+ *
  * Not handled yet: identity changes cannot be accepted, pending messages are
  * not retried automatically, and prekeys are not published automatically.
  */
@@ -157,6 +168,154 @@ class SecureMessageClient(
         withRequestSigner { keyPair, signer ->
             transport.registerDevice(DeviceRegistration(localAddress, keyPair.publicKey), signer)
         }
+    }
+
+    /**
+     * Starts or resumes a device authentication recovery of this device
+     * (docs/device-recovery.md): for a device whose registered device
+     * authentication key is lost, [authorizer], another registered device of
+     * the same user, can authorize a replacement key.
+     *
+     * Creates the replacement key pair once and keeps it as pending recovery
+     * key, sealed at rest; later calls reuse it until the recovery completes
+     * or is cancelled. The active key (if any) is not touched. Returns a
+     * request signed with the replacement key (proof of possession), stamped
+     * with the current time and a fresh nonce. The application transfers it
+     * to [authorizer] (for example with [DeviceRecoveryCodec]), which calls
+     * [authorizeDeviceRecovery]; this device then calls
+     * [completeDeviceAuthenticationRecovery] within
+     * [DeviceRecovery.VALIDITY_WINDOW] of the request time. No network I/O.
+     *
+     * Recovers server authentication only. The messaging identity, prekeys,
+     * sessions and identity pins are not changed. Needs the local identity
+     * ([SecureMessageClientException.NotInitialized]); throws
+     * [SecureMessageClientException.InvalidDeviceRecovery] if [authorizer] is
+     * this device or belongs to another user.
+     */
+    suspend fun prepareDeviceAuthenticationRecovery(authorizer: DeviceAddress): DeviceRecoveryRequest {
+        if (authorizer == localAddress) throw SecureMessageClientException.InvalidDeviceRecovery("A device cannot authorize its own recovery")
+        if (authorizer.userId != localAddress.userId) {
+            throw SecureMessageClientException.InvalidDeviceRecovery("The authorizing device belongs to another user")
+        }
+        val keyPair = storage.transaction {
+            requireIdentity()
+            deviceAuthentication.pendingRecoveryKeyPair()
+                ?: protocol.createDeviceAuthenticationKey().also { deviceAuthentication.storePendingRecoveryKeyPair(it) }
+        }
+        try {
+            return DeviceRecovery.prepare(keyPair, localAddress, authorizer, clock.now())
+        } finally {
+            keyPair.privateKey.fill(0)
+        }
+    }
+
+    /**
+     * Authorizes [request], another device's recovery request, with this
+     * device's active device authentication key (docs/device-recovery.md).
+     * The application shows the user which device ([DeviceRecoveryRequest.target])
+     * is being recovered before calling this, and transfers the result back
+     * to it. No network I/O.
+     *
+     * Throws [SecureMessageClientException.InvalidDeviceRecovery] unless the
+     * request names this device as authorizer, targets another device of
+     * the same user, is within [DeviceRecovery.VALIDITY_WINDOW] of the local
+     * time and carries a valid proof of possession of its replacement key.
+     */
+    suspend fun authorizeDeviceRecovery(request: DeviceRecoveryRequest): DeviceRecoveryAuthorization {
+        fun invalid(message: String): Nothing = throw SecureMessageClientException.InvalidDeviceRecovery(message)
+        if (request.authorizer != localAddress) invalid("The request asks another device for authorization")
+        if (request.target == localAddress) invalid("A device cannot authorize its own recovery")
+        if (request.target.userId != localAddress.userId) invalid("The device to recover belongs to another user")
+        val now = clock.now()
+        if (request.timestamp < now - DeviceRecovery.VALIDITY_WINDOW || request.timestamp > now + DeviceRecovery.VALIDITY_WINDOW) {
+            invalid("The request is outside the validity window")
+        }
+        if (!DeviceRecovery.verifyProofOfPossession(request)) invalid("The request's proof of possession is invalid")
+        val keyPair = storage.transaction { requireDeviceAuthenticationKey() }
+        try {
+            return DeviceRecovery.authorize(keyPair, request)
+        } finally {
+            keyPair.privateKey.fill(0)
+        }
+    }
+
+    /**
+     * Submits [authorization] for this device's pending recovery and, once
+     * the server replaced the registered key, makes the pending key the
+     * active device authentication key (docs/device-recovery.md). From then
+     * on every request is signed with it; the old key no longer works.
+     *
+     * Safe to call again after a failure or a lost response: the server
+     * recognizes a retry of an applied recovery, and if it rejects the retry
+     * as conflicting, expired or replayed, this asks the server whether the
+     * pending key is already registered ([resolveDeviceAuthenticationRecovery])
+     * before failing. Other failures leave the pending key for another
+     * attempt. Throws [SecureMessageClientException.NoPendingDeviceRecovery],
+     * [SecureMessageClientException.InvalidDeviceRecovery] if [authorization]
+     * is not for this device's pending key, and
+     * [SecureMessageTransportException.DeviceRecoveryRejected].
+     */
+    suspend fun completeDeviceAuthenticationRecovery(authorization: DeviceRecoveryAuthorization) {
+        val request = authorization.request
+        if (request.target != localAddress) throw SecureMessageClientException.InvalidDeviceRecovery("The authorization is for another device")
+        val pending = storage.transaction { deviceAuthentication.pendingRecoveryKeyPair() }
+            ?: throw SecureMessageClientException.NoPendingDeviceRecovery()
+        val publicKey = pending.publicKey
+        pending.privateKey.fill(0)
+        if (!publicKey.contentEquals(request.replacementPublicKey)) {
+            throw SecureMessageClientException.InvalidDeviceRecovery("The authorization is for another replacement key")
+        }
+        try {
+            transport.recoverDevice(authorization)
+        } catch (e: SecureMessageTransportException.DeviceRecoveryRejected) {
+            // A lost response, or an earlier attempt that won: the key may be registered already.
+            if (e.reason in RESOLVABLE_RECOVERY_FAILURES && resolveDeviceAuthenticationRecovery()) return
+            throw e
+        }
+        promotePendingRecoveryKey(publicKey)
+    }
+
+    /**
+     * Asks the server whether this device's pending recovery key is its
+     * registered key, with a registration request signed by that key (a
+     * registration of exactly the registered key changes nothing). If it
+     * is, makes it the active key and returns `true`; if the server holds
+     * another key, returns `false` and keeps the pending key. For a recovery
+     * whose response was lost and whose authorization expired. Throws
+     * [SecureMessageClientException.NoPendingDeviceRecovery].
+     */
+    suspend fun resolveDeviceAuthenticationRecovery(): Boolean {
+        val pending = storage.transaction { deviceAuthentication.pendingRecoveryKeyPair() }
+            ?: throw SecureMessageClientException.NoPendingDeviceRecovery()
+        val publicKey = pending.publicKey
+        try {
+            withRequestSigner(pending) { keyPair, signer ->
+                transport.registerDevice(DeviceRegistration(localAddress, keyPair.publicKey), signer)
+            }
+        } catch (e: SecureMessageTransportException.DeviceRegistrationConflict) {
+            return false
+        }
+        promotePendingRecoveryKey(publicKey)
+        return true
+    }
+
+    /**
+     * Deletes the pending recovery key. Only for a recovery that will not be
+     * completed: if the server already accepted it, the device has to be
+     * recovered again.
+     */
+    suspend fun cancelDeviceAuthenticationRecovery() {
+        storage.transaction { deviceAuthentication.removePendingRecoveryKeyPair() }
+    }
+
+    /** Promotes the pending key only if it is still the one the server accepted. */
+    private suspend fun promotePendingRecoveryKey(publicKey: ByteArray) = storage.transaction {
+        val pending = deviceAuthentication.pendingRecoveryKeyPair() ?: throw SecureMessageClientException.NoPendingDeviceRecovery()
+        pending.privateKey.fill(0)
+        if (!pending.publicKey.contentEquals(publicKey)) {
+            throw SecureMessageClientException.InvalidDeviceRecovery("The pending recovery key changed")
+        }
+        deviceAuthentication.promotePendingRecoveryKeyPair()
     }
 
     /**
@@ -734,5 +893,12 @@ class SecureMessageClient(
         const val ENVELOPE_VERSION = 1
 
         fun newEnvelopeId() = MessageId(Uuid.random().toString())
+
+        /** Recovery rejections after which the pending key may be registered already. */
+        private val RESOLVABLE_RECOVERY_FAILURES = setOf(
+            SecureMessageTransportException.RecoveryFailure.CONFLICT,
+            SecureMessageTransportException.RecoveryFailure.EXPIRED,
+            SecureMessageTransportException.RecoveryFailure.REPLAY,
+        )
     }
 }

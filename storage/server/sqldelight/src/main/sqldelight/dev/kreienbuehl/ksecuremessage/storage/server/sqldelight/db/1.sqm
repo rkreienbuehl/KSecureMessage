@@ -1,0 +1,11 @@
+-- Server schema version 1 to 2 (milestone 14): device authentication
+-- recovery (docs/device-recovery.md). Adds the authentication epoch and the
+-- ID of the recovery that installed the current key to every registration.
+-- Existing registrations get epoch 1 and no recovery ID. No table is rebuilt:
+-- nonces, prekeys, one-time prekey tombstones, mailbox rows and the mailbox
+-- sequence stay as they are.
+ALTER TABLE device_registration ADD COLUMN auth_epoch INTEGER NOT NULL DEFAULT 1;
+
+ALTER TABLE device_registration ADD COLUMN recovery_id BLOB;
+
+UPDATE server_storage SET format = 2;

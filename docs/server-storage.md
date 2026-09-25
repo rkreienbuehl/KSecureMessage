@@ -53,11 +53,14 @@ embeddedServer(Netty) {
 ```
 
 `JdbcSqliteDriver(url, properties, Schema)` creates the schema in a new
-database and tracks its version in `PRAGMA user_version`. A host that manages
-the schema itself calls `SqlDelightServerStorage.Schema.create(driver)` once
-for a new database. `open` creates nothing: it reads the single-row
+database, tracks its version in `PRAGMA user_version` and migrates an older
+database on open. A host that manages the schema itself calls
+`SqlDelightServerStorage.Schema.create(driver)` once for a new database and
+`Schema.migrate(driver, oldVersion, Schema.version)` for an existing one.
+`open` creates and migrates nothing: it reads the single-row
 `server_storage` marker and throws `IllegalStateException` (without SQL
-details) if the database has no server schema or an unknown format.
+details) if the database has no server schema, is still at schema version 1
+(format 1: migrate it first), or has an unknown format.
 
 `open(driver, dispatcher)` takes an optional `CoroutineDispatcher`
 (default `Dispatchers.IO`) for the blocking driver calls.
@@ -87,17 +90,17 @@ storage/server/
 or `sqldelight-sqlite` / `sqldelight-postgresql` if SQLDelight dialect
 separation proves useful. None of this exists yet.
 
-## Schema (server schema version 1)
+## Schema (server schema version 2)
 
-Defined in `ServerState.sq`, independent of the client schema (client version
-8+ does not apply here); there are no `.sqm` migrations yet. Later versions
-add `.sqm` files with server-own numbering. Timestamps are epoch
+Defined in `ServerState.sq`, independent of the client schema (client
+versions do not apply here). Migrations are `.sqm` files with server-own
+numbering: `1.sqm` migrates version 1 (M13) to 2 (M14, below). Timestamps are epoch
 milliseconds. Uniqueness is enforced by the database, not only by Kotlin:
 
 | Table | Key / constraint | Columns |
 |---|---|---|
-| `server_storage` | `id = 0` (single row) | `format` = 1 |
-| `device_registration` | PK `(user_id, device_id)` | `auth_public_key` |
+| `server_storage` | `id = 0` (single row) | `format` = 2 (1 = schema version 1) |
+| `device_registration` | PK `(user_id, device_id)` | `auth_public_key`, `auth_epoch` (≥ 1, default 1), `recovery_id` (32-byte `DeviceRecoveryId` or `NULL`) |
 | `authentication_nonce` | PK `(user_id, device_id, nonce)`, index on `request_timestamp` | `request_timestamp` |
 | `device_prekey_state` | PK `(user_id, device_id)` | `identity_key`, `signed_pre_key_id`, `signed_pre_key`, `signed_pre_key_signature` |
 | `available_one_time_prekey` | PK `(user_id, device_id, pre_key_id)` | `public_key` |
@@ -106,6 +109,17 @@ milliseconds. Uniqueness is enforced by the database, not only by Kotlin:
 
 No statement uses `INSERT OR REPLACE`: a conflict never overwrites stored
 data.
+
+### Migration from schema version 1 (M13)
+
+`1.sqm` adds `device_registration.auth_epoch INTEGER NOT NULL DEFAULT 1` and
+`device_registration.recovery_id BLOB` with `ALTER TABLE … ADD COLUMN` (no
+table is rebuilt) and sets `server_storage.format = 2`. Existing
+registrations get epoch 1 and no recovery ID; nonces, prekey state,
+available one-time prekeys, tombstones, mailbox rows and the mailbox
+`AUTOINCREMENT` sequence are untouched. `SqlDelightServerMigrationTest`
+checks this against a frozen copy of the version 1 schema
+(`ServerVersion1Schema`) and that the migrated schema equals a new one.
 
 ## Transaction semantics
 
@@ -117,6 +131,18 @@ mutex.
   registration (`true`). Otherwise the stored key is compared in the same
   transaction: equal = idempotent `false`, different =
   `DeviceRegistrationException.Conflict`, nothing written.
+- **Device recovery** (M14, docs/device-recovery.md): one transaction
+  loads the target's and the authorizer's registration, returns "already
+  applied" if the target's `recovery_id` is this recovery's, "conflict" if
+  either key or epoch differs from the verified state (or the replacement is
+  the current key), then prunes and claims the nonce under the target
+  ("replay" if taken) and runs a guarded
+  `UPDATE … SET auth_public_key, auth_epoch = auth_epoch + 1, recovery_id
+  WHERE user_id, device_id, auth_public_key = expected AND auth_epoch = expected`.
+  Nothing else changes: prekeys, tombstones, mailbox rows and other nonces
+  stay. A failure rolls back the nonce claim too. Unlike ordinary
+  authenticated requests, the recovery's nonce claim and its write share
+  one transaction.
 - **Nonce claim**: `DELETE ... WHERE request_timestamp < pruneBefore`, then
   `INSERT OR IGNORE` of the nonce, in one transaction. `true` only if the row
   was inserted. The prune commits also when the claim returns `false`, like
@@ -171,7 +197,9 @@ processes on one file are not supported: SQLite would serialize writers with
 After the host closes the driver and opens the same database with a new
 driver and a new storage instance:
 
-- registrations are kept and still never replaced;
+- registrations are kept, with their epoch and recovery ID; registration
+  never replaces them, and a recovered key stays authoritative (the old key
+  stays rejected, a stale recovery stays rejected);
 - claimed nonces are kept until pruned, so a replay inside the window is
   rejected after a restart;
 - prekey state, available one-time prekeys and tombstones are kept; a
@@ -213,6 +241,11 @@ is not encrypted; that is out of scope, like backups.
   driver (`TestDriver`), one test per operation.
 - `SqlDelightServerStorageOpenTest`: driver injection, schema marker, driver
   ownership, database-level uniqueness.
+- `SqlDelight*DeviceRecoveryRepositoryTest` / `FileBackedDeviceRecoveryRepositoryTest`:
+  the recovery contract (`DeviceRecoveryRepositoryContractTest`).
+- `SqlDelightServerRecoveryTest`: recovery across restarts, stale recovery
+  after restarts, preserved prekeys/tombstones/mailbox, rollback.
+- `SqlDelightServerMigrationTest`: schema version 1 → 2.
 
 ## Limitations
 
@@ -220,4 +253,5 @@ is not encrypted; that is out of scope, like backups.
   clustering, HA or distributed locking.
 - No server database encryption, backup, mailbox expiry, quotas or background
   cleanup jobs (nonces are pruned only by claims).
-- No device reset or auth-key recovery; no sealed sender.
+- Auth-key recovery only through another device of the same user
+  (docs/device-recovery.md); no device reset or deletion; no sealed sender.

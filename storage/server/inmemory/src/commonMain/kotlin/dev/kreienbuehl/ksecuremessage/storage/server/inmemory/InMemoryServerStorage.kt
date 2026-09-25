@@ -8,12 +8,16 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryId
 import dev.kreienbuehl.ksecuremessage.storage.AuthenticationNonceRepository
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationRepository
+import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationState
 import dev.kreienbuehl.ksecuremessage.storage.MailboxRepository
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyPublicationException
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyRepository
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacement
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacementResult
 import dev.kreienbuehl.ksecuremessage.storage.ServerStorage
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -28,65 +32,101 @@ import kotlin.time.Instant
  * are one queue per recipient behind another [Mutex], so enqueue and drain
  * are serialized too and each recipient's queue is in enqueue order. That is
  * stronger than the per (sender, recipient) order [MailboxRepository]
- * promises. Device registrations and authentication nonces each keep their
- * state behind their own [Mutex] as well, so registration and nonce claims
- * are atomic.
+ * promises. Device registrations and authentication nonces share one more
+ * [Mutex], so registration, nonce claims and device recovery (key
+ * replacement together with its nonce claim) are atomic.
  */
 class InMemoryServerStorage : ServerStorage {
     override val preKeys: PreKeyRepository = InMemoryPreKeyRepository()
 
     override val mailboxes: MailboxRepository = InMemoryMailboxRepository()
 
-    override val devices: DeviceRegistrationRepository = InMemoryDeviceRegistrationRepository()
+    private val authentication = AuthenticationState()
 
-    override val authenticationNonces: AuthenticationNonceRepository = InMemoryAuthenticationNonceRepository()
+    override val devices: DeviceRegistrationRepository = InMemoryDeviceRegistrationRepository(authentication)
+
+    override val authenticationNonces: AuthenticationNonceRepository = InMemoryAuthenticationNonceRepository(authentication)
 }
 
-private class InMemoryDeviceRegistrationRepository : DeviceRegistrationRepository {
-    private val mutex = Mutex()
-    private var registrations = mapOf<DeviceAddress, DeviceRegistration>()
-
-    // DeviceRegistration copies its key on the way in and out.
-    override suspend fun registration(address: DeviceAddress): DeviceRegistration? = mutex.withLock { registrations[address] }
-
-    override suspend fun register(registration: DeviceRegistration): Boolean = mutex.withLock {
-        val existing = registrations[registration.address]
-        when {
-            existing == null -> {
-                registrations = registrations + (registration.address to registration)
-                true
-            }
-            existing == registration -> false
-            else -> throw DeviceRegistrationException.Conflict()
-        }
-    }
-}
+/** One stored registration. The key is copied on the way in and out. */
+private class Registration(val publicKey: ByteArray, val authEpoch: Long, val recoveryId: DeviceRecoveryId?)
 
 /**
- * Accepted nonces with their request timestamps. Pruning runs inside every
- * claim, under the same lock, so the state never outgrows the nonces of the
- * validity window.
+ * Registrations and accepted nonces behind one [Mutex], so a recovery
+ * replaces a key and claims its nonce in one atomic step
+ * ([DeviceRegistrationRepository.replaceForRecovery]). Nonces are kept with
+ * their request timestamps; pruning runs inside every claim, under the same
+ * lock, so the state never outgrows the nonces of the validity window.
  */
-private class InMemoryAuthenticationNonceRepository : AuthenticationNonceRepository {
-    private val mutex = Mutex()
-    private var nonces = mapOf<Pair<DeviceAddress, NonceKey>, Instant>()
+private class AuthenticationState {
+    val mutex = Mutex()
+    var registrations = mapOf<DeviceAddress, Registration>()
+    var nonces = mapOf<Pair<DeviceAddress, NonceKey>, Instant>()
 
-    override suspend fun claim(address: DeviceAddress, nonce: ByteArray, timestamp: Instant, pruneBefore: Instant): Boolean =
-        mutex.withLock {
-            val kept = nonces.filterValues { it >= pruneBefore }
-            val key = address to NonceKey(nonce.copyOf())
-            if (key in kept) {
-                nonces = kept
-                return@withLock false
-            }
-            nonces = kept + (key to timestamp)
-            true
+    /** Caller holds [mutex]. */
+    fun claim(address: DeviceAddress, nonce: ByteArray, timestamp: Instant, pruneBefore: Instant): Boolean {
+        val kept = nonces.filterValues { it >= pruneBefore }
+        val key = address to NonceKey(nonce.copyOf())
+        if (key in kept) {
+            nonces = kept
+            return false
         }
+        nonces = kept + (key to timestamp)
+        return true
+    }
 
-    private class NonceKey(val bytes: ByteArray) {
+    class NonceKey(val bytes: ByteArray) {
         override fun equals(other: Any?) = other is NonceKey && bytes.contentEquals(other.bytes)
         override fun hashCode() = bytes.contentHashCode()
     }
+}
+
+private class InMemoryDeviceRegistrationRepository(private val state: AuthenticationState) : DeviceRegistrationRepository {
+    override suspend fun registration(address: DeviceAddress): DeviceRegistration? =
+        state.mutex.withLock { state.registrations[address]?.let { DeviceRegistration(address, it.publicKey) } }
+
+    override suspend fun registrationState(address: DeviceAddress): DeviceRegistrationState? = state.mutex.withLock {
+        state.registrations[address]?.let { DeviceRegistrationState(DeviceRegistration(address, it.publicKey), it.authEpoch, it.recoveryId) }
+    }
+
+    override suspend fun register(registration: DeviceRegistration): Boolean = state.mutex.withLock {
+        val existing = state.registrations[registration.address]
+        when {
+            existing == null -> {
+                state.registrations = state.registrations + (registration.address to Registration(registration.publicKey, 1, null))
+                true
+            }
+            existing.publicKey.contentEquals(registration.publicKey) -> false
+            else -> throw DeviceRegistrationException.Conflict()
+        }
+    }
+
+    override suspend fun replaceForRecovery(replacement: RecoveryReplacement): RecoveryReplacementResult = state.mutex.withLock {
+        val target = state.registrations[replacement.target] ?: return@withLock RecoveryReplacementResult.TARGET_NOT_REGISTERED
+        if (target.recoveryId == replacement.recoveryId) return@withLock RecoveryReplacementResult.ALREADY_APPLIED
+        val newKey = replacement.replacementPublicKey
+        val authorizer = state.registrations[replacement.expectedAuthorizer.address]
+        if (!target.matches(replacement.expectedTarget) ||
+            authorizer == null || !authorizer.matches(replacement.expectedAuthorizer) ||
+            target.publicKey.contentEquals(newKey)
+        ) {
+            return@withLock RecoveryReplacementResult.CONFLICT
+        }
+        if (!state.claim(replacement.target, replacement.nonce.bytes, replacement.timestamp, replacement.pruneBefore)) {
+            return@withLock RecoveryReplacementResult.REPLAY
+        }
+        state.registrations = state.registrations +
+            (replacement.target to Registration(newKey, target.authEpoch + 1, replacement.recoveryId))
+        RecoveryReplacementResult.REPLACED
+    }
+
+    private fun Registration.matches(expected: DeviceRegistrationState) =
+        authEpoch == expected.authEpoch && publicKey.contentEquals(expected.registration.publicKey)
+}
+
+private class InMemoryAuthenticationNonceRepository(private val state: AuthenticationState) : AuthenticationNonceRepository {
+    override suspend fun claim(address: DeviceAddress, nonce: ByteArray, timestamp: Instant, pruneBefore: Instant): Boolean =
+        state.mutex.withLock { state.claim(address, nonce, timestamp, pruneBefore) }
 }
 
 private class InMemoryMailboxRepository : MailboxRepository {

@@ -1,0 +1,8 @@
+-- Schema version 8 to 9 (milestone 14): pending replacement key of a device
+-- authentication recovery (docs/device-recovery.md). A new, empty table; the
+-- migration creates no key material and changes no existing row. The record
+-- is sealed (record type 8) like every key pair.
+CREATE TABLE device_authentication_recovery_key (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    sealed_key_pair BLOB NOT NULL
+);

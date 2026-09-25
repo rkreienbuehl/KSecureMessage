@@ -5,6 +5,7 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.RequestAuthentication
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
@@ -30,6 +31,7 @@ class SecureMessageServer(
 ) {
     private val preKeys = PreKeyService(storage.preKeys)
     private val authenticator = DeviceAuthenticator(storage.devices, storage.authenticationNonces, clock)
+    private val recovery = DeviceRecoveryService(storage.devices, clock)
 
     /**
      * Registers the device authentication key of [registration]'s address.
@@ -44,7 +46,8 @@ class SecureMessageServer(
      * a registered key is never replaced.
      *
      * First registration is trust on first registration: whoever registers
-     * an unregistered address first owns it. There is no reset.
+     * an unregistered address first owns it. There is no reset; only
+     * [recoverDevice] replaces a registered key.
      */
     suspend fun registerDevice(
         registration: DeviceRegistration,
@@ -57,6 +60,21 @@ class SecureMessageServer(
         authenticator.authenticateRegistration(registration.address, registration.publicKey, body, authentication)
         return storage.devices.register(registration)
     }
+
+    /**
+     * Replaces the registered device authentication key of
+     * [authorization]'s target with its replacement key, authorized by
+     * another registered device of the same user and proven by the
+     * replacement key (docs/device-recovery.md). Throws
+     * [DeviceRecoveryException] and changes nothing if any check fails.
+     *
+     * From the moment this returns [DeviceRecoveryOutcome.REPLACED], only
+     * the replacement key authenticates the target; the old key is rejected.
+     * The target's messaging identity, prekeys and mailbox are not touched.
+     * A retry of the same recovery returns [DeviceRecoveryOutcome.ALREADY_APPLIED].
+     */
+    suspend fun recoverDevice(authorization: DeviceRecoveryAuthorization): DeviceRecoveryOutcome =
+        recovery.recover(authorization)
 
     /** See [DeviceAuthenticator.authenticate]. */
     suspend fun authenticate(

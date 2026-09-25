@@ -83,3 +83,38 @@ internal class InjectedFailure : RuntimeException("injected failure")
 /** Runs a single-value `SELECT count(*) ...` directly on [driver]. */
 internal fun SqlDriver.count(sql: String): Long =
     executeQuery(null, sql, { cursor -> cursor.next(); QueryResult.Value(cursor.getLong(0)!!) }, 0).value
+
+/** Runs [sql] directly on [this], binding [blobs] to its parameters in order. */
+internal fun SqlDriver.exec(sql: String, vararg blobs: ByteArray) {
+    execute(null, sql, blobs.size) { blobs.forEachIndexed { index, blob -> bindBytes(index, blob) } }
+}
+
+/** The first column of every row of [sql] as `Long`. */
+internal fun SqlDriver.longs(sql: String): List<Long> = executeQuery(null, sql, { cursor ->
+    val rows = mutableListOf<Long>()
+    while (cursor.next().value) rows += cursor.getLong(0)!!
+    QueryResult.Value(rows)
+}, 0).value
+
+private fun SqlDriver.strings(sql: String): List<String> = executeQuery(null, sql, { cursor ->
+    val rows = mutableListOf<String>()
+    while (cursor.next().value) rows += cursor.getString(0)!!
+    QueryResult.Value(rows)
+}, 0).value
+
+private fun SqlDriver.tables(): List<String> = strings("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+
+/**
+ * Every row of every table, as SQLite's `quote()` of each column joined with
+ * `|`, in rowid order: compares whole databases without knowing their tables.
+ */
+internal fun SqlDriver.dump(): Map<String, List<String>> = tables().associateWith { table ->
+    val columns = strings("SELECT name FROM pragma_table_info('$table') ORDER BY cid")
+    strings("SELECT ${columns.joinToString(" || '|' || ") { "quote($it)" }} FROM $table ORDER BY rowid")
+}
+
+/** Columns (name, type, not null, default, primary key position) of every table, and every index. */
+internal fun SqlDriver.schemaShape(): Map<String, List<String>> =
+    tables().associateWith { table ->
+        strings("SELECT name || ':' || type || ':' || \"notnull\" || ':' || coalesce(dflt_value, '') || ':' || pk FROM pragma_table_info('$table') ORDER BY cid")
+    } + ("indexes" to strings("SELECT tbl_name || ':' || name FROM sqlite_master WHERE type = 'index' ORDER BY 1"))

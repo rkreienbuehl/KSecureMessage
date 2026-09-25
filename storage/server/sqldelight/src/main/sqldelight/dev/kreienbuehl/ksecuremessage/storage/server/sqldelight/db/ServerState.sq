@@ -1,4 +1,4 @@
--- Server state, schema version 1 (docs/server-storage.md). Independent of the
+-- Server state, schema version 2 (docs/server-storage.md). Independent of the
 -- client schema. Holds only public keys, opaque encrypted envelopes, routing
 -- metadata and replay metadata: never client private keys, session secrets
 -- or application plaintext. Timestamps are epoch milliseconds.
@@ -7,20 +7,28 @@
 -- Rows are never written with INSERT OR REPLACE: a conflict must never
 -- overwrite what is stored.
 
--- Single row that marks a database created with this schema. format 1 is the
--- only format; open() refuses a database without it.
+-- Single row that marks a database created with this schema. format 2 is
+-- schema version 2 (migration 1.sqm); open() refuses a database without it
+-- and a database still at format 1 (not migrated).
 CREATE TABLE server_storage (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
     format INTEGER NOT NULL
 );
 
-INSERT INTO server_storage (id, format) VALUES (0, 1);
+INSERT INTO server_storage (id, format) VALUES (0, 2);
 
--- Device authentication public key per device. Added once, never replaced.
+-- Device authentication public key per device. Added by registration,
+-- replaced only by a device recovery (docs/device-recovery.md), never
+-- removed. auth_epoch is 1 for a first registration and grows by one per
+-- recovery; recovery_id is the DeviceRecoveryId of the recovery that
+-- installed the current key (NULL after first registration). The columns
+-- are declared as migration 1.sqm adds them.
 CREATE TABLE device_registration (
     user_id TEXT NOT NULL,
     device_id TEXT NOT NULL,
     auth_public_key BLOB NOT NULL,
+    auth_epoch INTEGER NOT NULL DEFAULT 1,
+    recovery_id BLOB,
     PRIMARY KEY (user_id, device_id)
 );
 
@@ -86,8 +94,16 @@ SELECT format FROM server_storage WHERE id = 0;
 selectRegistration:
 SELECT auth_public_key FROM device_registration WHERE user_id = ? AND device_id = ?;
 
+selectRegistrationState:
+SELECT auth_public_key, auth_epoch, recovery_id FROM device_registration WHERE user_id = ? AND device_id = ?;
+
 insertRegistration:
-INSERT OR IGNORE INTO device_registration (user_id, device_id, auth_public_key) VALUES (?, ?, ?);
+INSERT OR IGNORE INTO device_registration (user_id, device_id, auth_public_key, auth_epoch) VALUES (?, ?, ?, 1);
+
+-- Compare-and-set: changes the row only while it still has the expected key and epoch.
+replaceRegistrationKey:
+UPDATE device_registration SET auth_public_key = :replacement, auth_epoch = auth_epoch + 1, recovery_id = :recovery_id
+WHERE user_id = :user_id AND device_id = :device_id AND auth_public_key = :expected_key AND auth_epoch = :expected_epoch;
 
 pruneNonces:
 DELETE FROM authentication_nonce WHERE request_timestamp < ?;

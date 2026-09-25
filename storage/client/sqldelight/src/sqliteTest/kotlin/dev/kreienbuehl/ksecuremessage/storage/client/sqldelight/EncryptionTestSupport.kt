@@ -1,5 +1,6 @@
 package dev.kreienbuehl.ksecuremessage.storage.client.sqldelight
 
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageClient
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransport
 import dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner
@@ -39,6 +40,8 @@ class TestRelay : SecureMessageTransport {
 
     override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) = error("Tests set bundles directly")
 
+    override suspend fun recoverDevice(authorization: DeviceRecoveryAuthorization) = error("Tests set bundles directly")
+
     override suspend fun fetchPreKeyBundle(address: DeviceAddress) = bundles.getValue(address)
 
     override suspend fun send(envelope: EncryptedEnvelope) {
@@ -58,7 +61,10 @@ class TestClock(var now: Instant) : Clock {
 
 /** Record cipher whose seal calls fail on demand, for atomicity tests. */
 class FailingRecords(private val delegate: ClientRecordCipher) : ClientRecordCipher by delegate {
-    /** Names of the seal functions that fail: identity, deviceAuthenticationKey, signedPreKey, oneTimePreKey, session, pending. */
+    /**
+     * Names of the seal functions that fail: identity, deviceAuthenticationKey,
+     * deviceAuthenticationRecoveryKey, signedPreKey, oneTimePreKey, session, pending.
+     */
     var failing: Set<String> = emptySet()
 
     /** Fails the seal call with this number (1-based, all record kinds counted), if set. */
@@ -78,6 +84,8 @@ class FailingRecords(private val delegate: ClientRecordCipher) : ClientRecordCip
     override suspend fun sealIdentity(identity: LocalIdentity): ByteArray = check("identity").let { delegate.sealIdentity(identity) }
     override suspend fun sealDeviceAuthenticationKey(keyPair: DeviceAuthenticationKeyPair): ByteArray =
         check("deviceAuthenticationKey").let { delegate.sealDeviceAuthenticationKey(keyPair) }
+    override suspend fun sealDeviceAuthenticationRecoveryKey(keyPair: DeviceAuthenticationKeyPair): ByteArray =
+        check("deviceAuthenticationRecoveryKey").let { delegate.sealDeviceAuthenticationRecoveryKey(keyPair) }
     override suspend fun sealSignedPreKey(preKey: SignedPreKeyPair): ByteArray =
         check("signedPreKey").let { delegate.sealSignedPreKey(preKey) }
     override suspend fun sealOneTimePreKey(preKey: OneTimePreKeyPair): ByteArray =

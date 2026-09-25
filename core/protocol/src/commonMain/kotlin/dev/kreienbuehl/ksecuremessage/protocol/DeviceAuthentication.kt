@@ -106,6 +106,9 @@ object ServerApiPaths {
     const val PRE_KEY_BUNDLE: String = "prekey-bundle"
     const val MESSAGES: String = "messages"
 
+    /** Device recovery (docs/device-recovery.md). Not a ServerAuth-signed endpoint. */
+    const val REGISTRATION_RECOVERY: String = "registration/recovery"
+
     /** `/v1/devices/{user}/{device}/{endpoint}`. */
     fun device(address: DeviceAddress, endpoint: String): String =
         "/v1/devices/${encodeSegment(address.userId.value)}/${encodeSegment(address.deviceId.value)}/$endpoint"

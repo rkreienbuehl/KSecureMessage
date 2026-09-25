@@ -6,6 +6,8 @@ import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryId
+import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
 import kotlin.time.Instant
 
 /**
@@ -94,21 +96,113 @@ interface MailboxRepository {
 
 /**
  * Device authentication public keys, one per [DeviceAddress]
- * (docs/server-authentication.md). A registration is only ever added: it is
- * never replaced or removed here. Atomic; byte arrays are copied at the
- * boundary.
+ * (docs/server-authentication.md). A registration is added by [register]
+ * and replaced only by [replaceForRecovery] (docs/device-recovery.md); it is
+ * never removed. Atomic; byte arrays are copied at the boundary.
+ *
+ * Every registration has an authentication epoch: 1 for the first
+ * registration, one more for each recovery. Epochs only grow.
  */
 interface DeviceRegistrationRepository {
     suspend fun registration(address: DeviceAddress): DeviceRegistration?
+
+    /** The registration of [address] with its epoch and the recovery that installed its key, or `null`. */
+    suspend fun registrationState(address: DeviceAddress): DeviceRegistrationState?
+
+    /**
+     * Replaces the target's key in one atomic step, together with the claim
+     * of the recovery's nonce ([AuthenticationNonceRepository], same nonces,
+     * under the target's address). In this order:
+     *
+     * 1. the target has no registration: [RecoveryReplacementResult.TARGET_NOT_REGISTERED];
+     * 2. the target's current key was installed by the recovery with
+     *    [RecoveryReplacement.recoveryId]: [RecoveryReplacementResult.ALREADY_APPLIED],
+     *    nothing written;
+     * 3. the target's or the authorizer's key or epoch differ from the
+     *    expected state, or the replacement key is the target's current key:
+     *    [RecoveryReplacementResult.CONFLICT], nothing written;
+     * 4. prunes nonces older than [RecoveryReplacement.pruneBefore] and
+     *    claims the nonce; already claimed: [RecoveryReplacementResult.REPLAY]
+     *    (the prune may commit);
+     * 5. stores the replacement key, epoch + 1 and the recovery ID:
+     *    [RecoveryReplacementResult.REPLACED].
+     *
+     * Nothing else changes: prekeys, mailboxes and other nonces stay.
+     * Concurrent calls behave as if they ran one after the other.
+     */
+    suspend fun replaceForRecovery(replacement: RecoveryReplacement): RecoveryReplacementResult
 
     /**
      * Registers [registration] if its address has none. Returns `true` if it
      * was stored, `false` if exactly this key is registered already. Throws
      * [DeviceRegistrationException.Conflict] and changes nothing if another
      * key is registered. Concurrent calls behave as if they ran one after the
-     * other: of several different keys for one address, exactly one wins.
+     * other: of several different keys for one address, exactly one wins. A
+     * new registration has epoch 1.
      */
     suspend fun register(registration: DeviceRegistration): Boolean
+}
+
+/**
+ * A stored registration: [registration] with its [authEpoch] and the
+ * [recoveryId] of the recovery that installed the key (`null` for a key from
+ * first registration).
+ */
+class DeviceRegistrationState(
+    val registration: DeviceRegistration,
+    val authEpoch: Long,
+    val recoveryId: DeviceRecoveryId?,
+) {
+    init {
+        require(authEpoch >= 1) { "Authentication epoch must be positive" }
+    }
+
+    val address: DeviceAddress get() = registration.address
+
+    override fun toString(): String = "DeviceRegistrationState(address=$address, authEpoch=$authEpoch)"
+}
+
+/**
+ * A verified recovery for [DeviceRegistrationRepository.replaceForRecovery]:
+ * replace [expectedTarget]'s key with [replacementPublicKey], authorized by
+ * [expectedAuthorizer]. Both expected states are what the signatures were
+ * verified against; the replacement only happens if they are still current.
+ */
+class RecoveryReplacement(
+    val expectedTarget: DeviceRegistrationState,
+    val expectedAuthorizer: DeviceRegistrationState,
+    replacementPublicKey: ByteArray,
+    val recoveryId: DeviceRecoveryId,
+    val nonce: RequestNonce,
+    val timestamp: Instant,
+    val pruneBefore: Instant,
+) {
+    private val key: ByteArray = replacementPublicKey.copyOf()
+
+    /** A copy of the replacement key. */
+    val replacementPublicKey: ByteArray get() = key.copyOf()
+
+    val target: DeviceAddress get() = expectedTarget.address
+
+    override fun toString(): String = "RecoveryReplacement(target=$target, authorizer=${expectedAuthorizer.address})"
+}
+
+/** Outcome of [DeviceRegistrationRepository.replaceForRecovery]. */
+enum class RecoveryReplacementResult {
+    /** The key was replaced and the epoch incremented. */
+    REPLACED,
+
+    /** This recovery installed the current key before; nothing changed. */
+    ALREADY_APPLIED,
+
+    /** The registrations are no longer the verified ones; nothing changed. */
+    CONFLICT,
+
+    /** The nonce was claimed before; the registration is unchanged. */
+    REPLAY,
+
+    /** The target has no registration; nothing changed. */
+    TARGET_NOT_REGISTERED,
 }
 
 /** A rejected device registration. Nothing was stored. Messages never contain key bytes. */
@@ -116,7 +210,7 @@ sealed class DeviceRegistrationException(message: String) : Exception(message) {
     /** The registration is malformed, for example a key of the wrong size. */
     class InvalidRegistration(message: String) : DeviceRegistrationException(message)
 
-    /** The address is registered with a different key. There is no reset. */
+    /** The address is registered with a different key. Only a recovery replaces it (docs/device-recovery.md). */
     class Conflict : DeviceRegistrationException("Device is registered with a different authentication key")
 }
 

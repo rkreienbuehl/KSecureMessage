@@ -30,7 +30,8 @@ the holder of that key can publish prekeys for it or drain its mailbox.
 M12 does **not** establish:
 
 - human identity, accounts, phone number or email ownership;
-- account recovery;
+- account recovery (device recovery through another device of the same
+  user was added in M14, docs/device-recovery.md);
 - who registered an address first (see [Bootstrap](#bootstrap-trust-on-first-registration));
 - trust between messaging peers: TOFU pins ([identity-trust.md](identity-trust.md))
   and future safety numbers are unchanged and independent of this;
@@ -71,10 +72,12 @@ it now also makes sure the key exists:
 | identity, no key, storage says `awaitsUpgradeKey()` | creates the key once (installation from before M12) |
 | identity, no key, `awaitsUpgradeKey()` is `false` | `InconsistentStorage`: the key was **lost**; no new key is created |
 
-A lost key is never replaced silently: a new key could never replace the
-registration on the server (there is no reset), so recreating it would only
-hide the loss. **Recovery or reset is future work.** Until then, a device that
-lost its key needs a new `DeviceAddress`.
+A lost key is never replaced silently: `initialize()` never creates a new
+key for it. Since M14 the explicit way back is device recovery
+(docs/device-recovery.md): another registered device of the same user
+authorizes a replacement key, which the device keeps as a pending recovery
+key until the server accepted it. A user without another registered device
+still has no way back and needs a new `DeviceAddress`.
 
 `DeviceAuthenticationKeyStore.store` refuses a second key, also an identical
 one (existence check only, so a damaged record never looks absent).
@@ -112,7 +115,11 @@ The server binds `DeviceAddress → device authentication public key`:
 |---|---|
 | address unregistered | the key is registered (`201 Created`) |
 | same address, same key | idempotent success (`204 No Content`) |
-| same address, other key | `DeviceRegistrationException.Conflict` (`409`); the registered key is never replaced |
+| same address, other key | `DeviceRegistrationException.Conflict` (`409`); registration never replaces the registered key |
+
+Only device recovery (M14, docs/device-recovery.md) replaces a registered
+key, authorized by another registered device of the same user and proven by
+the new key. Registration semantics are unchanged by it.
 
 **First registration is trust-on-first-registration at the server layer. M12
 prevents later unauthorized replacement but does not authenticate ownership
@@ -227,6 +234,11 @@ request that fails steps 1–4 consumes nothing.
   `storage:server:sqldelight`, see docs/server-storage.md). With persistent
   storage, claimed nonces survive a server restart: a request replayed after
   a restart, while its timestamp is still in the window, is rejected.
+- **Device recovery** (M14) claims its nonce under the target's address in
+  the same table, inside the recovery transaction. A recovery does not clear
+  the target's nonces: old-key requests fail verification against the new
+  key anyway, and keeping an earlier recovery's nonce claimed is what rejects
+  its replay (docs/device-recovery.md).
 - **Clock**: the window assumes the server clock does not jump back by more
   than the window; after such a jump a pruned nonce could be accepted again
   until the clock catches up.
@@ -256,6 +268,7 @@ request that fails steps 1–4 consumes nothing.
 | `GET /v1/devices/{u}/{d}/prekey-bundle` | public | `200` | `404 device_not_found` |
 | `POST /v1/messages` | public | `202` | – |
 | `GET /v1/devices/{u}/{d}/messages` | registered device | `200` | `401` |
+| `PUT /v1/devices/{u}/{d}/registration/recovery` (M14) | authorizer signature + proof of possession in the body (docs/device-recovery.md) | `204` | `400 invalid_recovery`, `401`, `403`, `404`, `409 recovery_conflict` |
 
 `401` bodies: `missing_authentication`, `invalid_authentication`,
 `expired_authentication`, `authentication_replay`, `device_not_registered`.
@@ -292,7 +305,9 @@ requests for another address. Applications never build signatures.
 ## Limitations
 
 - First registration is not proof of human or account ownership.
-- No auth-key recovery, reset, rotation, deletion or multiple keys per device.
+- Auth-key recovery only through another registered device of the same
+  user (M14, docs/device-recovery.md); no reset, routine rotation, deletion
+  or multiple active keys per device.
 - Persistent server storage (`storage:server:sqldelight`, M13) is SQLite
   only, single node, unencrypted (docs/server-storage.md).
 - The server still sees sender and recipient metadata; `POST /v1/messages`

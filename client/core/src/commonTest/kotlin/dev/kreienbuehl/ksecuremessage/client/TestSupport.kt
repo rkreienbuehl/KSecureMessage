@@ -11,6 +11,8 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecovery
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
@@ -26,6 +28,8 @@ import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionInitiationStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacement
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacementResult
 import dev.kreienbuehl.ksecuremessage.storage.server.inmemory.InMemoryServerStorage
 import kotlinx.coroutines.CompletableDeferred
 import kotlin.time.Clock
@@ -47,6 +51,13 @@ internal class FakeNetwork : SecureMessageTransport {
     /** Only records, without checking authentication. */
     override suspend fun registerDevice(registration: DeviceRegistration, signer: ServerRequestSigner) {
         registrations += registration
+    }
+
+    val recoveries = mutableListOf<DeviceRecoveryAuthorization>()
+
+    /** Only records, without checking anything. */
+    override suspend fun recoverDevice(authorization: DeviceRecoveryAuthorization) {
+        recoveries += authorization
     }
 
     /** Only records: these tests set [bundles] by hand, see [publish]. */
@@ -115,6 +126,45 @@ internal class ServerBackedNetwork(
         } catch (e: DeviceRegistrationException.Conflict) {
             throw SecureMessageTransportException.DeviceRegistrationConflict()
         }
+    }
+
+    /**
+     * The checks of server:core's device recovery, without the time window:
+     * same user, not self, both registered, authorizer signature with the
+     * registered key, proof of possession, then the atomic replacement.
+     * [afterRecovery] runs after the server committed, before the response.
+     */
+    var afterRecovery: () -> Unit = {}
+
+    override suspend fun recoverDevice(authorization: DeviceRecoveryAuthorization) {
+        beforeNetworkCall()
+        val request = authorization.request
+        fun reject(failure: SecureMessageTransportException.RecoveryFailure): Nothing =
+            throw SecureMessageTransportException.DeviceRecoveryRejected(failure)
+        if (request.authorizer == request.target) reject(SecureMessageTransportException.RecoveryFailure.SELF_AUTHORIZATION)
+        if (request.authorizer.userId != request.target.userId) reject(SecureMessageTransportException.RecoveryFailure.CROSS_USER)
+        val authorizer = server.devices.registrationState(request.authorizer)
+            ?: reject(SecureMessageTransportException.RecoveryFailure.AUTHORIZER_NOT_REGISTERED)
+        val target = server.devices.registrationState(request.target)
+            ?: reject(SecureMessageTransportException.RecoveryFailure.TARGET_NOT_REGISTERED)
+        if (!DeviceRecovery.verifyAuthorization(authorizer.registration.publicKey, authorization) ||
+            !DeviceRecovery.verifyProofOfPossession(request)
+        ) {
+            reject(SecureMessageTransportException.RecoveryFailure.INVALID_PROOF)
+        }
+        val result = server.devices.replaceForRecovery(
+            RecoveryReplacement(
+                target, authorizer, request.replacementPublicKey, DeviceRecovery.recoveryId(request),
+                request.nonce, request.timestamp, Instant.DISTANT_PAST,
+            ),
+        )
+        when (result) {
+            RecoveryReplacementResult.REPLACED, RecoveryReplacementResult.ALREADY_APPLIED -> Unit
+            RecoveryReplacementResult.CONFLICT -> reject(SecureMessageTransportException.RecoveryFailure.CONFLICT)
+            RecoveryReplacementResult.REPLAY -> reject(SecureMessageTransportException.RecoveryFailure.REPLAY)
+            RecoveryReplacementResult.TARGET_NOT_REGISTERED -> reject(SecureMessageTransportException.RecoveryFailure.TARGET_NOT_REGISTERED)
+        }
+        afterRecovery()
     }
 
     override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) {
@@ -202,6 +252,8 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
     var failRetiredPrune = false
     var failSignedPreKeyStore = false
     var failDeviceAuthenticationKeyStore = false
+    var failPendingRecoveryKeyStore = false
+    var failRecoveryKeyPromotion = false
     var failSignedPreKeyRemoval = false
     var failLegacyStamp = false
     var failPendingStore = false
@@ -230,6 +282,16 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
             override suspend fun store(keyPair: DeviceAuthenticationKeyPair) {
                 if (failDeviceAuthenticationKeyStore) throw StorageFailure()
                 tx.deviceAuthentication.store(keyPair)
+            }
+
+            override suspend fun storePendingRecoveryKeyPair(keyPair: DeviceAuthenticationKeyPair) {
+                if (failPendingRecoveryKeyStore) throw StorageFailure()
+                tx.deviceAuthentication.storePendingRecoveryKeyPair(keyPair)
+            }
+
+            override suspend fun promotePendingRecoveryKeyPair() {
+                if (failRecoveryKeyPromotion) throw StorageFailure()
+                tx.deviceAuthentication.promotePendingRecoveryKeyPair()
             }
         }
 

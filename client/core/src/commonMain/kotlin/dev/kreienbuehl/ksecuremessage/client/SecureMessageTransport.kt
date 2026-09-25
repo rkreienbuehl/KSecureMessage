@@ -5,6 +5,7 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.RequestAuthentication
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
 
@@ -28,6 +29,16 @@ interface SecureMessageTransport {
      * server holds another key for the address.
      */
     suspend fun registerDevice(registration: DeviceRegistration, signer: ServerRequestSigner)
+
+    /**
+     * Submits a device recovery (docs/device-recovery.md):
+     * `PUT /v1/devices/{user}/{device}/registration/recovery` for the
+     * authorization's target. Not signed with a [ServerRequestSigner]: the
+     * authorization carries its own two signatures. Returns once the server
+     * replaced the key, or recognized a retry of the recovery that did.
+     * Throws [SecureMessageTransportException.DeviceRecoveryRejected].
+     */
+    suspend fun recoverDevice(authorization: DeviceRecoveryAuthorization)
 
     /**
      * Uploads public prekey material. The server applies it atomically and

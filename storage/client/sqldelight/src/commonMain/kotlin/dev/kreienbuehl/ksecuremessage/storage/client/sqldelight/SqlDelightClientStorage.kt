@@ -115,6 +115,11 @@ class SqlDelightClientStorage private constructor(
         override suspend fun keyPair() = transaction { deviceAuthentication.keyPair() }
         override suspend fun store(keyPair: DeviceAuthenticationKeyPair) = transaction { deviceAuthentication.store(keyPair) }
         override suspend fun awaitsUpgradeKey() = transaction { deviceAuthentication.awaitsUpgradeKey() }
+        override suspend fun pendingRecoveryKeyPair() = transaction { deviceAuthentication.pendingRecoveryKeyPair() }
+        override suspend fun storePendingRecoveryKeyPair(keyPair: DeviceAuthenticationKeyPair) =
+            transaction { deviceAuthentication.storePendingRecoveryKeyPair(keyPair) }
+        override suspend fun removePendingRecoveryKeyPair() = transaction { deviceAuthentication.removePendingRecoveryKeyPair() }
+        override suspend fun promotePendingRecoveryKeyPair() = transaction { deviceAuthentication.promotePendingRecoveryKeyPair() }
     }
 
     override val remoteIdentities: RemoteIdentityStore = object : RemoteIdentityStore {
@@ -469,6 +474,38 @@ private class DatabaseView(private val queries: ClientStateQueries, private val 
 
         override suspend fun awaitsUpgradeKey(): Boolean =
             queries.selectDeviceAuthenticationAwaitsUpgradeKey().awaitAsOne() != 0L
+
+        override suspend fun pendingRecoveryKeyPair(): DeviceAuthenticationKeyPair? =
+            queries.selectDeviceAuthenticationRecoveryKey().awaitAsOneOrNull()?.let { records.openDeviceAuthenticationRecoveryKey(it) }
+
+        override suspend fun storePendingRecoveryKeyPair(keyPair: DeviceAuthenticationKeyPair) {
+            // Existence only: a pending key that fails to open must not look absent.
+            check(queries.selectDeviceAuthenticationRecoveryKey().awaitAsOneOrNull() == null) {
+                "A pending recovery key is already stored"
+            }
+            queries.insertDeviceAuthenticationRecoveryKey(records.sealDeviceAuthenticationRecoveryKey(keyPair))
+        }
+
+        override suspend fun removePendingRecoveryKeyPair() {
+            queries.deleteDeviceAuthenticationRecoveryKey()
+        }
+
+        // Opens the pending record (a damaged one throws and changes nothing) and
+        // reseals it as the active key: the record types differ, so the sealed
+        // bytes cannot be moved as they are.
+        override suspend fun promotePendingRecoveryKeyPair() {
+            val sealed = checkNotNull(queries.selectDeviceAuthenticationRecoveryKey().awaitAsOneOrNull()) { "No pending recovery key" }
+            val keyPair = records.openDeviceAuthenticationRecoveryKey(sealed)
+            try {
+                val active = records.sealDeviceAuthenticationKey(keyPair)
+                queries.deleteDeviceAuthenticationKey()
+                queries.insertDeviceAuthenticationKey(active)
+                queries.deleteDeviceAuthenticationRecoveryKey()
+                queries.clearDeviceAuthenticationAwaitsUpgradeKey()
+            } finally {
+                keyPair.privateKey.fill(0)
+            }
+        }
     }
 
     override val remoteIdentities: RemoteIdentityStore = object : RemoteIdentityStore {

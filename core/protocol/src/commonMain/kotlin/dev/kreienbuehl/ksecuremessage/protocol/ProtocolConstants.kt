@@ -28,6 +28,21 @@ internal object ProtocolConstants {
      */
     const val SERVER_AUTH_DOMAIN = "KSecureMessage-ServerAuth-v1"
 
+    /**
+     * Domain separator of the device recovery authorization signed by
+     * another device of the same user ([DeviceRecovery]).
+     */
+    const val DEVICE_RECOVERY_DOMAIN = "KSecureMessage-DeviceRecovery-v1"
+
+    /**
+     * Domain separator of the proof of possession signed with the
+     * replacement key of a device recovery ([DeviceRecovery]).
+     */
+    const val DEVICE_RECOVERY_POP_DOMAIN = "KSecureMessage-DeviceRecovery-PoP-v1"
+
+    /** Domain separator of [DeviceRecoveryId]. Recorded by the server for idempotent retries. */
+    const val DEVICE_RECOVERY_ID_DOMAIN = "KSecureMessage-DeviceRecoveryId-v1"
+
     /** Size of an encoded public key: X25519 key followed by Ed25519 key. */
     const val PUBLIC_KEY_SIZE = 64
 }

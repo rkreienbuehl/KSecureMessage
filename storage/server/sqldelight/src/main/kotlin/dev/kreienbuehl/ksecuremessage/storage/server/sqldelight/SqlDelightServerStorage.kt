@@ -15,12 +15,16 @@ import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.model.UserId
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryId
 import dev.kreienbuehl.ksecuremessage.storage.AuthenticationNonceRepository
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationRepository
+import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationState
 import dev.kreienbuehl.ksecuremessage.storage.MailboxRepository
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyPublicationException
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyRepository
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacement
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacementResult
 import dev.kreienbuehl.ksecuremessage.storage.ServerStorage
 import dev.kreienbuehl.ksecuremessage.storage.server.sqldelight.db.ServerDatabase
 import dev.kreienbuehl.ksecuremessage.storage.server.sqldelight.db.ServerStateQueries
@@ -94,6 +98,58 @@ class SqlDelightServerStorage private constructor(
             if (!existing.contentEquals(publicKey)) throw DeviceRegistrationException.Conflict()
             false
         }
+
+        override suspend fun registrationState(address: DeviceAddress): DeviceRegistrationState? = transaction {
+            loadState(address)
+        }
+
+        // Checks, nonce claim and the guarded UPDATE in one transaction. The
+        // UPDATE's WHERE clause repeats the key and epoch check, so only one
+        // of two recoveries verified against the same state can change the row.
+        override suspend fun replaceForRecovery(replacement: RecoveryReplacement): RecoveryReplacementResult {
+            val target = replacement.target
+            val newKey = replacement.replacementPublicKey
+            val recoveryId = replacement.recoveryId.bytes
+            val nonce = replacement.nonce.bytes
+            return transaction {
+                val current = loadState(target) ?: return@transaction RecoveryReplacementResult.TARGET_NOT_REGISTERED
+                if (current.recoveryId == replacement.recoveryId) return@transaction RecoveryReplacementResult.ALREADY_APPLIED
+                val authorizer = loadState(replacement.expectedAuthorizer.address)
+                if (!current.matches(replacement.expectedTarget) ||
+                    authorizer == null || !authorizer.matches(replacement.expectedAuthorizer) ||
+                    current.registration.publicKey.contentEquals(newKey)
+                ) {
+                    return@transaction RecoveryReplacementResult.CONFLICT
+                }
+                pruneNonces(replacement.pruneBefore.toEpochMilliseconds())
+                if (insertNonce(target.user, target.device, nonce, replacement.timestamp.toEpochMilliseconds()).value != 1L) {
+                    return@transaction RecoveryReplacementResult.REPLAY
+                }
+                val updated = replaceRegistrationKey(
+                    replacement = newKey,
+                    recovery_id = recoveryId,
+                    user_id = target.user,
+                    device_id = target.device,
+                    expected_key = replacement.expectedTarget.registration.publicKey,
+                    expected_epoch = replacement.expectedTarget.authEpoch,
+                ).value
+                // Cannot happen after the checks above in this transaction; never commit a half recovery.
+                check(updated == 1L) { "Registration changed during recovery" }
+                RecoveryReplacementResult.REPLACED
+            }
+        }
+
+        private fun ServerStateQueries.loadState(address: DeviceAddress): DeviceRegistrationState? =
+            selectRegistrationState(address.user, address.device).executeAsOneOrNull()?.let {
+                DeviceRegistrationState(
+                    DeviceRegistration(address, it.auth_public_key),
+                    it.auth_epoch,
+                    it.recovery_id?.let(::DeviceRecoveryId),
+                )
+            }
+
+        private fun DeviceRegistrationState.matches(expected: DeviceRegistrationState) =
+            authEpoch == expected.authEpoch && registration.publicKey.contentEquals(expected.registration.publicKey)
     }
 
     /**
@@ -229,17 +285,23 @@ class SqlDelightServerStorage private constructor(
     }
 
     companion object {
-        /** Server database schema, version 1. Independent of the client schema. */
+        /**
+         * Server database schema, version 2. Independent of the client
+         * schema. `Schema.migrate(driver, 1, 2)` migrates a milestone 13
+         * database (docs/server-storage.md).
+         */
         val Schema: SqlSchema<QueryResult.Value<Unit>> get() = ServerDatabase.Schema
 
         private const val FORMAT_V1 = 1L
+        private const val FORMAT_V2 = 2L
 
         /**
          * Opens the server storage on [driver], whose database must already
-         * have the schema ([Schema]). Creates nothing and never closes
-         * [driver]: the caller keeps owning it. Throws
+         * have the current schema ([Schema]). Creates and migrates nothing
+         * and never closes [driver]: the caller keeps owning it. Throws
          * [IllegalStateException] if the database was not created with this
-         * schema. Blocking database calls run on [dispatcher].
+         * schema, or is still at schema version 1 (migrate it with
+         * [Schema] first). Blocking database calls run on [dispatcher].
          */
         suspend fun open(driver: SqlDriver, dispatcher: CoroutineDispatcher = Dispatchers.IO): SqlDelightServerStorage {
             val format = withContext(dispatcher) {
@@ -252,7 +314,8 @@ class SqlDelightServerStorage private constructor(
                     throw IllegalStateException("Database has no server storage schema")
                 }
             }
-            check(format == FORMAT_V1) { "Database has no supported server storage schema" }
+            check(format != FORMAT_V1) { "Database has server storage schema version 1; migrate it with SqlDelightServerStorage.Schema" }
+            check(format == FORMAT_V2) { "Database has no supported server storage schema" }
             return SqlDelightServerStorage(driver, dispatcher)
         }
     }

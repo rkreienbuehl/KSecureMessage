@@ -17,13 +17,18 @@ sealed class SecureMessageTransportException(message: String) : Exception(messag
 
     /**
      * The server holds a different device authentication key for this
-     * address. It never replaces a registered key; there is no reset yet.
+     * address. Registration never replaces a registered key; only a device
+     * recovery does (docs/device-recovery.md).
      */
     class DeviceRegistrationConflict : SecureMessageTransportException("Device is registered with a different authentication key")
 
     /** The server did not accept the request's device authentication; the request changed nothing. */
     class AuthenticationFailed(val failure: AuthenticationFailure) :
         SecureMessageTransportException("Device authentication failed: $failure")
+
+    /** The server rejected a device recovery (docs/device-recovery.md); nothing was changed. */
+    class DeviceRecoveryRejected(val reason: RecoveryFailure) :
+        SecureMessageTransportException("Device recovery rejected: $reason")
 
     /** Any other unexpected server response. */
     class UnexpectedResponse(val status: Int) :
@@ -58,5 +63,34 @@ sealed class SecureMessageTransportException(message: String) : Exception(messag
 
         /** A one-time prekey ID is known with a different public key. */
         ONE_TIME_PRE_KEY_CONFLICT,
+    }
+
+    enum class RecoveryFailure {
+        /** The request was malformed. */
+        INVALID_REQUEST,
+
+        /** The device named itself as authorizer. */
+        SELF_AUTHORIZATION,
+
+        /** The authorizing device belongs to another user. */
+        CROSS_USER,
+
+        /** The authorizing device is not registered. */
+        AUTHORIZER_NOT_REGISTERED,
+
+        /** The device to recover is not registered: use first registration. */
+        TARGET_NOT_REGISTERED,
+
+        /** The request time is outside the server's validity window. */
+        EXPIRED,
+
+        /** The authorizer's signature or the proof of possession does not verify. */
+        INVALID_PROOF,
+
+        /** The request's nonce was used before. */
+        REPLAY,
+
+        /** The registration changed since the request was made (another recovery won), or the key is already registered. */
+        CONFLICT,
     }
 }

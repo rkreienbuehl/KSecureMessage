@@ -52,6 +52,11 @@ class InMemoryClientStorage : ClientStorage {
         override suspend fun keyPair() = transaction { deviceAuthentication.keyPair() }
         override suspend fun store(keyPair: DeviceAuthenticationKeyPair) = transaction { deviceAuthentication.store(keyPair) }
         override suspend fun awaitsUpgradeKey() = transaction { deviceAuthentication.awaitsUpgradeKey() }
+        override suspend fun pendingRecoveryKeyPair() = transaction { deviceAuthentication.pendingRecoveryKeyPair() }
+        override suspend fun storePendingRecoveryKeyPair(keyPair: DeviceAuthenticationKeyPair) =
+            transaction { deviceAuthentication.storePendingRecoveryKeyPair(keyPair) }
+        override suspend fun removePendingRecoveryKeyPair() = transaction { deviceAuthentication.removePendingRecoveryKeyPair() }
+        override suspend fun promotePendingRecoveryKeyPair() = transaction { deviceAuthentication.promotePendingRecoveryKeyPair() }
     }
 
     override val remoteIdentities: RemoteIdentityStore = object : RemoteIdentityStore {
@@ -137,6 +142,7 @@ class InMemoryClientStorage : ClientStorage {
 private data class State(
     val identity: LocalIdentity? = null,
     val deviceAuthenticationKey: DeviceAuthenticationKeyPair? = null,
+    val pendingRecoveryKey: DeviceAuthenticationKeyPair? = null,
     val remoteIdentities: Map<DeviceAddress, ByteArray> = emptyMap(),
     val sessions: Map<DeviceAddress, SecureSession> = emptyMap(),
     /** Retired initiation to the local signed prekey it needs, if known. */
@@ -213,6 +219,22 @@ private class TransactionView(var state: State) : ClientStorage {
         }
 
         override suspend fun awaitsUpgradeKey() = false
+
+        override suspend fun pendingRecoveryKeyPair() = state.pendingRecoveryKey?.copy()
+
+        override suspend fun storePendingRecoveryKeyPair(keyPair: DeviceAuthenticationKeyPair) {
+            check(state.pendingRecoveryKey == null) { "A pending recovery key is already stored" }
+            state = state.copy(pendingRecoveryKey = keyPair.copy())
+        }
+
+        override suspend fun removePendingRecoveryKeyPair() {
+            state = state.copy(pendingRecoveryKey = null)
+        }
+
+        override suspend fun promotePendingRecoveryKeyPair() {
+            val pending = checkNotNull(state.pendingRecoveryKey) { "No pending recovery key" }
+            state = state.copy(deviceAuthenticationKey = pending, pendingRecoveryKey = null)
+        }
     }
 
     override val remoteIdentities: RemoteIdentityStore = object : RemoteIdentityStore {

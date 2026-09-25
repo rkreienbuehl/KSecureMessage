@@ -39,6 +39,14 @@ interface ClientRecordCipher {
     suspend fun sealDeviceAuthenticationKey(keyPair: DeviceAuthenticationKeyPair): ByteArray
     suspend fun openDeviceAuthenticationKey(sealed: ByteArray): DeviceAuthenticationKeyPair
 
+    /**
+     * The whole pending replacement key pair of a device recovery
+     * (docs/device-recovery.md). Its own record type, so it never opens as
+     * the active key or the other way round.
+     */
+    suspend fun sealDeviceAuthenticationRecoveryKey(keyPair: DeviceAuthenticationKeyPair): ByteArray
+    suspend fun openDeviceAuthenticationRecoveryKey(sealed: ByteArray): DeviceAuthenticationKeyPair
+
     /** Public key, signature and private key, bound to the prekey ID. */
     suspend fun sealSignedPreKey(preKey: SignedPreKeyPair): ByteArray
     suspend fun openSignedPreKey(id: SignedPreKeyId, sealed: ByteArray): SignedPreKeyPair
@@ -127,6 +135,17 @@ internal class AeadClientRecordCipher(private val cipher: StorageCipher) : Clien
 
     override suspend fun openDeviceAuthenticationKey(sealed: ByteArray): DeviceAuthenticationKeyPair =
         openEncoded(StorageRecordType.DEVICE_AUTHENTICATION_KEY, emptyList(), sealed) { DeviceAuthenticationKeyPair(bytes(), bytes()) }
+
+    override suspend fun sealDeviceAuthenticationRecoveryKey(keyPair: DeviceAuthenticationKeyPair): ByteArray =
+        sealEncoded(StorageRecordType.DEVICE_AUTHENTICATION_RECOVERY_KEY, emptyList()) {
+            bytes(keyPair.publicKey)
+            bytes(keyPair.privateKey)
+        }
+
+    override suspend fun openDeviceAuthenticationRecoveryKey(sealed: ByteArray): DeviceAuthenticationKeyPair =
+        openEncoded(StorageRecordType.DEVICE_AUTHENTICATION_RECOVERY_KEY, emptyList(), sealed) {
+            DeviceAuthenticationKeyPair(bytes(), bytes())
+        }
 
     override suspend fun sealSignedPreKey(preKey: SignedPreKeyPair): ByteArray =
         sealEncoded(StorageRecordType.SIGNED_PRE_KEY, listOf(intBytes(preKey.id.value))) {

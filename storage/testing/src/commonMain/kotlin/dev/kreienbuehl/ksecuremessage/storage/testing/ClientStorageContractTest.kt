@@ -70,6 +70,63 @@ abstract class ClientStorageContractTest {
     }
 
     @Test
+    fun pendingRecoveryKeyIsSeparateFromTheActiveKey() = runTest {
+        val storage = newStorage()
+        assertNull(storage.deviceAuthentication.pendingRecoveryKeyPair())
+        storage.deviceAuthentication.store(DeviceAuthenticationKeyPair(bytes(3), bytes(-3)))
+        storage.deviceAuthentication.storePendingRecoveryKeyPair(DeviceAuthenticationKeyPair(bytes(5), bytes(-5)))
+        assertContentEquals(bytes(-5), storage.deviceAuthentication.pendingRecoveryKeyPair()?.privateKey)
+        assertContentEquals(bytes(-3), storage.deviceAuthentication.keyPair()?.privateKey, "the active key is untouched")
+        assertFailsWith<IllegalStateException> {
+            storage.deviceAuthentication.storePendingRecoveryKeyPair(DeviceAuthenticationKeyPair(bytes(6), bytes(-6)))
+        }
+        assertContentEquals(bytes(-5), storage.deviceAuthentication.pendingRecoveryKeyPair()?.privateKey, "never replaced silently")
+
+        storage.deviceAuthentication.removePendingRecoveryKeyPair()
+        assertNull(storage.deviceAuthentication.pendingRecoveryKeyPair())
+        assertContentEquals(bytes(-3), storage.deviceAuthentication.keyPair()?.privateKey)
+        storage.deviceAuthentication.removePendingRecoveryKeyPair() // nothing to remove: harmless
+    }
+
+    @Test
+    fun promotionReplacesTheActiveKeyAtomically() = runTest {
+        val storage = newStorage()
+        assertFailsWith<IllegalStateException> { storage.deviceAuthentication.promotePendingRecoveryKeyPair() }
+        storage.deviceAuthentication.store(DeviceAuthenticationKeyPair(bytes(3), bytes(-3)))
+        storage.deviceAuthentication.storePendingRecoveryKeyPair(DeviceAuthenticationKeyPair(bytes(5), bytes(-5)))
+
+        assertFailsWith<Failure> {
+            storage.transaction {
+                deviceAuthentication.promotePendingRecoveryKeyPair()
+                assertContentEquals(bytes(-5), deviceAuthentication.keyPair()?.privateKey, "visible inside the transaction")
+                assertNull(deviceAuthentication.pendingRecoveryKeyPair())
+                throw Failure()
+            }
+        }
+        assertContentEquals(bytes(-3), storage.deviceAuthentication.keyPair()?.privateKey, "rolled back")
+        assertContentEquals(bytes(-5), storage.deviceAuthentication.pendingRecoveryKeyPair()?.privateKey, "rolled back")
+
+        storage.deviceAuthentication.promotePendingRecoveryKeyPair()
+        assertContentEquals(bytes(5), storage.deviceAuthentication.keyPair()?.publicKey)
+        assertContentEquals(bytes(-5), storage.deviceAuthentication.keyPair()?.privateKey)
+        assertNull(storage.deviceAuthentication.pendingRecoveryKeyPair())
+        assertFalse(storage.deviceAuthentication.awaitsUpgradeKey())
+        assertFailsWith<IllegalStateException> { storage.deviceAuthentication.promotePendingRecoveryKeyPair() }
+    }
+
+    @Test
+    fun promotionInstallsAKeyWhereTheActiveKeyIsMissing() = runTest {
+        val storage = newStorage()
+        storage.identity.store(identity(1))
+        val pending = DeviceAuthenticationKeyPair(bytes(5), bytes(-5))
+        storage.deviceAuthentication.storePendingRecoveryKeyPair(pending)
+        pending.privateKey.fill(0)
+        storage.deviceAuthentication.pendingRecoveryKeyPair()!!.privateKey.fill(0)
+        storage.deviceAuthentication.promotePendingRecoveryKeyPair()
+        assertContentEquals(bytes(-5), storage.deviceAuthentication.keyPair()?.privateKey, "stored bytes are not aliased")
+    }
+
+    @Test
     fun deviceAuthenticationKeyIsCopiedAndRolledBack() = runTest {
         val storage = newStorage()
         val keyPair = DeviceAuthenticationKeyPair(bytes(3), bytes(-3))

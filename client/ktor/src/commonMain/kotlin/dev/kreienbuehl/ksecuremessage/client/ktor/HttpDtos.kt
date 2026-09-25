@@ -7,6 +7,7 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
 
@@ -40,6 +41,25 @@ internal class PreKeyBundleResponse(
 @Serializable
 internal class DeviceRegistrationRequest(val publicKey: String)
 
+@Serializable
+internal class DeviceAddressDto(val userId: String, val deviceId: String)
+
+/**
+ * Body of `PUT /v1/devices/{user}/{device}/registration/recovery`
+ * (docs/device-recovery.md). The target is in the path. [timestamp] is epoch
+ * milliseconds; the signatures cover the binary recovery statement, never
+ * this JSON.
+ */
+@Serializable
+internal class DeviceRecoveryRequestDto(
+    val authorizer: DeviceAddressDto,
+    val replacementPublicKey: String,
+    val timestamp: Long,
+    val nonce: String,
+    val proofOfPossession: String,
+    val authorizerSignature: String,
+)
+
 /** Body of 4xx responses. */
 @Serializable
 internal class ErrorResponse(val error: String)
@@ -72,4 +92,13 @@ internal fun PreKeyBundleResponse.toBundle(address: DeviceAddress) = PreKeyBundl
         Base64.decode(signedPreKey.signature),
     ),
     oneTimePreKey = oneTimePreKey?.let { PublicOneTimePreKey(OneTimePreKeyId(it.id), Base64.decode(it.publicKey)) },
+)
+
+internal fun DeviceRecoveryAuthorization.toRequest() = DeviceRecoveryRequestDto(
+    authorizer = DeviceAddressDto(request.authorizer.userId.value, request.authorizer.deviceId.value),
+    replacementPublicKey = Base64.encode(request.replacementPublicKey),
+    timestamp = request.timestamp.toEpochMilliseconds(),
+    nonce = Base64.encode(request.nonce.bytes),
+    proofOfPossession = Base64.encode(request.proofOfPossession),
+    authorizerSignature = Base64.encode(authorizerSignature),
 )

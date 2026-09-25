@@ -39,9 +39,9 @@ interface IdentityStore {
 
 /**
  * The local device's authentication key pair (docs/server-authentication.md),
- * separate from the messaging identity. There is at most one, and it is
- * never replaced: the server binds the device address to its public key and
- * has no way to accept another one.
+ * separate from the messaging identity. There is at most one active key. It
+ * is replaced only by promoting a pending recovery key after the server
+ * accepted a device recovery (docs/device-recovery.md).
  */
 interface DeviceAuthenticationKeyStore {
     suspend fun keyPair(): DeviceAuthenticationKeyPair?
@@ -61,6 +61,32 @@ interface DeviceAuthenticationKeyStore {
      * makes this `false` for good.
      */
     suspend fun awaitsUpgradeKey(): Boolean
+
+    /**
+     * The replacement key pair of a device recovery in progress
+     * (docs/device-recovery.md), or `null`. Never used to sign ordinary
+     * requests.
+     */
+    suspend fun pendingRecoveryKeyPair(): DeviceAuthenticationKeyPair?
+
+    /**
+     * Stores the replacement key pair of a device recovery. Throws
+     * [IllegalStateException] if one exists already: a pending key is never
+     * replaced silently. The active key is not touched.
+     */
+    suspend fun storePendingRecoveryKeyPair(keyPair: DeviceAuthenticationKeyPair)
+
+    /** Removes the pending recovery key pair, if any. The active key is not touched. */
+    suspend fun removePendingRecoveryKeyPair()
+
+    /**
+     * In one atomic step: makes the pending recovery key pair the active key
+     * (replacing the active key, or installing it if the active key was
+     * lost), removes the pending key and makes [awaitsUpgradeKey] `false`.
+     * Only for a pending key the server accepted. Throws
+     * [IllegalStateException] and changes nothing if there is no pending key.
+     */
+    suspend fun promotePendingRecoveryKeyPair()
 }
 
 /**

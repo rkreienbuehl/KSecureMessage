@@ -58,7 +58,7 @@ Client lifecycle contracts such as transport, session access, sending, receiving
 Kotlin Multiplatform Ktor client transport adapter.
 
 ### `server:core`
-Server-side repositories/services for public device information, prekey bundles, and encrypted envelopes. It should not decrypt client messages or own client session secrets. `PreKeyService` validates publications and hands out each one-time prekey at most once. `DeviceAuthenticator` verifies device-signed requests against registered device authentication keys, with a time window and single-use nonces (see [docs/server-authentication.md](docs/server-authentication.md)).
+Server-side repositories/services for public device information, prekey bundles, and encrypted envelopes. It should not decrypt client messages or own client session secrets. `PreKeyService` validates publications and hands out each one-time prekey at most once. `DeviceAuthenticator` verifies device-signed requests against registered device authentication keys, with a time window and single-use nonces (see [docs/server-authentication.md](docs/server-authentication.md)) `DeviceRecoveryService` replaces a lost device's key when another registered device of the same user authorizes it (see [docs/device-recovery.md](docs/device-recovery.md)).
 
 ### `server:ktor`
 JVM Ktor server routes/adapters for HTTP API v1, see [docs/prekey-publication.md](docs/prekey-publication.md) and [docs/server-authentication.md](docs/server-authentication.md).
@@ -188,10 +188,18 @@ for (envelope in client.receive()) client.decrypt(envelope) // signed drain
 
 Milestone 13 done: persistent server storage. `storage:server:sqldelight` implements the four server repositories on SQLite through a caller-supplied SQLDelight `SqlDriver` (server schema version 1, independent of the client schema). Registrations, claimed nonces, prekeys with consumed one-time prekey tombstones and queued envelopes survive a restart; every operation keeps the in-memory semantics and is one SQLite transaction (the nonce claim stays separate from the protected operation). Both server adapters run the same contract tests. The HTTP routes now answer unexpected server or storage failures with a generic `500` `internal_error`, never the exception text. Wire, protocol, authentication and client storage are unchanged. SQLite, single node, unencrypted. See [docs/server-storage.md](docs/server-storage.md).
 
+Milestone 14 done: device authentication recovery. A device that lost its device authentication key can have a replacement registered, authorized by another registered device of the same user: the lost device keeps a pending replacement key (sealed at rest as record type 8, kept across restarts and storage key rotation) and signs a proof of possession; the other device signs an authorization with its registered key; the server verifies both over a frozen binary statement (domains `KSecureMessage-DeviceRecovery-v1` and `KSecureMessage-DeviceRecovery-PoP-v1`: target, authorizer, replacement key, timestamp, nonce), checks freshness (±5 minutes) and the nonce, and replaces the key by compare-and-set on key and a new authentication epoch, in one transaction. The old key stops working at once; a retry of an applied recovery is recognized (`DeviceRecoveryId`), and a client whose response was lost confirms its pending key with an ordinary registration request. Cross-user and self authorization, unregistered targets and stale or replayed recoveries are rejected. Only server authentication changes: messaging identity, TOFU pins, sessions, prekeys and mailbox stay. A user with a single device cannot recover it. Server schema version 2 (`1.sqm`), client schema version 9 (`8.sqm`). See [docs/device-recovery.md](docs/device-recovery.md).
+
+```kotlin
+val request = lostDevice.prepareDeviceAuthenticationRecovery(authorizer = otherDeviceAddress)
+val authorization = otherDevice.authorizeDeviceRecovery(request) // transferred by the application
+lostDevice.completeDeviceAuthenticationRecovery(authorization)
+```
+
 ## Next implementation steps
 
-1. Device re-registration/reset with an explicit recovery policy (auth key loss, identity change), then a PostgreSQL server adapter if multi-node deployment is needed.
-2. Safety numbers / manual identity verification, and a deliberate way to accept identity changes.
+1. Safety numbers / manual identity verification, and a deliberate way to accept identity changes (needed before messaging identity recovery can be safe).
+2. Account-level recovery for the last device (recovery key or code) and routine device authentication key rotation; a PostgreSQL server adapter if multi-node deployment is needed.
 3. An application commit boundary for received messages and bounded dedup retention.
 4. Sealed sender.
 

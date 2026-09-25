@@ -10,6 +10,7 @@ import dev.kreienbuehl.ksecuremessage.storage.AuthenticationNonceRepository
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationRepository
 import dev.kreienbuehl.ksecuremessage.storage.MailboxRepository
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyRepository
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacement
 import dev.kreienbuehl.ksecuremessage.storage.ServerStorage
 import dev.kreienbuehl.ksecuremessage.storage.server.sqldelight.SqlDelightServerStorage
 import kotlinx.coroutines.runBlocking
@@ -61,6 +62,8 @@ internal class ReopenableServerStorage : ServerStorage, AutoCloseable {
     override val devices: DeviceRegistrationRepository = object : DeviceRegistrationRepository {
         override suspend fun registration(address: DeviceAddress) = current.devices.registration(address)
         override suspend fun register(registration: DeviceRegistration) = current.devices.register(registration)
+        override suspend fun registrationState(address: DeviceAddress) = current.devices.registrationState(address)
+        override suspend fun replaceForRecovery(replacement: RecoveryReplacement) = current.devices.replaceForRecovery(replacement)
     }
 
     override val authenticationNonces: AuthenticationNonceRepository = object : AuthenticationNonceRepository {

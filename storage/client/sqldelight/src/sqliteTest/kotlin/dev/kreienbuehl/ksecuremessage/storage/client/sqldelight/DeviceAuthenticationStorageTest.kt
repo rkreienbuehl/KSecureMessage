@@ -30,7 +30,7 @@ import kotlin.time.Instant
 private val ALICE = DeviceAddress(UserId("alice"), DeviceId("phone"))
 private val BOB = DeviceAddress(UserId("bob"), DeviceId("laptop"))
 
-private val AUTH_TABLES = setOf("device_authentication_key", "device_authentication_state")
+private val AUTH_TABLES = setOf("device_authentication_key", "device_authentication_state", "device_authentication_recovery_key")
 
 /**
  * The device authentication key in SQLDelight storage (milestone 12,
@@ -68,6 +68,7 @@ class DeviceAuthenticationStorageTest {
     private fun downgradeToVersion7() {
         driver.exec("DROP TABLE device_authentication_key")
         driver.exec("DROP TABLE device_authentication_state")
+        driver.exec("DROP TABLE device_authentication_recovery_key")
         driver.exec("PRAGMA user_version = 7")
     }
 
@@ -124,7 +125,7 @@ class DeviceAuthenticationStorageTest {
         database.closeOpenDrivers()
 
         val storage = reopen()
-        assertEquals(listOf(8L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(9L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
         assertEquals(before, after - AUTH_TABLES, "no existing row changes")
         assertEquals(emptyList(), after.getValue("device_authentication_key"), "SQL creates no key material")

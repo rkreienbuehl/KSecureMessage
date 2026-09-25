@@ -8,6 +8,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.RequestAuthentication
 import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
 import dev.kreienbuehl.ksecuremessage.server.DeviceAuthenticationException
+import dev.kreienbuehl.ksecuremessage.server.DeviceRecoveryException
 import dev.kreienbuehl.ksecuremessage.server.ProtectedEndpoint
 import dev.kreienbuehl.ksecuremessage.server.SecureMessageServer
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
@@ -23,7 +24,6 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import kotlinx.serialization.json.Json
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.io.encoding.Base64
 import kotlin.time.Instant
 
 /**
@@ -32,6 +32,9 @@ import kotlin.time.Instant
  * ContentNegotiation with JSON. Routes only map HTTP to
  * [SecureMessageServer]; authentication, validation, conflicts and atomicity
  * live behind it.
+ *
+ * Device recovery carries its own two signatures in the body
+ * (docs/device-recovery.md).
  *
  * Registration, prekey publication and mailbox drain are authenticated by
  * the device: the signature covers the exact body bytes, so those routes read
@@ -60,6 +63,43 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
                 is DeviceRegistrationException.InvalidRegistration -> call.respondError(HttpStatusCode.BadRequest, INVALID_REGISTRATION)
                 is DeviceRegistrationException.Conflict -> call.respondError(HttpStatusCode.Conflict, "device_registration_conflict")
             }
+        } catch (e: Exception) {
+            call.respondInternalError(e)
+        }
+    }
+
+    // Device recovery (docs/device-recovery.md): not ServerAuth-signed. The
+    // body carries the authorizer's signature and the replacement key's proof
+    // of possession over the binary recovery statement; the server verifies
+    // both before anything is changed.
+    put("/v1/devices/{user}/{device}/registration/recovery") {
+        val target = call.deviceAddress()
+        val authorization = try {
+            Json.decodeFromString<DeviceRecoveryRequestDto>(call.receive<ByteArray>().decodeToString()).toAuthorization(target)
+        } catch (e: IllegalArgumentException) {
+            // Malformed JSON (SerializationException), non-canonical Base64, sizes, negative timestamp.
+            return@put call.respondError(HttpStatusCode.BadRequest, INVALID_RECOVERY)
+        }
+        val authorizer = authorization.request.authorizer
+        try {
+            val outcome = server.recoverDevice(authorization)
+            call.application.log.info("Device recovery of $target authorized by $authorizer: ${outcome.name.lowercase()}")
+            call.respond(HttpStatusCode.NoContent)
+        } catch (e: DeviceRecoveryException) {
+            val (status, error) = when (e) {
+                is DeviceRecoveryException.InvalidRecovery -> HttpStatusCode.BadRequest to INVALID_RECOVERY
+                is DeviceRecoveryException.SelfAuthorization -> HttpStatusCode.Forbidden to "recovery_self_authorization"
+                is DeviceRecoveryException.CrossUser -> HttpStatusCode.Forbidden to "recovery_cross_user"
+                is DeviceRecoveryException.AuthorizerNotRegistered -> HttpStatusCode.Unauthorized to "recovery_authorizer_not_registered"
+                is DeviceRecoveryException.TargetNotRegistered -> HttpStatusCode.NotFound to "recovery_target_not_registered"
+                is DeviceRecoveryException.Expired -> HttpStatusCode.Unauthorized to "expired_authentication"
+                is DeviceRecoveryException.InvalidProof -> HttpStatusCode.Unauthorized to "invalid_recovery_proof"
+                is DeviceRecoveryException.Replay -> HttpStatusCode.Unauthorized to "authentication_replay"
+                is DeviceRecoveryException.Conflict -> HttpStatusCode.Conflict to "recovery_conflict"
+            }
+            // Addresses and the failure category only: never keys, signatures or the body.
+            call.application.log.info("Device recovery of $target authorized by $authorizer rejected: $error")
+            call.respondError(status, error)
         } catch (e: Exception) {
             call.respondInternalError(e)
         }
@@ -139,6 +179,7 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
 
 private const val INVALID_PUBLICATION = "invalid_publication"
 private const val INVALID_REGISTRATION = "invalid_registration"
+private const val INVALID_RECOVERY = "invalid_recovery"
 
 private suspend fun ApplicationCall.respondError(status: HttpStatusCode, error: String) =
     respond(status, ErrorResponse(error))
@@ -203,9 +244,4 @@ private fun parseTimestamp(value: String): Long {
     return value.toLong()
 }
 
-/** Standard Base64 with padding, canonical only. */
-private fun decodeBase64(value: String): ByteArray {
-    val bytes = Base64.decode(value)
-    require(Base64.encode(bytes) == value) { "Non-canonical Base64" }
-    return bytes
-}
+private fun decodeBase64(value: String): ByteArray = decodeCanonicalBase64(value)

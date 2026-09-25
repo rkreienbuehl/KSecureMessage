@@ -53,6 +53,29 @@ class StorageCipherTest {
         assertContentEquals(keyPair.privateKey, opened.privateKey)
     }
 
+    /**
+     * Record type 8 (milestone 14): the pending replacement key pair of a
+     * device recovery, same content layout as type 7. Computed independently
+     * (Python `cryptography`, AESGCM). Frozen.
+     */
+    @Test
+    fun deviceAuthenticationRecoveryKeyVector() = runTest {
+        val header = EncryptedRecordFormat.header(StorageKeyId(7))
+        assertEquals(
+            "4b534d52010100000007000000194b5365637572654d6573736167652d53746f726167652d76310800",
+            EncryptedRecordFormat.associatedData(header, StorageRecordType.DEVICE_AUTHENTICATION_RECOVERY_KEY, emptyList()).toHex(),
+        )
+        val keyPair = DeviceAuthenticationKeyPair(ByteArray(32) { 0x11 }, ByteArray(32) { 0x22 })
+        val vector = "4b534d52010100000007a0a1a2a3a4a5a6a7a8a9aaabe7187c2d65da13ae737496c2166bd1cf61bd480183a6537d8d1f37976eba6410c3" +
+            "6756eebe22533d7fbe26ea2b58a1db6539646a40f2385c637c297c8652a792969ea74d1287c6c2d600615bd9550843e343e823814af81b92"
+        assertEquals(vector, AeadClientRecordCipher(fixedNonceCipher()).sealDeviceAuthenticationRecoveryKey(keyPair).toHex())
+        val opened = ClientRecordCipher(key).openDeviceAuthenticationRecoveryKey(hex(vector))
+        assertContentEquals(keyPair.publicKey, opened.publicKey)
+        assertContentEquals(keyPair.privateKey, opened.privateKey)
+        assertEquals(8, StorageRecordType.DEVICE_AUTHENTICATION_RECOVERY_KEY.id.toInt())
+        assertEquals(7, StorageRecordType.DEVICE_AUTHENTICATION_KEY.id.toInt())
+    }
+
     @Test
     fun roundtripAndLayout() = runTest {
         val record = cipher.seal(StorageRecordType.SESSION, fields, plaintext)
@@ -191,6 +214,6 @@ class StorageCipherTest {
             EncryptedRecordFormat.associatedData(EncryptedRecordFormat.header(StorageKeyId(2)), StorageRecordType.KEY_CHECK, emptyList()).toHex(),
         )
         assertEquals(all.size, all.toSet().size)
-        assertEquals(listOf<Byte>(1, 2, 3, 4, 5, 6, 7), StorageRecordType.entries.map { it.id })
+        assertEquals(listOf<Byte>(1, 2, 3, 4, 5, 6, 7, 8), StorageRecordType.entries.map { it.id })
     }
 }

@@ -45,6 +45,15 @@ CREATE TABLE device_authentication_key (
     sealed_key_pair BLOB NOT NULL
 );
 
+-- Pending replacement key pair of a device authentication recovery
+-- (milestone 14, schema version 9, see 8.sqm and docs/device-recovery.md).
+-- Single row, sealed as record type 8. Promoted to device_authentication_key
+-- once the server accepted the recovery.
+CREATE TABLE device_authentication_recovery_key (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    sealed_key_pair BLOB NOT NULL
+);
+
 -- Single row. awaits_upgrade_key is 1 only for a database that held a local
 -- identity before schema version 8 and has not stored a device
 -- authentication key since; a new database starts with 0.
@@ -177,6 +186,12 @@ SELECT sealed_key_pair FROM device_authentication_key WHERE hex(substr(sealed_ke
 updateDeviceAuthenticationKeyRecord:
 UPDATE device_authentication_key SET sealed_key_pair = ?;
 
+selectDeviceAuthenticationRecoveryKeyToReseal:
+SELECT sealed_key_pair FROM device_authentication_recovery_key WHERE hex(substr(sealed_key_pair, 1, 10)) IS NOT :header;
+
+updateDeviceAuthenticationRecoveryKeyRecord:
+UPDATE device_authentication_recovery_key SET sealed_key_pair = ?;
+
 selectSignedPreKeysToReseal:
 SELECT id, sealed_key_pair FROM signed_pre_key WHERE hex(substr(sealed_key_pair, 1, 10)) IS NOT :header ORDER BY id LIMIT :limit;
 
@@ -206,6 +221,7 @@ UPDATE pending_outbound_message SET sealed_frame = ? WHERE sequence = ?;
 countRecordsToReseal:
 SELECT (SELECT count(*) FROM local_identity WHERE hex(substr(sealed_identity, 1, 10)) IS NOT :header)
     + (SELECT count(*) FROM device_authentication_key WHERE hex(substr(sealed_key_pair, 1, 10)) IS NOT :header)
+    + (SELECT count(*) FROM device_authentication_recovery_key WHERE hex(substr(sealed_key_pair, 1, 10)) IS NOT :header)
     + (SELECT count(*) FROM signed_pre_key WHERE hex(substr(sealed_key_pair, 1, 10)) IS NOT :header)
     + (SELECT count(*) FROM one_time_pre_key WHERE hex(substr(sealed_key_pair, 1, 10)) IS NOT :header)
     + (SELECT count(*) FROM session WHERE hex(substr(sealed_state, 1, 10)) IS NOT :header)
@@ -213,6 +229,7 @@ SELECT (SELECT count(*) FROM local_identity WHERE hex(substr(sealed_identity, 1,
 
 countSealedRecords:
 SELECT (SELECT count(*) FROM local_identity) + (SELECT count(*) FROM device_authentication_key)
+    + (SELECT count(*) FROM device_authentication_recovery_key)
     + (SELECT count(*) FROM signed_pre_key)
     + (SELECT count(*) FROM one_time_pre_key) + (SELECT count(*) FROM session)
     + (SELECT count(*) FROM pending_outbound_message);
@@ -229,6 +246,19 @@ SELECT sealed_key_pair FROM device_authentication_key;
 -- Plain INSERT: the primary key rejects a second key.
 insertDeviceAuthenticationKey:
 INSERT INTO device_authentication_key (id, sealed_key_pair) VALUES (0, ?);
+
+deleteDeviceAuthenticationKey:
+DELETE FROM device_authentication_key;
+
+selectDeviceAuthenticationRecoveryKey:
+SELECT sealed_key_pair FROM device_authentication_recovery_key;
+
+-- Plain INSERT: the primary key rejects a second pending key.
+insertDeviceAuthenticationRecoveryKey:
+INSERT INTO device_authentication_recovery_key (id, sealed_key_pair) VALUES (0, ?);
+
+deleteDeviceAuthenticationRecoveryKey:
+DELETE FROM device_authentication_recovery_key;
 
 selectDeviceAuthenticationAwaitsUpgradeKey:
 SELECT awaits_upgrade_key FROM device_authentication_state;

@@ -75,6 +75,26 @@ class ClientRecordCipherTest {
     }
 
     @Test
+    fun deviceAuthenticationRecoveryKeyIsItsOwnRecordType() = runTest {
+        // Same plaintext layout as the active device authentication key; only the record type differs.
+        val pending = cipher.sealDeviceAuthenticationRecoveryKey(DeviceAuthenticationKeyPair(bytes(1), bytes(2)))
+        val active = cipher.sealDeviceAuthenticationKey(DeviceAuthenticationKeyPair(bytes(1), bytes(2)))
+        assertEquals(active.size, pending.size)
+        val opened = cipher.openDeviceAuthenticationRecoveryKey(pending)
+        assertContentEquals(bytes(1), opened.publicKey)
+        assertContentEquals(bytes(2), opened.privateKey)
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openDeviceAuthenticationKey(pending) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openDeviceAuthenticationRecoveryKey(active) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> {
+            ClientRecordCipher(testKey(1, 100)).openDeviceAuthenticationRecoveryKey(pending)
+        }
+        val privateKey = ByteArray(32) { 0x5A }
+        assertFalse(
+            cipher.sealDeviceAuthenticationRecoveryKey(DeviceAuthenticationKeyPair(bytes(1), privateKey)).toHex().contains(privateKey.toHex()),
+        )
+    }
+
+    @Test
     fun sealedRecordsDoNotContainPlaintext() = runTest {
         val secret = "super-secret-pending-message".encodeToByteArray()
         val sealed = cipher.sealPendingFrame(BOB, m1, secret)

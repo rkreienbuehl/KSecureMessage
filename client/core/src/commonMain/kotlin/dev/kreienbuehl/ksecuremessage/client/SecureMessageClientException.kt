@@ -67,4 +67,15 @@ sealed class SecureMessageClientException(message: String, cause: Throwable? = n
      */
     class MessageNotSent(val messageId: LogicalMessageId, cause: Throwable) :
         SecureMessageClientException("Message $messageId was stored as pending but not handed to the transport", cause)
+
+    /**
+     * A device recovery request or authorization is not acceptable for this
+     * device (docs/device-recovery.md): wrong device or user, self
+     * authorization, outside the validity window, invalid proof of
+     * possession, or not for the pending key. Nothing was changed.
+     */
+    class InvalidDeviceRecovery(message: String) : SecureMessageClientException(message)
+
+    /** There is no pending device recovery: call [SecureMessageClient.prepareDeviceAuthenticationRecovery]. */
+    class NoPendingDeviceRecovery : SecureMessageClientException("No device recovery is pending")
 }

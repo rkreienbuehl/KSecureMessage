@@ -4,12 +4,14 @@ import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransport
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.AuthenticationFailure
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.Reason
+import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RecoveryFailure
 import dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
 import io.ktor.client.HttpClient
@@ -58,6 +60,29 @@ class KtorSecureMessageTransport(
             response.status == HttpStatusCode.BadRequest -> throw SecureMessageTransportException.RegistrationRejected()
             else -> throw response.unexpected()
         }
+    }
+
+    override suspend fun recoverDevice(authorization: DeviceRecoveryAuthorization) {
+        val target = authorization.request.target
+        val body = Json.encodeToString(authorization.toRequest()).encodeToByteArray()
+        val response = client.request(baseUrl + ServerApiPaths.device(target, ServerApiPaths.REGISTRATION_RECOVERY)) {
+            method = HttpMethod.Put
+            setBody(ByteArrayContent(body, ContentType.Application.Json))
+        }
+        if (response.status.isSuccess()) return
+        val failure = when (runCatching { response.body<ErrorResponse>().error }.getOrNull()) {
+            "invalid_recovery" -> RecoveryFailure.INVALID_REQUEST
+            "recovery_self_authorization" -> RecoveryFailure.SELF_AUTHORIZATION
+            "recovery_cross_user" -> RecoveryFailure.CROSS_USER
+            "recovery_authorizer_not_registered" -> RecoveryFailure.AUTHORIZER_NOT_REGISTERED
+            "recovery_target_not_registered" -> RecoveryFailure.TARGET_NOT_REGISTERED
+            "expired_authentication" -> RecoveryFailure.EXPIRED
+            "invalid_recovery_proof" -> RecoveryFailure.INVALID_PROOF
+            "authentication_replay" -> RecoveryFailure.REPLAY
+            "recovery_conflict" -> RecoveryFailure.CONFLICT
+            else -> throw SecureMessageTransportException.UnexpectedResponse(response.status.value)
+        }
+        throw SecureMessageTransportException.DeviceRecoveryRejected(failure)
     }
 
     override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) {

@@ -1,6 +1,7 @@
 package dev.kreienbuehl.ksecuremessage.server.ktor
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
@@ -8,8 +9,13 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
+import dev.kreienbuehl.ksecuremessage.model.UserId
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryRequest
+import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
+import kotlin.time.Instant
 
 // HTTP API v1 bodies. Mirrored in client:ktor; keep both in sync (see
 // docs/prekey-publication.md). Binary fields are Base64 strings (RFC 4648
@@ -42,6 +48,25 @@ internal class PreKeyBundleResponse(
 @Serializable
 internal class DeviceRegistrationRequest(val publicKey: String)
 
+@Serializable
+internal class DeviceAddressDto(val userId: String, val deviceId: String)
+
+/**
+ * Body of `PUT /v1/devices/{user}/{device}/registration/recovery`
+ * (docs/device-recovery.md). The target is in the path. [timestamp] is epoch
+ * milliseconds; the signatures cover the binary recovery statement, never
+ * this JSON.
+ */
+@Serializable
+internal class DeviceRecoveryRequestDto(
+    val authorizer: DeviceAddressDto,
+    val replacementPublicKey: String,
+    val timestamp: Long,
+    val nonce: String,
+    val proofOfPossession: String,
+    val authorizerSignature: String,
+)
+
 /** Body of 4xx responses. */
 @Serializable
 internal class ErrorResponse(val error: String)
@@ -63,6 +88,29 @@ internal fun PreKeyPublicationRequest.toPublication(address: DeviceAddress) = Pr
 
 /** Throws [IllegalArgumentException] for invalid Base64. The key size is checked by the server. */
 internal fun DeviceRegistrationRequest.toRegistration(address: DeviceAddress) = DeviceRegistration(address, Base64.decode(publicKey))
+
+/**
+ * Throws [IllegalArgumentException] for non-canonical Base64, wrong key,
+ * nonce or signature sizes, or a negative timestamp.
+ */
+internal fun DeviceRecoveryRequestDto.toAuthorization(target: DeviceAddress) = DeviceRecoveryAuthorization(
+    DeviceRecoveryRequest(
+        target = target,
+        authorizer = DeviceAddress(UserId(authorizer.userId), DeviceId(authorizer.deviceId)),
+        replacementPublicKey = decodeCanonicalBase64(replacementPublicKey),
+        timestamp = Instant.fromEpochMilliseconds(timestamp),
+        nonce = RequestNonce(decodeCanonicalBase64(nonce)),
+        proofOfPossession = decodeCanonicalBase64(proofOfPossession),
+    ),
+    decodeCanonicalBase64(authorizerSignature),
+)
+
+/** Standard Base64 with padding, canonical only. */
+internal fun decodeCanonicalBase64(value: String): ByteArray {
+    val bytes = Base64.decode(value)
+    require(Base64.encode(bytes) == value) { "Non-canonical Base64" }
+    return bytes
+}
 
 /**
  * Request authentication headers, format version 1 (docs/server-authentication.md).
