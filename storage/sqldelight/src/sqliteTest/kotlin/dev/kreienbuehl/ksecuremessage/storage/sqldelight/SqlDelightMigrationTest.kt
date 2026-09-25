@@ -28,6 +28,8 @@ import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionException
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyProvider
 import dev.kreienbuehl.ksecuremessage.storage.inmemory.InMemoryClientStorage
+import dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationPhase
+import dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationStatus
 import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.Test

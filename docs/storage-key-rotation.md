@@ -27,6 +27,38 @@ storage.storageKeyRotationStatus()               // phase, key IDs, remaining re
 The API lives on `SqlDelightClientStorage`, not on `SecureMessageClient`:
 messaging code needs no knowledge of it. Calling a rotation function inside a
 `transaction { }` of the same storage throws `IllegalStateException`.
+`StorageKeyRotationPhase`, `StorageKeyRotationStatus` and
+`StorageKeyRotationInProgressException` are in
+`dev.kreienbuehl.ksecuremessage.storage.rotation` (module `storage:rotation:core`).
+
+## Architecture
+
+The state machine is independent of SQLDelight, so another persistent storage
+adapter can reuse it instead of copying it:
+
+| module | owns |
+|---|---|
+| `storage:rotation:core` | `StorageKeyRotationManager` (the state machine: step order, key ID allocation rule, provider calls, read-back check, zero-reference rule, which provider results are acceptable in which phase), `StorageKeyRotationState` (validated state per phase), `StorageKeyRotationBackend` (the contract), phase, status, in-progress exception |
+| `storage:sqldelight` | `SqlDelightStorageKeyRotationBackend`: the `storage_encryption` row and its phase encoding, SQL transactions and compare-and-set updates, key checks, re-encryption batches, `SEALED_COLUMNS` and the key reference scan; `SqlDelightClientStorage` delegates its three rotation functions to the manager |
+| `storage:keyprovider:*` | key material only (`createKey`, `key`, `removeKey`) |
+| `storage:encryption` | `StorageKeyId`, `StorageEncryptionKey`, `StorageKeyProvider`, record format v1, AES-GCM, associated data |
+
+Dependencies: `storage:encryption` ← `storage:rotation:core` ←
+`storage:sqldelight`. The rotation core has no SQL, no platform code and no
+AEAD. Each backend method is one atomic storage step; transitions are
+compare-and-set on the state the manager read, and the manager calls the
+provider only between them, inside `exclusive { }`, which serializes the step
+with every storage transaction. The zero-reference proof stays atomic with the
+RETIRING commit: `markRetiring` runs the backend's scan and the manager's check
+in the same transaction. Generic state consistency (which key IDs each phase
+has, high-water mark) is validated by `StorageKeyRotationState.of`; the backend
+validates only its own columns (key checks) and maps the persisted phase codes.
+
+A new backend implements `StorageKeyRotationBackend`: persist the state and a
+key ID high-water mark, make each transition a single atomic compare-and-set,
+re-encrypt a bounded batch per `migrateBatch`, and scan every location that can
+hold a sealed record in `keyReferences`. It then wraps
+`StorageKeyRotationManager(backend, keyProvider)`.
 
 ## Invariant
 
@@ -93,7 +125,8 @@ them, outside any transaction):
 7. **RETIRING → STABLE.** `retiring_key_id = NULL`.
 
 Each transition statement checks the phase and key IDs it leaves, so a stale
-or concurrent caller changes nothing.
+or concurrent caller changes nothing. Steps 1–7 are driven by
+`StorageKeyRotationManager`; the database parts are the SQLDelight backend.
 
 ### Crash windows
 

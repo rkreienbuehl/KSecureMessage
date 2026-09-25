@@ -28,7 +28,13 @@ KSecureMessage/
 │   └── ktor/
 └── storage/
     ├── core/
+    ├── encryption/
     ├── inmemory/
+    ├── keyprovider/
+    │   ├── android/
+    │   └── apple/
+    ├── rotation/
+    │   └── core/
     ├── sqldelight/
     └── testing/
 ```
@@ -62,6 +68,9 @@ Persistent `ClientStorage` on SQLite via SQLDelight, for all client targets. The
 
 ### `storage:encryption`
 Record-level encryption of sensitive client storage records: AES-256-GCM (cryptography-kotlin) with associated data bound to record type and row key, the versioned record format, `StorageKeyProvider` and `StorageEncryptionKey`. Used by `storage:sqldelight`.
+
+### `storage:rotation:core`
+The storage key rotation state machine (`StorageKeyRotationManager`), its validated state, status and the `StorageKeyRotationBackend` contract a persistent storage adapter implements. No SQL or platform code; `storage:sqldelight` provides the SQLite backend. See [docs/storage-key-rotation.md](docs/storage-key-rotation.md#architecture).
 
 ### `storage:keyprovider:android`, `storage:keyprovider:apple`
 Platform `StorageKeyProvider`s: the storage key wrapped by an Android Keystore key, or stored in the Apple Keychain. See [docs/storage-key-providers.md](docs/storage-key-providers.md).
@@ -153,6 +162,8 @@ Milestone 11 done: storage key rotation and safe retirement. `SqlDelightClientSt
 storage.rotateStorageKey()
 while (storage.resumeStorageKeyRotation(maxRecords = 256).phase != StorageKeyRotationPhase.STABLE) Unit
 ```
+
+The rotation state machine is now a separate module, `storage:rotation:core` (`StorageKeyRotationManager` over a `StorageKeyRotationBackend`); `SqlDelightClientStorage` implements the backend and keeps the same three functions. Phase, status and `StorageKeyRotationInProgressException` moved to the package `dev.kreienbuehl.ksecuremessage.storage.rotation`. No behavior, schema or format change.
 
 ## Next implementation steps
 

@@ -43,6 +43,7 @@ kotlin {
         commonMain.dependencies {
             api(project(":storage:core"))
             api(project(":storage:encryption"))
+            api(project(":storage:rotation:core"))
             api(libs.sqldelight.runtime)
             implementation(libs.sqldelight.async.extensions)
             implementation(libs.kotlinx.coroutines.core)

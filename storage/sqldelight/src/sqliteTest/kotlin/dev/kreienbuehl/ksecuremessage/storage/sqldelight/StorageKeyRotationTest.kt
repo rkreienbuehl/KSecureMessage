@@ -18,6 +18,9 @@ import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionExcept
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionKey
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyProvider
+import dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationInProgressException
+import dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationPhase
+import dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationStatus
 import dev.kreienbuehl.ksecuremessage.storage.testing.ClientStorageContractTest.Companion.messageId
 import kotlinx.coroutines.test.runTest
 import kotlin.coroutines.cancellation.CancellationException
@@ -455,6 +458,21 @@ class StorageKeyRotationTest {
         assertFailsWith<StorageEncryptionException.KeyUnavailable> { storage.finishRotation(100) }
         assertEquals(StorageKeyRotationPhase.MIGRATING, storage.storageKeyRotationStatus().phase)
         assertEquals(setOf(K2, K3), keys.ids(namespace))
+    }
+
+    @Test
+    fun sealedValueTheBatchesDoNotSelectBlocksRetirement() = runTest {
+        val storage = open()
+        populate(storage)
+        storage.rotateStorageKey()
+        // A key check is never re-encrypted, so only the scan sees one that names the retiring key.
+        driver.exec("UPDATE storage_encryption SET key_check = retiring_key_check")
+
+        assertFailsWith<IllegalStateException> { storage.resumeStorageKeyRotation(100) }
+        assertEquals(List(POPULATED_RECORDS.toInt()) { 2 }, recordKeyIds(), "the batch committed")
+        assertEquals(2L, state("rotation_phase"), "RETIRING was rolled back")
+        assertEquals(listOf(1L), driver.longs("SELECT retiring_key_check IS NOT NULL FROM storage_encryption"))
+        assertEquals(setOf(K1, K2), keys.ids(namespace), "the old key is kept")
     }
 
     @Test

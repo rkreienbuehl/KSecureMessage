@@ -7,12 +7,10 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
-import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
-import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
@@ -34,6 +32,11 @@ import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionExcept
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionKey
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyProvider
+import dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationInProgressException
+import dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationManager
+import dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationPhase
+import dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationStatus
+import dev.kreienbuehl.ksecuremessage.storage.sqldelight.SqlDelightStorageKeyRotationBackend.Companion.storageKeyId
 import dev.kreienbuehl.ksecuremessage.storage.sqldelight.db.KSecureMessageDatabase
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Mutex
@@ -82,9 +85,8 @@ import kotlin.time.Instant
 class SqlDelightClientStorage private constructor(
     private val driver: SqlDriver,
     private val keyProvider: StorageKeyProvider,
-    private val cipherFactory: RecordCipherFactory,
+    internal val cipherFactory: RecordCipherFactory,
     currentKey: StorageEncryptionKey,
-    retainedKey: StorageEncryptionKey?,
     records: ClientRecordCipher,
 ) : ClientStorage {
     private val database = KSecureMessageDatabase(driver)
@@ -93,9 +95,10 @@ class SqlDelightClientStorage private constructor(
 
     // The keys and cipher change only by storage key rotation, while [mutex]
     // is held, right after the transaction that recorded the change.
-    private var currentKey: StorageEncryptionKey = currentKey
-    private var retainedKey: StorageEncryptionKey? = retainedKey
-    private var records: ClientRecordCipher = records
+    internal var currentKey: StorageEncryptionKey = currentKey
+        private set
+    internal var records: ClientRecordCipher = records
+        private set
     private var view = DatabaseView(queries, records)
 
     override val identity: IdentityStore = object : IdentityStore {
@@ -168,7 +171,7 @@ class SqlDelightClientStorage private constructor(
     }
 
     /** A database transaction; the caller holds [mutex]. */
-    private suspend fun <T> lockedTransaction(block: suspend () -> T): T =
+    internal suspend fun <T> lockedTransaction(block: suspend () -> T): T =
         withContext(ActiveTransaction(this)) {
             database.transactionWithResult {
                 checkKeyState()
@@ -183,17 +186,19 @@ class SqlDelightClientStorage private constructor(
      */
     private suspend fun checkKeyState() {
         val state = queries.selectStorageEncryption().awaitAsOne()
-        val expected = setOfNotNull(state.key_id, state.retiring_key_id.takeIf { state.rotation_phase == PHASE_MIGRATING })
+        val expected = setOfNotNull(state.key_id, state.retiring_key_id.takeIf { state.rotation_phase == SqlDelightStorageKeyRotationBackend.PHASE_MIGRATING })
         if (state.key_id != currentKey.id.value.toLong() || records.openableKeyIds.map { it.value.toLong() }.toSet() != expected) {
             throw StorageEncryptionException.KeyUnavailable("The storage key changed since this storage was opened; open it again")
         }
     }
 
+    private val rotation = StorageKeyRotationManager(SqlDelightStorageKeyRotationBackend(this, driver, queries), keyProvider)
+
     /**
      * The storage key rotation state (docs/storage-key-rotation.md). Key IDs
      * only.
      */
-    suspend fun storageKeyRotationStatus(): StorageKeyRotationStatus = rotationStep { status() }
+    suspend fun storageKeyRotationStatus(): StorageKeyRotationStatus = rotation.status()
 
     /**
      * Starts a storage key rotation and returns the new current key ID.
@@ -211,27 +216,9 @@ class SqlDelightClientStorage private constructor(
      * or retiring; [StorageEncryptionException.KeyIdsExhausted] if no key ID
      * is left; [StorageEncryptionException.KeyUnavailable] if the provider
      * cannot create or return the key (the database then still uses its
-     * current key).
+     * current key). The state machine is [StorageKeyRotationManager].
      */
-    suspend fun rotateStorageKey(): StorageKeyId = rotationStep {
-        val state = lockedTransaction { queries.selectStorageEncryption().awaitAsOne() }
-        when (state.rotation_phase) {
-            PHASE_STABLE -> {
-                val highest = state.highest_key_id ?: state.key_id!!
-                if (highest >= Int.MAX_VALUE) throw StorageEncryptionException.KeyIdsExhausted("No storage key ID is left")
-                val next = highest + 1
-                lockedTransaction {
-                    if (queries.prepareStorageKeyRotation(next, currentKey.id.value.toLong()) != 1L) {
-                        throw IllegalStateException("Storage encryption state changed while rotating")
-                    }
-                }
-            }
-            PHASE_PREPARING -> Unit
-            else -> throw StorageKeyRotationInProgressException(status())
-        }
-        activateNextKey()
-        currentKey.id
-    }
+    suspend fun rotateStorageKey(): StorageKeyId = rotation.rotate()
 
     /**
      * Advances a storage key rotation by one step and returns the new status:
@@ -250,165 +237,19 @@ class SqlDelightClientStorage private constructor(
      * back only itself. A record that does not open stops the migration: the
      * rotation stays in progress and the retiring key is kept.
      */
-    suspend fun resumeStorageKeyRotation(maxRecords: Int = DEFAULT_ROTATION_BATCH): StorageKeyRotationStatus {
-        require(maxRecords > 0) { "maxRecords must be positive" }
-        return rotationStep {
-            when (lockedTransaction { queries.selectStorageEncryption().awaitAsOne() }.rotation_phase) {
-                PHASE_PREPARING -> activateNextKey()
-                PHASE_MIGRATING -> if (resealBatch(maxRecords) == 0L) retireKey()
-                PHASE_RETIRING -> finishRetirement()
-            }
-            status()
-        }
-    }
+    suspend fun resumeStorageKeyRotation(maxRecords: Int = DEFAULT_ROTATION_BATCH): StorageKeyRotationStatus =
+        rotation.resume(maxRecords)
 
     /** Runs a rotation step under [mutex]. Provider calls in it run outside any transaction. */
-    private suspend fun <T> rotationStep(block: suspend () -> T): T {
+    internal suspend fun <T> rotationStep(block: suspend () -> T): T {
         val active = currentCoroutineContext()[ActiveTransaction]
         check(active == null || active.owner !== this) { "Storage key rotation cannot run inside a storage transaction" }
         return mutex.withLock { block() }
     }
 
-    private suspend fun status(): StorageKeyRotationStatus = lockedTransaction {
-        val state = queries.selectStorageEncryption().awaitAsOne()
-        val phase = StorageKeyRotationPhase.entries[state.rotation_phase.toInt()]
-        StorageKeyRotationStatus(
-            phase = phase,
-            currentKeyId = currentKey.id,
-            nextKeyId = state.next_key_id?.let { StorageKeyId(it.toInt()) },
-            retiringKeyId = state.retiring_key_id?.let { StorageKeyId(it.toInt()) },
-            remainingRecords = if (phase == StorageKeyRotationPhase.MIGRATING) {
-                queries.countRecordsToReseal(sealedHeaderHex(currentKey.id)).awaitAsOne()
-            } else {
-                0
-            },
-        )
-    }
-
-    /** PREPARING to MIGRATING: the provider key first, durable and read back, then the database. */
-    private suspend fun activateNextKey() {
-        val state = lockedTransaction { queries.selectStorageEncryption().awaitAsOne() }
-        check(state.rotation_phase == PHASE_PREPARING) { "No storage key rotation is being prepared" }
-        val id = storageKeyId(state.next_key_id ?: throw StorageEncryptionException.MalformedRecord("Missing next storage key ID"))
-        val created = provide("Storage key ${id.value} could not be created") { keyProvider.createKey(id) }
-        val loaded = provide("Storage key ${id.value} is not available after creating it") { keyProvider.key(id) }
-        if (created.id != id || loaded.id != id || !sameKey(created, loaded)) {
-            throw StorageEncryptionException.KeyUnavailable("Provider returned another storage key than ${id.value}")
-        }
-        val previous = currentKey
-        val next = cipherFactory(loaded, listOf(previous))
-        val keyCheck = next.sealKeyCheck()
-        lockedTransaction {
-            if (queries.activateStorageKey(keyCheck, previous.id.value.toLong(), id.value.toLong()) != 1L) {
-                throw IllegalStateException("Storage encryption state changed while rotating")
-            }
-        }
-        useKeys(loaded, previous, next)
-    }
-
-    /** Re-encrypts up to [limit] records of other keys with the current key. Returns how many remain. */
-    private suspend fun resealBatch(limit: Int): Long = lockedTransaction {
-        val header = sealedHeaderHex(currentKey.id)
-        var budget = limit.toLong()
-        if (budget > 0) {
-            queries.selectIdentityToReseal(header).awaitAsOneOrNull()?.let { sealed ->
-                queries.updateIdentityRecord(records.sealIdentity(records.openIdentity(sealed)))
-                budget--
-            }
-        }
-        if (budget > 0) {
-            val rows = queries.selectSignedPreKeysToReseal(header, budget).awaitAsList()
-            for (row in rows) {
-                val preKey = records.openSignedPreKey(SignedPreKeyId(row.id.toInt()), row.sealed_key_pair)
-                queries.updateSignedPreKeyRecord(records.sealSignedPreKey(preKey), row.id)
-            }
-            budget -= rows.size
-        }
-        if (budget > 0) {
-            val rows = queries.selectOneTimePreKeysToReseal(header, budget).awaitAsList()
-            for (row in rows) {
-                val preKey = records.openOneTimePreKey(OneTimePreKeyId(row.id.toInt()), row.sealed_key_pair)
-                queries.updateOneTimePreKeyRecord(records.sealOneTimePreKey(preKey), row.id)
-            }
-            budget -= rows.size
-        }
-        if (budget > 0) {
-            val rows = queries.selectSessionsToReseal(header, budget).awaitAsList()
-            for (row in rows) {
-                val session = records.openSession(DeviceAddress(UserId(row.remote_user_id), DeviceId(row.remote_device_id)), row.sealed_state)
-                queries.updateSessionRecord(records.sealSession(session), row.remote_user_id, row.remote_device_id)
-            }
-            budget -= rows.size
-        }
-        if (budget > 0) {
-            val rows = queries.selectPendingOutboundToReseal(header, budget).awaitAsList()
-            for (row in rows) {
-                val recipient = DeviceAddress(UserId(row.recipient_user_id), DeviceId(row.recipient_device_id))
-                val id = LogicalMessageId.fromByteArray(row.message_id)
-                val frame = records.openPendingFrame(recipient, id, row.sealed_frame)
-                queries.updatePendingOutboundRecord(records.sealPendingFrame(recipient, id, frame), row.sequence)
-            }
-        }
-        queries.countRecordsToReseal(header).awaitAsOne()
-    }
-
-    /**
-     * MIGRATING to RETIRING. The retiring key check is dropped and every
-     * sealed record is scanned in the same transaction; any record that is
-     * not sealed with the current key rolls it back.
-     */
-    private suspend fun retireKey() {
-        val retiring = checkNotNull(retainedKey) { "No storage key is being retired" }
-        lockedTransaction {
-            if (queries.markStorageKeyRetiring(currentKey.id.value.toLong(), retiring.id.value.toLong()) != 1L) {
-                throw IllegalStateException("Storage encryption state changed while rotating")
-            }
-            requireOnlyCurrentKey()
-        }
-        useKeys(currentKey, null, cipherFactory(currentKey, emptyList()))
-        finishRetirement()
-    }
-
-    /** RETIRING to STABLE: provider removal (repeatable), then the database. */
-    private suspend fun finishRetirement() {
-        val state = lockedTransaction {
-            // Proven when RETIRING was entered; checked again before anything is deleted.
-            requireOnlyCurrentKey()
-            queries.selectStorageEncryption().awaitAsOne()
-        }
-        check(state.rotation_phase == PHASE_RETIRING) { "No storage key is being retired" }
-        val retiring = storageKeyId(state.retiring_key_id ?: throw StorageEncryptionException.MalformedRecord("Missing retiring storage key ID"))
-        check(retiring != currentKey.id) { "The current storage key cannot be retired" }
-        // false: already removed by an earlier attempt that stopped before the next step.
-        try {
-            keyProvider.removeKey(retiring)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: StorageEncryptionException) {
-            throw e
-        } catch (e: IllegalStateException) {
-            throw e
-        } catch (e: Exception) {
-            throw StorageEncryptionException.KeyUnavailable("Storage key ${retiring.value} could not be removed", e)
-        }
-        lockedTransaction {
-            if (queries.finishStorageKeyRotation(currentKey.id.value.toLong(), retiring.value.toLong()) != 1L) {
-                throw IllegalStateException("Storage encryption state changed while rotating")
-            }
-        }
-    }
-
-    /** Throws unless every sealed record in the database names the current key. */
-    private suspend fun requireOnlyCurrentKey() {
-        val others = driver.sealedRecordKeyIds() - currentKey.id
-        if (others.isNotEmpty()) {
-            throw IllegalStateException("Sealed records still use storage keys ${others.keys.map { it.value }.sorted()}")
-        }
-    }
-
-    private fun useKeys(current: StorageEncryptionKey, retained: StorageEncryptionKey?, cipher: ClientRecordCipher) {
+    /** Switches to [cipher] after a committed rotation step; [current] seals new records. */
+    internal fun useKeys(current: StorageEncryptionKey, cipher: ClientRecordCipher) {
         currentKey = current
-        retainedKey = retained
         records = cipher
         view = DatabaseView(queries, cipher)
     }
@@ -425,15 +266,10 @@ class SqlDelightClientStorage private constructor(
         val Schema: SqlSchema<QueryResult.AsyncValue<Unit>> get() = KSecureMessageDatabase.Schema
 
         /** Records per [resumeStorageKeyRotation] call if not given. */
-        const val DEFAULT_ROTATION_BATCH: Int = 256
+        const val DEFAULT_ROTATION_BATCH: Int = StorageKeyRotationManager.DEFAULT_BATCH_SIZE
 
         private const val FORMAT_LEGACY_PLAINTEXT = 0L
         private const val FORMAT_RECORD_ENCRYPTION_V1 = 1L
-
-        private const val PHASE_STABLE = 0L
-        private const val PHASE_PREPARING = 1L
-        private const val PHASE_MIGRATING = 2L
-        private const val PHASE_RETIRING = 3L
 
         /**
          * Opens the database behind [driver] with the storage key from
@@ -473,32 +309,12 @@ class SqlDelightClientStorage private constructor(
             return when {
                 state.format == FORMAT_RECORD_ENCRYPTION_V1 && keyId != null -> {
                     val current = boundKey(keyProvider, storageKeyId(keyId), state.key_check, "Missing key check record")
-                    val retained = when (state.rotation_phase) {
-                        PHASE_STABLE -> {
-                            requireRotationState(state.next_key_id == null && state.retiring_key_id == null && state.retiring_key_check == null)
-                            null
-                        }
-                        PHASE_PREPARING -> {
-                            val next = state.next_key_id
-                            requireRotationState(next != null && next > keyId && state.retiring_key_id == null && state.retiring_key_check == null)
-                            null
-                        }
-                        PHASE_MIGRATING -> {
-                            val retiring = state.retiring_key_id
-                            requireRotationState(state.next_key_id == null && retiring != null && retiring != keyId)
-                            boundKey(keyProvider, storageKeyId(retiring!!), state.retiring_key_check, "Missing retiring key check record")
-                        }
-                        PHASE_RETIRING -> {
-                            // The retiring key is no longer needed and may already be gone.
-                            val retiring = state.retiring_key_id
-                            requireRotationState(state.next_key_id == null && retiring != null && retiring != keyId && state.retiring_key_check == null)
-                            null
-                        }
-                        else -> throw StorageEncryptionException.UnsupportedFormat("Unsupported storage key rotation phase ${state.rotation_phase}")
+                    val rotation = SqlDelightStorageKeyRotationBackend.rotationState(state)
+                    // While MIGRATING the retiring key is needed too; RETIRING no longer needs it (it may be gone).
+                    val retained = (rotation.requiredKeyIds - rotation.currentKeyId).singleOrNull()?.let {
+                        boundKey(keyProvider, it, state.retiring_key_check, "Missing retiring key check record")
                     }
-                    val highest = state.highest_key_id
-                    requireRotationState(highest == null || (highest >= keyId && highest >= (state.next_key_id ?: 0) && highest >= (state.retiring_key_id ?: 0)))
-                    SqlDelightClientStorage(driver, keyProvider, cipherFactory, current, retained, cipherFactory(current, listOfNotNull(retained)))
+                    SqlDelightClientStorage(driver, keyProvider, cipherFactory, current, cipherFactory(current, listOfNotNull(retained)))
                 }
                 state.format == FORMAT_RECORD_ENCRYPTION_V1 -> {
                     val key = provide("No storage key could be provided") { keyProvider.loadOrCreateKey() }
@@ -516,7 +332,7 @@ class SqlDelightClientStorage private constructor(
                         }
                         queries.bindStorageKey(key.id.value.toLong(), keyCheck)
                     }
-                    SqlDelightClientStorage(driver, keyProvider, cipherFactory, key, null, records)
+                    SqlDelightClientStorage(driver, keyProvider, cipherFactory, key, records)
                 }
                 state.format == FORMAT_LEGACY_PLAINTEXT -> {
                     val key = provide("No storage key could be provided") { keyProvider.loadOrCreateKey() }
@@ -535,7 +351,7 @@ class SqlDelightClientStorage private constructor(
                             bindLong(3, records.keyId.value.toLong())
                         }.await()
                     }
-                    SqlDelightClientStorage(driver, keyProvider, cipherFactory, key, null, records)
+                    SqlDelightClientStorage(driver, keyProvider, cipherFactory, key, records)
                 }
                 else -> throw StorageEncryptionException.UnsupportedFormat("Unsupported storage encryption format ${state.format}")
             }
@@ -553,26 +369,6 @@ class SqlDelightClientStorage private constructor(
             // A single-key cipher: the check must be sealed with exactly this key.
             ClientRecordCipher(key).verifyKeyCheck(sealedCheck ?: throw StorageEncryptionException.MalformedRecord(missingCheck))
             return key
-        }
-
-        private fun requireRotationState(valid: Boolean) {
-            if (!valid) throw StorageEncryptionException.MalformedRecord("Invalid storage key rotation state")
-        }
-
-        private fun storageKeyId(value: Long): StorageKeyId {
-            if (value !in 0..Int.MAX_VALUE) throw StorageEncryptionException.MalformedRecord("Invalid storage key ID")
-            return StorageKeyId(value.toInt())
-        }
-
-        private fun sameKey(a: StorageEncryptionKey, b: StorageEncryptionKey): Boolean {
-            val x = a.copyBytes()
-            val y = b.copyBytes()
-            return try {
-                x.contentEquals(y)
-            } finally {
-                x.fill(0)
-                y.fill(0)
-            }
         }
 
         private suspend fun provide(message: String, load: suspend () -> StorageEncryptionKey?): StorageEncryptionKey {

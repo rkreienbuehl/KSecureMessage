@@ -12,6 +12,8 @@ import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionExcept
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionKey
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyProvider
+import dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationPhase
+import dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationStatus
 import kotlinx.coroutines.test.runTest
 import kotlin.random.Random
 import kotlin.test.AfterTest

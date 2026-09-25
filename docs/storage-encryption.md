@@ -285,7 +285,9 @@ this format, without changing it: a new key becomes current, records of the
 previous key are re-sealed in resumable batches (each opened with the key its
 header names, re-sealed with the same associated data and a fresh nonce), and
 the previous key is retired after a scan proves no record uses it. See
-[storage-key-rotation.md](storage-key-rotation.md). Records of a key the
+[storage-key-rotation.md](storage-key-rotation.md); the rotation state machine
+is in `storage:rotation:core`, which uses this module's key types and
+`StorageKeyProvider` but none of its record format. Records of a key the
 storage does not hold still fail with `KeyUnavailable`; no key is ever tried
 at random. There is no background re-encryption.
 
