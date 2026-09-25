@@ -36,14 +36,14 @@ class SecureMessageClientTest {
 
     private suspend fun Device.receiveOne(): EncryptedEnvelope = network.receive(client.localAddress).single()
 
-    private suspend fun Device.decryptText(envelope: EncryptedEnvelope) = client.decrypt(envelope).decodeToString()
+    private suspend fun Device.decryptText(envelope: EncryptedEnvelope) = client.decryptRaw(envelope).decodeToString()
 
     @Test
     fun aliceAndBobExchangeMessagesThroughClients() = runTest {
         val alice = device(ALICE)
         val bob = device(BOB)
 
-        alice.client.send(BOB, "Hello Bob".encodeToByteArray())
+        alice.client.sendRaw(BOB, "Hello Bob".encodeToByteArray())
         val first = bob.receiveOne()
         assertEquals(ALICE, first.sender)
         assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(first.payload))
@@ -54,13 +54,13 @@ class SecureMessageClientTest {
         assertNull(bob.storage.preKeys.oneTimePreKey(OneTimePreKeyId(0)), "consumed one-time prekey is removed")
         assertNotNull(bob.storage.preKeys.oneTimePreKey(OneTimePreKeyId(1)))
 
-        bob.client.send(ALICE, "Hello Alice".encodeToByteArray())
+        bob.client.sendRaw(ALICE, "Hello Alice".encodeToByteArray())
         val reply = alice.receiveOne()
         assertIs<RatchetMessage>(CiphertextMessageCodec.decode(reply.payload))
         assertEquals("Hello Alice", alice.decryptText(reply))
 
         // Alice has seen a reply, so she stops sending prekey messages.
-        alice.client.send(BOB, "Still there?".encodeToByteArray())
+        alice.client.sendRaw(BOB, "Still there?".encodeToByteArray())
         val third = bob.receiveOne()
         assertIs<RatchetMessage>(CiphertextMessageCodec.decode(third.payload))
         assertEquals("Still there?", bob.decryptText(third))
@@ -71,8 +71,8 @@ class SecureMessageClientTest {
         val alice = device(ALICE)
         val bob = device(BOB)
 
-        alice.client.send(BOB, "one".encodeToByteArray())
-        alice.client.send(BOB, "two".encodeToByteArray())
+        alice.client.sendRaw(BOB, "one".encodeToByteArray())
+        alice.client.sendRaw(BOB, "two".encodeToByteArray())
         val (first, second) = network.receive(BOB)
         assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(second.payload))
 
@@ -85,13 +85,13 @@ class SecureMessageClientTest {
         val alice = device(ALICE)
         val bob = device(BOB, publishOneTimePreKey = false)
 
-        alice.client.send(BOB, "Hello Bob".encodeToByteArray())
+        alice.client.sendRaw(BOB, "Hello Bob".encodeToByteArray())
         val first = bob.receiveOne()
         assertNull(assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(first.payload)).oneTimePreKeyId)
         assertEquals("Hello Bob", bob.decryptText(first))
         assertNotNull(bob.storage.preKeys.oneTimePreKey(OneTimePreKeyId(0)))
 
-        bob.client.send(ALICE, "Hello Alice".encodeToByteArray())
+        bob.client.sendRaw(ALICE, "Hello Alice".encodeToByteArray())
         assertEquals("Hello Alice", alice.decryptText(alice.receiveOne()))
     }
 
@@ -100,10 +100,10 @@ class SecureMessageClientTest {
         val alice = device(ALICE)
         val bob = device(BOB)
 
-        alice.client.send(BOB, "Hello Bob".encodeToByteArray())
+        alice.client.sendRaw(BOB, "Hello Bob".encodeToByteArray())
         val first = bob.receiveOne()
 
-        assertFailsWith<ProtocolException> { bob.client.decrypt(first.tampered()) }
+        assertFailsWith<ProtocolException> { bob.client.decryptRaw(first.tampered()) }
         assertNull(bob.storage.sessions.load(ALICE))
         assertNotNull(bob.storage.preKeys.oneTimePreKey(OneTimePreKeyId(0)))
 
@@ -114,16 +114,16 @@ class SecureMessageClientTest {
     fun failedDecryptKeepsTheStoredSession() = runTest {
         val alice = device(ALICE)
         val bob = device(BOB)
-        alice.client.send(BOB, "Hello Bob".encodeToByteArray())
+        alice.client.sendRaw(BOB, "Hello Bob".encodeToByteArray())
         bob.decryptText(bob.receiveOne())
-        bob.client.send(ALICE, "Hello Alice".encodeToByteArray())
+        bob.client.sendRaw(ALICE, "Hello Alice".encodeToByteArray())
         alice.decryptText(alice.receiveOne())
 
-        alice.client.send(BOB, "secret".encodeToByteArray())
+        alice.client.sendRaw(BOB, "secret".encodeToByteArray())
         val message = bob.receiveOne()
         val before = assertNotNull(bob.storage.sessions.load(ALICE)).state.copyOf()
 
-        assertFailsWith<ProtocolException.DecryptionFailed> { bob.client.decrypt(message.tampered()) }
+        assertFailsWith<ProtocolException.DecryptionFailed> { bob.client.decryptRaw(message.tampered()) }
         assertContentEquals(before, bob.storage.sessions.load(ALICE)?.state)
         assertEquals("secret", bob.decryptText(message))
     }
@@ -135,12 +135,12 @@ class SecureMessageClientTest {
         val carol = device(CAROL)
 
         // The relay hands out the same one-time prekey twice.
-        alice.client.send(BOB, "from Alice".encodeToByteArray())
-        carol.client.send(BOB, "from Carol".encodeToByteArray())
+        alice.client.sendRaw(BOB, "from Alice".encodeToByteArray())
+        carol.client.sendRaw(BOB, "from Carol".encodeToByteArray())
         val (fromAlice, fromCarol) = network.receive(BOB)
 
         assertEquals("from Alice", bob.decryptText(fromAlice))
-        assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decrypt(fromCarol) }
+        assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decryptRaw(fromCarol) }
         assertNull(bob.storage.sessions.load(CAROL))
     }
 
@@ -153,14 +153,14 @@ class SecureMessageClientTest {
             recipient = BOB,
             payload = CiphertextMessageCodec.encode(RatchetMessage(ByteArray(80))),
         )
-        assertFailsWith<ProtocolException.InvalidSessionState> { bob.client.decrypt(envelope) }
+        assertFailsWith<ProtocolException.InvalidSessionState> { bob.client.decryptRaw(envelope) }
     }
 
     @Test
     fun malformedPayloadIsRejected() = runTest {
         val bob = device(BOB)
         val envelope = EncryptedEnvelope(MessageId("m1"), ALICE, BOB, payload = byteArrayOf(1, 2, 0))
-        assertFailsWith<ProtocolException.MalformedMessage> { bob.client.decrypt(envelope) }
+        assertFailsWith<ProtocolException.MalformedMessage> { bob.client.decryptRaw(envelope) }
         assertNull(bob.storage.sessions.load(ALICE))
     }
 
@@ -168,11 +168,11 @@ class SecureMessageClientTest {
     fun envelopeForAnotherDeviceOrVersionIsRejected() = runTest {
         val alice = device(ALICE)
         val bob = device(BOB)
-        alice.client.send(BOB, "Hello Bob".encodeToByteArray())
+        alice.client.sendRaw(BOB, "Hello Bob".encodeToByteArray())
         val envelope = bob.receiveOne()
 
-        assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decrypt(envelope.copy(recipient = CAROL)) }
-        assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decrypt(envelope.copy(protocolVersion = 2)) }
+        assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decryptRaw(envelope.copy(recipient = CAROL)) }
+        assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decryptRaw(envelope.copy(protocolVersion = 2)) }
         assertEquals("Hello Bob", bob.decryptText(envelope))
     }
 }

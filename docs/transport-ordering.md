@@ -24,7 +24,7 @@ are needed, and each one is enforced or specified at a concrete place:
 
 | Link | Guarantee | Where |
 |---|---|---|
-| Sender | Envelopes reach the transport in the order they were encrypted | `SecureMessageClient.send` holds a per-client `Mutex` around `encrypt` and `transport.send` |
+| Sender | Envelopes reach the transport in the order they were encrypted | `SecureMessageClient` holds one per-client `Mutex` around encryption and `transport.send` for every hand-off: `send`, `retryPendingMessages` and the acknowledgements `decrypt` sends (milestone 8) |
 | Server | Per (sender, recipient): drained in the order the `enqueue` calls returned; each envelope in exactly one drain | `MailboxRepository` contract; `InMemoryServerStorage` serializes enqueue and drain with a `Mutex`. HTTP: `POST /v1/messages` answers 202 after the enqueue returned |
 | Receiver | One sender's envelopes are decrypted one at a time, in drain order | The application's receive loop (documented on `SecureMessageClient.decrypt` and `SecureMessageTransport.receive`) |
 
@@ -149,13 +149,16 @@ exchange (both pending; L switched but not replied; W after the collision but
 before the reply) gives the same result
 (`restartsDuringTheSwitchKeepTheSameOutcome`). The send mutex exists only in
 memory. That is enough: an envelope whose `send` was interrupted by a restart
-was either enqueued before the restart or never, and the client does not resend
-it.
+was either enqueued before the restart or never, and the client never resends
+an envelope. A retry of a pending message (milestone 8,
+[message-reliability.md](message-reliability.md)) is a new encryption with a
+new envelope, handed over in order like any other send.
 
 ## Obligations of an application
 
-- Use `SecureMessageClient.send`. If you use `encrypt` with your own
-  transport, hand envelopes for one recipient over in encryption order.
+- Use `SecureMessageClient.send` and `retryPendingMessages`. Since milestone
+  8 there is no public `encrypt`: every envelope goes through the client's
+  send mutex.
 - Do not resend an envelope after a later envelope for the same recipient was
   handed over. Losing an envelope is safe; sending it late is not.
 - Process a drained batch in order, one `decrypt` at a time. Do not run two
@@ -174,5 +177,8 @@ it.
   library has no receive loop of its own.
 - `send` serializes all sends of one client, including sends to different
   recipients.
-- Messages lost to a collision are not resent. That needs delivery
-  acknowledgements, which are out of scope.
+- Messages lost to a collision are resent only when the application calls
+  `retryPendingMessages` ([message-reliability.md](message-reliability.md)).
+  Order across senders is still not promised, and `EncryptedEnvelope` has no
+  sequence numbers; logical send order lives only in the sender's pending
+  store.

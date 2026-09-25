@@ -9,6 +9,11 @@ Implementation: `core/protocol/.../protocol/CiphertextMessageCodec.kt`.
 
 ## Layering
 
+Since milestone 8 the plaintext is a reliability frame (logical message ID
+plus application body, or an acknowledgement), specified in
+[message-reliability.md](message-reliability.md#reliability-frame-securepayload-v1).
+It is encrypted, so this format does not change.
+
 ```text
 plaintext
   -> ProtocolEngine (X3DH + Double Ratchet)

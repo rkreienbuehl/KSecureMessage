@@ -2,6 +2,7 @@ package dev.kreienbuehl.ksecuremessage.storage.inmemory
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
+import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
@@ -16,9 +17,12 @@ import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.IdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.MailboxRepository
+import dev.kreienbuehl.ksecuremessage.storage.PendingOutboundMessage
+import dev.kreienbuehl.ksecuremessage.storage.PendingOutboundStore
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyPublicationException
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyRepository
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
+import dev.kreienbuehl.ksecuremessage.storage.ProcessedInboundStore
 import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.ServerStorage
 import dev.kreienbuehl.ksecuremessage.storage.SessionInitiationStore
@@ -89,6 +93,22 @@ class InMemoryClientStorage : ClientStorage {
         override suspend fun highestOneTimePreKeyId() = transaction { preKeys.highestOneTimePreKeyId() }
     }
 
+    override val pendingOutbound: PendingOutboundStore = object : PendingOutboundStore {
+        override suspend fun store(recipient: DeviceAddress, id: LogicalMessageId, frame: ByteArray) =
+            transaction { pendingOutbound.store(recipient, id, frame) }
+        override suspend fun get(recipient: DeviceAddress, id: LogicalMessageId) = transaction { pendingOutbound.get(recipient, id) }
+        override suspend fun list(recipient: DeviceAddress) = transaction { pendingOutbound.list(recipient) }
+        override suspend fun remove(recipient: DeviceAddress, id: LogicalMessageId) =
+            transaction { pendingOutbound.remove(recipient, id) }
+    }
+
+    override val processedInbound: ProcessedInboundStore = object : ProcessedInboundStore {
+        override suspend fun isProcessed(sender: DeviceAddress, id: LogicalMessageId) =
+            transaction { processedInbound.isProcessed(sender, id) }
+        override suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId) =
+            transaction { processedInbound.markProcessed(sender, id) }
+    }
+
     override suspend fun <T> transaction(block: suspend ClientStorage.() -> T): T {
         val active = currentCoroutineContext()[ActiveTransaction]
         if (active != null && active.owner === this) return active.view.block()
@@ -124,13 +144,54 @@ private data class State(
     val highestSignedPreKeyId: SignedPreKeyId? = null,
     val oneTimePreKeys: Map<OneTimePreKeyId, OneTimePreKeyPair> = emptyMap(),
     val highestOneTimePreKeyId: OneTimePreKeyId? = null,
+    /** Pending messages by (recipient, logical ID); frames are copied on the way in and out. */
+    val pendingOutbound: Map<Pair<DeviceAddress, LogicalMessageId>, PendingEntry> = emptyMap(),
+    /** Highest pending sequence number ever assigned; never lowered. */
+    val highestPendingSequence: Long = 0,
+    val processedInbound: Set<Pair<DeviceAddress, LogicalMessageId>> = emptySet(),
 )
+
+private class PendingEntry(val sequence: Long, val frame: ByteArray)
 
 /** Lifecycle timestamps of a stored signed prekey; `null` until stamped (see PreKeyStore). */
 private data class SignedPreKeyTimes(val createdAt: Instant?, val replacedAt: Instant?)
 
 /** Uncommitted state of one transaction. */
 private class TransactionView(var state: State) : ClientStorage {
+    override val pendingOutbound: PendingOutboundStore = object : PendingOutboundStore {
+        override suspend fun store(recipient: DeviceAddress, id: LogicalMessageId, frame: ByteArray): Long {
+            require((recipient to id) !in state.pendingOutbound) { "Message is already pending" }
+            val sequence = state.highestPendingSequence + 1
+            state = state.copy(
+                pendingOutbound = state.pendingOutbound + ((recipient to id) to PendingEntry(sequence, frame.copyOf())),
+                highestPendingSequence = sequence,
+            )
+            return sequence
+        }
+
+        override suspend fun get(recipient: DeviceAddress, id: LogicalMessageId) =
+            state.pendingOutbound[recipient to id]?.let { PendingOutboundMessage(recipient, id, it.sequence, it.frame.copyOf()) }
+
+        override suspend fun list(recipient: DeviceAddress) = state.pendingOutbound
+            .filterKeys { it.first == recipient }
+            .map { (key, entry) -> PendingOutboundMessage(recipient, key.second, entry.sequence, entry.frame.copyOf()) }
+            .sortedBy { it.sequence }
+
+        override suspend fun remove(recipient: DeviceAddress, id: LogicalMessageId): Boolean {
+            if ((recipient to id) !in state.pendingOutbound) return false
+            state = state.copy(pendingOutbound = state.pendingOutbound - (recipient to id))
+            return true
+        }
+    }
+
+    override val processedInbound: ProcessedInboundStore = object : ProcessedInboundStore {
+        override suspend fun isProcessed(sender: DeviceAddress, id: LogicalMessageId) = (sender to id) in state.processedInbound
+
+        override suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId) {
+            state = state.copy(processedInbound = state.processedInbound + (sender to id))
+        }
+    }
+
     override val identity: IdentityStore = object : IdentityStore {
         override suspend fun identity() = state.identity?.copy()
 

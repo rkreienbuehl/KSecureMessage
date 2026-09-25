@@ -1,10 +1,11 @@
 package dev.kreienbuehl.ksecuremessage.client
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 
 /** Lifecycle and local-state failures of [SecureMessageClient]. Messages never contain key material. */
-sealed class SecureMessageClientException(message: String) : Exception(message) {
+sealed class SecureMessageClientException(message: String, cause: Throwable? = null) : Exception(message, cause) {
     /** The storage has no local identity yet. Call [SecureMessageClient.initialize] first. */
     class NotInitialized : SecureMessageClientException("Client is not initialized, call initialize() first")
 
@@ -54,4 +55,13 @@ sealed class SecureMessageClientException(message: String) : Exception(message) 
      */
     class ExpiredSignedPreKey(val address: DeviceAddress, val signedPreKeyId: SignedPreKeyId) :
         SecureMessageClientException("Session initiation from $address uses expired signed prekey ${signedPreKeyId.value}")
+
+    /**
+     * The transport did not take the envelope of message [messageId]; [cause]
+     * is the transport's exception. The message is stored as pending: send it
+     * again with [SecureMessageClient.retryPendingMessages]. The session
+     * advanced for the lost envelope and is not rolled back.
+     */
+    class MessageNotSent(val messageId: LogicalMessageId, cause: Throwable) :
+        SecureMessageClientException("Message $messageId was stored as pending but not handed to the transport", cause)
 }

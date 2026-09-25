@@ -149,9 +149,14 @@ current session, the pin and the one-time prekey stay unchanged. Later
 `PreKeyMessage`s of the same losing initiation fail with
 `StaleSessionInitiation`.
 
-These messages are not delivered, and the sender is not told. Resending them
-on the winning session needs a delivery acknowledgement design and is not
-part of milestone 6.
+These messages are not delivered and not acknowledged. Since milestone 8 the
+sender keeps every application message pending until the recipient's
+encrypted acknowledgement arrives, so it can send the lost message again on
+the winning session with `retryPendingMessages`, with the same logical
+message ID; the recipient delivers it once. See
+[message-reliability.md](message-reliability.md#collision-recovery-walk-through).
+The collision rule itself is unchanged: no acknowledgement, no processed
+marker, plaintext discarded unread.
 
 ## Replay and rollback protection
 
@@ -271,7 +276,8 @@ column. `storage:inmemory` keeps the set in its transactional state.
   and the application's receive loop enforce this ordering; see
   [transport-ordering.md](transport-ordering.md). A relay that breaks the
   contract can still cause the split, but only as denial of service.
-- **Lost collision messages** are not delivered and not resent (see above).
+- **Lost collision messages** are not delivered; they are resent only when
+  the sender calls `retryPendingMessages` (milestone 8, see above).
 - **Removing a session** with `SessionStore.remove` does not retire its
   initiation.
 - The retired set is pruned only for entries tied to a deleted local signed

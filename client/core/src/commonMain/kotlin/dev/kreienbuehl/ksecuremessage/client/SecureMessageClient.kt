@@ -3,6 +3,7 @@ package dev.kreienbuehl.ksecuremessage.client
 import dev.kreienbuehl.ksecuremessage.model.CiphertextMessage
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
+import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.MessageId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyMessage
@@ -15,6 +16,8 @@ import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.PreKeyFormat
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolException
+import dev.kreienbuehl.ksecuremessage.protocol.SecurePayload
+import dev.kreienbuehl.ksecuremessage.protocol.SecurePayloadCodec
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SessionAcceptanceResult
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInfo
@@ -22,12 +25,23 @@ import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 /**
  * Sends and receives messages for [localAddress]. Envelope payloads are
- * [CiphertextMessageCodec]-encoded ciphertext messages.
+ * [CiphertextMessageCodec]-encoded ciphertext messages; their plaintext is a
+ * [SecurePayloadCodec] reliability frame.
+ *
+ * Messages are reliable across collisions, lost envelopes and lost
+ * acknowledgements (docs/message-reliability.md). [send] gives each
+ * application message a [LogicalMessageId] and keeps it pending, plaintext
+ * included, until the recipient acknowledges it. [decrypt] returns each
+ * logical message of a sender at most once and answers it with an encrypted
+ * acknowledgement. [retryPendingMessages] encrypts pending messages again,
+ * under the current session and with the same logical ID. Both peers must
+ * use this frame (milestone 8); raw plaintext from older peers is rejected.
  *
  * The client owns its local protocol state in [storage]: identity key,
  * signed prekeys, one-time prekeys and sessions. Call [initialize] once per
@@ -79,8 +93,8 @@ import kotlin.uuid.Uuid
  * [decrypt] one sender's envelopes one at a time, in the order
  * [SecureMessageTransport.receive] returned them.
  *
- * Not handled yet: identity changes cannot be accepted, messages lost to a
- * collision are not resent, and prekeys are not published automatically.
+ * Not handled yet: identity changes cannot be accepted, pending messages are
+ * not retried automatically, and prekeys are not published automatically.
  */
 class SecureMessageClient(
     val localAddress: DeviceAddress,
@@ -92,7 +106,10 @@ class SecureMessageClient(
 ) {
     private val preKeyManager = PreKeyManager(protocol, preKeyConfiguration, clock)
 
-    /** Keeps [send]'s hand-off to the transport in encryption order. */
+    /**
+     * Keeps every hand-off to the transport (messages, retries,
+     * acknowledgements) in encryption order.
+     */
     private val sendMutex = Mutex()
 
     /**
@@ -190,56 +207,246 @@ class SecureMessageClient(
     }
 
     /**
-     * Encrypts [plaintext] for [remote], starting a session if there is none.
+     * Sends [plaintext] to [remote] as a new logical message and returns its
+     * [LogicalMessageId] and the envelope of this first attempt. Starts a
+     * session if there is none. Bodies larger than
+     * [SecurePayloadCodec.MAX_BODY_SIZE] are rejected with
+     * [ProtocolException.MessageTooLarge].
      *
-     * A caller that sends the result itself must hand envelopes for one
-     * recipient to the transport in the order they were encrypted, and must
-     * not send an envelope again once a later one for the same recipient was
-     * handed over (docs/transport-ordering.md). [send] does both.
+     * The message is stored as pending (with its plaintext, see
+     * docs/message-reliability.md) in the same transaction as the ratchet
+     * step that encrypts it; the envelope is handed to the transport after
+     * the commit. It stays pending until [remote] acknowledges it; a
+     * successful hand-off does not remove it. Use [retryPendingMessages] to
+     * send pending messages again.
+     *
+     * Failures: an exception other than
+     * [SecureMessageClientException.MessageNotSent] means nothing was stored.
+     * [SecureMessageClientException.MessageNotSent] means the message is
+     * pending but the transport did not take the envelope; its cause is the
+     * transport's exception.
+     *
+     * Sends of this client run one at a time, so envelopes reach the
+     * transport in encryption order (docs/transport-ordering.md).
      */
-    suspend fun encrypt(
-        remote: DeviceAddress,
-        plaintext: ByteArray,
-        id: MessageId = MessageId(Uuid.random().toString()),
-    ): EncryptedEnvelope {
-        val bundle = fetchBundleIfNoSession(remote)
-        return storage.transaction {
-            val session = sessions.load(remote) ?: initiateSession(remote, bundle)
-            val result = protocol.encrypt(session, plaintext)
-            val payload = CiphertextMessageCodec.encode(result.message)
-            sessions.store(result.updatedSession)
-            EncryptedEnvelope(
-                id = id,
-                sender = localAddress,
-                recipient = remote,
-                protocolVersion = ENVELOPE_VERSION,
-                payload = payload,
-            )
+    suspend fun send(remote: DeviceAddress, plaintext: ByteArray): SentMessage {
+        val id = LogicalMessageId.random()
+        val frame = SecurePayloadCodec.encode(SecurePayload.ApplicationMessage(id, plaintext))
+        // Held across the network call, never inside a storage transaction.
+        return sendMutex.withLock {
+            val bundle = fetchBundleIfNoSession(remote)
+            val envelope = try {
+                storage.transaction {
+                    pendingOutbound.store(remote, id, frame)
+                    encryptOn(remote, bundle, frame)
+                }
+            } finally {
+                frame.fill(0)
+            }
+            handOff(id, envelope)
+            SentMessage(id, envelope)
         }
     }
 
     /**
-     * [encrypt]s [plaintext] and hands the envelope to the transport. Sends of
-     * this client run one at a time, so envelopes reach the transport in
-     * encryption order: a slow send is never overtaken by a later one. A
-     * failed send is not retried; resending it after later envelopes would
-     * break that order.
+     * Sends every message pending for [remote] again, oldest first, and
+     * returns the IDs whose new envelope the transport took. Each attempt is
+     * a fresh encryption under the current session with a new envelope ID;
+     * the logical ID stays. Messages stay pending until [remote]
+     * acknowledges them, so calling this again sends them again; the
+     * recipient delivers each logical message only once.
+     *
+     * The client never keeps a session it knows lost a collision, so a retry
+     * always uses the session this device currently has. Call it after
+     * processing received envelopes, for example after a
+     * [SecureMessageClientException.SessionCollision] or once the application
+     * suspects a lost acknowledgement. There is no automatic retry.
+     *
+     * Stops at the first envelope the transport does not take, with
+     * [SecureMessageClientException.MessageNotSent]: sending later messages
+     * first would change their order. Encryption failures are thrown as they
+     * are and leave that message pending and its session unchanged.
      */
-    suspend fun send(remote: DeviceAddress, plaintext: ByteArray): EncryptedEnvelope =
-        // Held across the network call, never inside a storage transaction.
-        sendMutex.withLock { encrypt(remote, plaintext).also { transport.send(it) } }
+    suspend fun retryPendingMessages(remote: DeviceAddress): List<LogicalMessageId> = sendMutex.withLock {
+        val ids = storage.transaction {
+            requireIdentity()
+            pendingOutbound.list(remote).map { it.id }
+        }
+        val sent = mutableListOf<LogicalMessageId>()
+        for (id in ids) {
+            val bundle = fetchBundleIfNoSession(remote)
+            val envelope = storage.transaction {
+                // Acknowledged since the list was read: nothing to resend.
+                val pending = pendingOutbound.get(remote, id) ?: return@transaction null
+                try {
+                    encryptOn(remote, bundle, pending.frame)
+                } finally {
+                    pending.frame.fill(0)
+                }
+            } ?: continue
+            handOff(id, envelope)
+            sent += id
+        }
+        sent
+    }
+
+    /** The messages to [remote] that are not acknowledged yet, oldest first. Contains their plaintext. */
+    suspend fun pendingMessages(remote: DeviceAddress): List<PendingMessage> {
+        val pending = storage.transaction {
+            requireIdentity()
+            pendingOutbound.list(remote)
+        }
+        return pending.map {
+            val payload = SecurePayloadCodec.decode(it.frame) as SecurePayload.ApplicationMessage
+            it.frame.fill(0)
+            PendingMessage(it.recipient, it.id, payload.body)
+        }
+    }
 
     /**
-     * Decrypts [envelope]. Failures change nothing, except that a
+     * Decrypts and processes [envelope] (docs/message-reliability.md).
+     *
+     * - A new application message is marked processed in the same
+     *   transaction as its ratchet step and returned as
+     *   [ReceiveResult.Message]; this client then sends an encrypted
+     *   acknowledgement to the sender.
+     * - A message whose logical ID was already processed is returned as
+     *   [ReceiveResult.Duplicate] without its plaintext and acknowledged
+     *   again.
+     * - An acknowledgement removes the matching pending message sent to this
+     *   sender ([ReceiveResult.Acknowledgement]). It is never acknowledged.
+     *
+     * A failed acknowledgement does not fail this call: the result says
+     * `ackSent = false` and the sender's next retry triggers a new one.
+     *
+     * Delivery is at most once per (sender, logical ID): once this returns a
+     * [ReceiveResult.Message], the same message is never returned again, even
+     * if the application crashes before it handled it.
+     *
+     * Failures change nothing, except that a
      * [SecureMessageClientException.SessionCollision] retires the losing
-     * initiation.
+     * initiation; its message is not acknowledged, so its sender keeps it
+     * pending and can send it again on the winning session. A decrypted
+     * plaintext that is not a reliability frame (for example from a peer
+     * before milestone 8) fails with
+     * [ProtocolException.MalformedSecurePayload] or
+     * [ProtocolException.UnsupportedSecurePayloadVersion].
      *
      * Envelopes from one sender must be decrypted one at a time, in the order
-     * the transport delivered them; a PreKeyMessage processed after a later
-     * envelope from the same sender can make the two sides settle on
-     * different sessions (docs/transport-ordering.md).
+     * the transport delivered them (docs/transport-ordering.md).
      */
-    suspend fun decrypt(envelope: EncryptedEnvelope): ByteArray {
+    suspend fun decrypt(envelope: EncryptedEnvelope): ReceiveResult {
+        val message = decodeEnvelope(envelope)
+        val sender = envelope.sender
+        val processed = storage.transaction {
+            when (val received = receive(sender, message)) {
+                Received.CollisionLost -> null
+                is Received.Plaintext -> process(sender, received.plaintext)
+            }
+        }
+        // Thrown after the commit, so the retired initiation is kept. The
+        // plaintext was discarded unread: no acknowledgement.
+        processed ?: throw SecureMessageClientException.SessionCollision(sender)
+        return when (processed) {
+            is Processed.New -> ReceiveResult.Message(sender, processed.id, processed.body, acknowledge(sender, processed.id))
+            is Processed.Duplicate -> ReceiveResult.Duplicate(sender, processed.id, acknowledge(sender, processed.id))
+            is Processed.Acknowledged -> ReceiveResult.Acknowledgement(sender, processed.id, processed.cleared)
+        }
+    }
+
+    /**
+     * Applies a decrypted reliability frame inside the receive transaction.
+     * A malformed frame throws, which rolls back the ratchet step too.
+     */
+    private suspend fun ClientStorage.process(sender: DeviceAddress, plaintext: ByteArray): Processed {
+        val payload = try {
+            SecurePayloadCodec.decode(plaintext)
+        } finally {
+            plaintext.fill(0)
+        }
+        return when (payload) {
+            is SecurePayload.ApplicationMessage ->
+                if (processedInbound.isProcessed(sender, payload.id)) {
+                    payload.body.fill(0)
+                    Processed.Duplicate(payload.id)
+                } else {
+                    processedInbound.markProcessed(sender, payload.id)
+                    Processed.New(payload.id, payload.body)
+                }
+            // Scoped to the sender: only the device a message went to can clear it.
+            is SecurePayload.Acknowledgement -> Processed.Acknowledged(payload.id, pendingOutbound.remove(sender, payload.id))
+        }
+    }
+
+    /**
+     * Sends an acknowledgement of [id] to [remote] on the existing session.
+     * Never starts a session and is never stored as pending. Returns `false`
+     * instead of throwing if encryption or the hand-off fails.
+     */
+    private suspend fun acknowledge(remote: DeviceAddress, id: LogicalMessageId): Boolean {
+        val frame = SecurePayloadCodec.encode(SecurePayload.Acknowledgement(id))
+        return try {
+            sendMutex.withLock {
+                // No bundle: without a session the encryption fails.
+                val envelope = storage.transaction { encryptOn(remote, bundle = null, frame) }
+                transport.send(envelope)
+            }
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /** Hands [envelope] to the transport; a failure leaves message [id] pending. */
+    private suspend fun handOff(id: LogicalMessageId, envelope: EncryptedEnvelope) {
+        try {
+            transport.send(envelope)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw SecureMessageClientException.MessageNotSent(id, e)
+        }
+    }
+
+    // Session layer: raw plaintext, no reliability frame, no acknowledgements.
+    // Used by the reliability layer above and by tests of session behavior.
+
+    /**
+     * Encrypts raw [plaintext] for [remote], starting a session if there is
+     * none. The caller must hand envelopes for one recipient to the transport
+     * in the order they were encrypted (docs/transport-ordering.md).
+     */
+    internal suspend fun encryptRaw(
+        remote: DeviceAddress,
+        plaintext: ByteArray,
+        id: MessageId = newEnvelopeId(),
+    ): EncryptedEnvelope {
+        val bundle = fetchBundleIfNoSession(remote)
+        return storage.transaction { encryptOn(remote, bundle, plaintext, id) }
+    }
+
+    /** [encryptRaw] plus hand-off, in encryption order. */
+    internal suspend fun sendRaw(remote: DeviceAddress, plaintext: ByteArray): EncryptedEnvelope =
+        sendMutex.withLock { encryptRaw(remote, plaintext).also { transport.send(it) } }
+
+    /**
+     * Decrypts [envelope] and returns the raw plaintext. Failures change
+     * nothing, except that a [SecureMessageClientException.SessionCollision]
+     * retires the losing initiation.
+     */
+    internal suspend fun decryptRaw(envelope: EncryptedEnvelope): ByteArray {
+        val message = decodeEnvelope(envelope)
+        val received = storage.transaction { receive(envelope.sender, message) }
+        // Thrown after the commit, so the retired initiation is kept.
+        return when (received) {
+            is Received.Plaintext -> received.plaintext
+            Received.CollisionLost -> throw SecureMessageClientException.SessionCollision(envelope.sender)
+        }
+    }
+
+    private fun decodeEnvelope(envelope: EncryptedEnvelope): CiphertextMessage {
         if (envelope.protocolVersion != ENVELOPE_VERSION) {
             throw ProtocolException.InvalidMessage("Unsupported envelope version")
         }
@@ -247,23 +454,41 @@ class SecureMessageClient(
             throw ProtocolException.InvalidMessage("Envelope is addressed to another device")
         }
         // Decode first: a PreKeyMessage is valid without an existing session.
-        val message = CiphertextMessageCodec.decode(envelope.payload)
-        val sender = envelope.sender
+        return CiphertextMessageCodec.decode(envelope.payload)
+    }
 
-        val received = storage.transaction {
-            val identity = requireIdentity()
-            when (message) {
-                is PreKeyMessage -> receivePreKeyMessage(identity, sender, message)
-                is RatchetMessage -> {
-                    val session = sessions.load(sender) ?: throw ProtocolException.InvalidSessionState("No session with the sender")
-                    Received.Plaintext(decryptOn(session, message))
-                }
+    /**
+     * Encrypts [plaintext] on the session with [remote], or on a new one from
+     * [bundle], and stores the advanced session. Runs inside a transaction.
+     */
+    private suspend fun ClientStorage.encryptOn(
+        remote: DeviceAddress,
+        bundle: PreKeyBundle?,
+        plaintext: ByteArray,
+        id: MessageId = newEnvelopeId(),
+    ): EncryptedEnvelope {
+        val session = sessions.load(remote) ?: initiateSession(remote, bundle)
+        val result = protocol.encrypt(session, plaintext)
+        val payload = CiphertextMessageCodec.encode(result.message)
+        sessions.store(result.updatedSession)
+        return EncryptedEnvelope(
+            id = id,
+            sender = localAddress,
+            recipient = remote,
+            protocolVersion = ENVELOPE_VERSION,
+            payload = payload,
+        )
+    }
+
+    /** Session handling for one incoming message. Runs inside a transaction. */
+    private suspend fun ClientStorage.receive(sender: DeviceAddress, message: CiphertextMessage): Received {
+        val identity = requireIdentity()
+        return when (message) {
+            is PreKeyMessage -> receivePreKeyMessage(identity, sender, message)
+            is RatchetMessage -> {
+                val session = sessions.load(sender) ?: throw ProtocolException.InvalidSessionState("No session with the sender")
+                Received.Plaintext(decryptOn(session, message))
             }
-        }
-        // Thrown after the commit, so the retired initiation is kept.
-        return when (received) {
-            is Received.Plaintext -> received.plaintext
-            Received.CollisionLost -> throw SecureMessageClientException.SessionCollision(sender)
         }
     }
 
@@ -420,8 +645,19 @@ class SecureMessageClient(
         data object CollisionLost : Received
     }
 
+    /** What a received reliability frame did. Acknowledgements are sent after the commit. */
+    private sealed interface Processed {
+        class New(val id: LogicalMessageId, val body: ByteArray) : Processed
+
+        class Duplicate(val id: LogicalMessageId) : Processed
+
+        class Acknowledged(val id: LogicalMessageId, val cleared: Boolean) : Processed
+    }
+
     private companion object {
         /** Version of the envelope metadata, see [EncryptedEnvelope.protocolVersion]. */
         const val ENVELOPE_VERSION = 1
+
+        fun newEnvelopeId() = MessageId(Uuid.random().toString())
     }
 }

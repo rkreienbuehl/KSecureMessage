@@ -1,0 +1,19 @@
+-- Schema version 4 to 5 (milestone 8): message reliability state.
+-- Creates two new, empty tables; existing tables and rows are not touched.
+-- Messages sent or received before the upgrade have no logical message ID,
+-- so nothing is pending or marked processed for them.
+CREATE TABLE pending_outbound_message (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipient_user_id TEXT NOT NULL,
+    recipient_device_id TEXT NOT NULL,
+    message_id BLOB NOT NULL CHECK (length(message_id) = 16),
+    frame BLOB NOT NULL,
+    UNIQUE (recipient_user_id, recipient_device_id, message_id)
+);
+
+CREATE TABLE processed_inbound_message (
+    sender_user_id TEXT NOT NULL,
+    sender_device_id TEXT NOT NULL,
+    message_id BLOB NOT NULL CHECK (length(message_id) = 16),
+    PRIMARY KEY (sender_user_id, sender_device_id, message_id)
+);

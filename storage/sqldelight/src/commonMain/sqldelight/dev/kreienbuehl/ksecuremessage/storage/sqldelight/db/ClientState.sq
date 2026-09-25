@@ -66,6 +66,28 @@ CREATE TABLE retired_session_initiation (
     PRIMARY KEY (remote_user_id, remote_device_id, initiation_id)
 );
 
+-- Sent application messages awaiting the recipient's acknowledgement.
+-- frame is the encoded reliability frame: application PLAINTEXT, stored
+-- unencrypted. AUTOINCREMENT keeps sequence numbers from being reused after
+-- deletes, so they give the send order. Added in schema version 5, see 4.sqm.
+CREATE TABLE pending_outbound_message (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipient_user_id TEXT NOT NULL,
+    recipient_device_id TEXT NOT NULL,
+    message_id BLOB NOT NULL CHECK (length(message_id) = 16),
+    frame BLOB NOT NULL,
+    UNIQUE (recipient_user_id, recipient_device_id, message_id)
+);
+
+-- Logical message IDs accepted per sender, for duplicate suppression. Rows
+-- are never deleted. Added in schema version 5, see 4.sqm.
+CREATE TABLE processed_inbound_message (
+    sender_user_id TEXT NOT NULL,
+    sender_device_id TEXT NOT NULL,
+    message_id BLOB NOT NULL CHECK (length(message_id) = 16),
+    PRIMARY KEY (sender_user_id, sender_device_id, message_id)
+);
+
 selectIdentity:
 SELECT public_key, private_key FROM local_identity;
 
@@ -150,3 +172,23 @@ DELETE FROM one_time_pre_key WHERE id = ?;
 
 setHighestOneTimePreKeyId:
 UPDATE pre_key_state SET highest_one_time_pre_key_id = ?;
+
+insertPendingOutbound:
+INSERT INTO pending_outbound_message (recipient_user_id, recipient_device_id, message_id, frame) VALUES (?, ?, ?, ?);
+
+selectPendingOutbound:
+SELECT sequence, frame FROM pending_outbound_message
+WHERE recipient_user_id = ? AND recipient_device_id = ? AND message_id = ?;
+
+selectPendingOutboundFor:
+SELECT sequence, message_id, frame FROM pending_outbound_message
+WHERE recipient_user_id = ? AND recipient_device_id = ? ORDER BY sequence;
+
+deletePendingOutbound:
+DELETE FROM pending_outbound_message WHERE recipient_user_id = ? AND recipient_device_id = ? AND message_id = ?;
+
+countProcessedInbound:
+SELECT count(*) FROM processed_inbound_message WHERE sender_user_id = ? AND sender_device_id = ? AND message_id = ?;
+
+insertProcessedInbound:
+INSERT OR IGNORE INTO processed_inbound_message (sender_user_id, sender_device_id, message_id) VALUES (?, ?, ?);

@@ -2,6 +2,7 @@ package dev.kreienbuehl.ksecuremessage.storage.testing
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
+import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.model.UserId
@@ -463,6 +464,113 @@ abstract class ClientStorageContractTest {
         assertContentEquals(bytes(-1), storage.preKeys.oneTimePreKey(OneTimePreKeyId(0))?.privateKey)
     }
 
+    // Message reliability state (docs/message-reliability.md)
+
+    @Test
+    fun pendingMessagesAreListedInSendOrderPerRecipient() = runTest {
+        val storage = newStorage()
+        val first = storage.pendingOutbound.store(bob, messageId(3), bytes(3))
+        val other = storage.pendingOutbound.store(alice, messageId(1), bytes(1))
+        val second = storage.pendingOutbound.store(bob, messageId(1), bytes(1))
+        val third = storage.pendingOutbound.store(bob, messageId(2), bytes(2))
+
+        assertTrue(first < other && other < second && second < third)
+        // Send order, not ID order.
+        assertEquals(listOf(messageId(3), messageId(1), messageId(2)), storage.pendingOutbound.list(bob).map { it.id })
+        assertEquals(listOf(first, second, third), storage.pendingOutbound.list(bob).map { it.sequence })
+        assertEquals(listOf(messageId(1)), storage.pendingOutbound.list(alice).map { it.id })
+        val loaded = assertNotNull(storage.pendingOutbound.get(bob, messageId(1)))
+        assertEquals(bob, loaded.recipient)
+        assertEquals(second, loaded.sequence)
+        assertContentEquals(bytes(1), loaded.frame)
+    }
+
+    @Test
+    fun pendingMessagesAreScopedByRecipient() = runTest {
+        val storage = newStorage()
+        storage.pendingOutbound.store(alice, messageId(1), bytes(1))
+        storage.pendingOutbound.store(bob, messageId(1), bytes(2))
+
+        assertNull(storage.pendingOutbound.get(DeviceAddress(UserId("bob"), DeviceId("phone")), messageId(1)))
+        assertTrue(storage.pendingOutbound.remove(bob, messageId(1)))
+        assertNull(storage.pendingOutbound.get(bob, messageId(1)))
+        assertContentEquals(bytes(1), storage.pendingOutbound.get(alice, messageId(1))?.frame)
+    }
+
+    @Test
+    fun pendingMessageIsStoredOncePerRecipient() = runTest {
+        val storage = newStorage()
+        storage.pendingOutbound.store(bob, messageId(1), bytes(1))
+        assertFailsWith<IllegalArgumentException> { storage.pendingOutbound.store(bob, messageId(1), bytes(2)) }
+        assertContentEquals(bytes(1), storage.pendingOutbound.get(bob, messageId(1))?.frame)
+        assertEquals(1, storage.pendingOutbound.list(bob).size)
+    }
+
+    @Test
+    fun removingAPendingMessageIsIdempotentAndSequencesAreNotReused() = runTest {
+        val storage = newStorage()
+        val first = storage.pendingOutbound.store(bob, messageId(1), bytes(1))
+        val second = storage.pendingOutbound.store(bob, messageId(2), bytes(2))
+
+        assertTrue(storage.pendingOutbound.remove(bob, messageId(2)))
+        assertFalse(storage.pendingOutbound.remove(bob, messageId(2)))
+        assertFalse(storage.pendingOutbound.remove(bob, messageId(9)))
+        val third = storage.pendingOutbound.store(bob, messageId(3), bytes(3))
+
+        assertTrue(third > second)
+        assertEquals(listOf(first, third), storage.pendingOutbound.list(bob).map { it.sequence })
+        // The same ID may become pending again once removed.
+        storage.pendingOutbound.store(bob, messageId(2), bytes(4))
+        assertEquals(listOf(messageId(1), messageId(3), messageId(2)), storage.pendingOutbound.list(bob).map { it.id })
+    }
+
+    @Test
+    fun processedMessagesAreScopedBySenderAndIdempotent() = runTest {
+        val storage = newStorage()
+        assertFalse(storage.processedInbound.isProcessed(alice, messageId(1)))
+
+        storage.processedInbound.markProcessed(alice, messageId(1))
+        storage.processedInbound.markProcessed(alice, messageId(1))
+
+        assertTrue(storage.processedInbound.isProcessed(alice, messageId(1)))
+        assertFalse(storage.processedInbound.isProcessed(bob, messageId(1)))
+        assertFalse(storage.processedInbound.isProcessed(alice, messageId(2)))
+    }
+
+    @Test
+    fun rolledBackTransactionLeavesNoReliabilityState() = runTest {
+        val storage = newStorage()
+        storage.pendingOutbound.store(bob, messageId(1), bytes(1))
+        storage.processedInbound.markProcessed(bob, messageId(1))
+
+        assertFailsWith<Failure> {
+            storage.transaction {
+                pendingOutbound.store(bob, messageId(2), bytes(2))
+                assertTrue(pendingOutbound.remove(bob, messageId(1)))
+                processedInbound.markProcessed(bob, messageId(2))
+                assertTrue(processedInbound.isProcessed(bob, messageId(2)))
+                throw Failure()
+            }
+        }
+
+        assertEquals(listOf(messageId(1)), storage.pendingOutbound.list(bob).map { it.id })
+        assertTrue(storage.processedInbound.isProcessed(bob, messageId(1)))
+        assertFalse(storage.processedInbound.isProcessed(bob, messageId(2)))
+    }
+
+    @Test
+    fun pendingFramesAreNotAliased() = runTest {
+        val storage = newStorage()
+        val frame = bytes(1)
+        storage.pendingOutbound.store(bob, messageId(1), frame)
+        frame.fill(0)
+        assertContentEquals(bytes(1), storage.pendingOutbound.get(bob, messageId(1))?.frame)
+
+        storage.pendingOutbound.get(bob, messageId(1))!!.frame.fill(0)
+        storage.pendingOutbound.list(bob).single().frame.fill(0)
+        assertContentEquals(bytes(1), storage.pendingOutbound.get(bob, messageId(1))?.frame)
+    }
+
     companion object {
         /** 32 fake key bytes derived from [seed]. Negative seeds stand for private keys. */
         fun bytes(seed: Int): ByteArray = ByteArray(32) { (seed * 31 + it).toByte() }
@@ -474,6 +582,8 @@ abstract class ClientStorageContractTest {
         fun oneTimePreKey(id: Int) = OneTimePreKeyPair(OneTimePreKeyId(id), bytes(id), bytes(-1))
 
         fun initiation(seed: Int) = SessionInitiationId(bytes(seed))
+
+        fun messageId(seed: Int) = LogicalMessageId.fromByteArray(ByteArray(LogicalMessageId.SIZE) { (seed + it).toByte() })
 
         /** Whole milliseconds: adapters may store timestamps at that precision. */
         fun at(seconds: Int): Instant = Instant.fromEpochMilliseconds(1_700_000_000_000L + seconds * 1_000L)

@@ -3,6 +3,7 @@ package dev.kreienbuehl.ksecuremessage.client
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
+import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
@@ -12,7 +13,9 @@ import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
+import dev.kreienbuehl.ksecuremessage.storage.PendingOutboundStore
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
+import dev.kreienbuehl.ksecuremessage.storage.ProcessedInboundStore
 import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionInitiationStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
@@ -143,12 +146,20 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
     var failSignedPreKeyStore = false
     var failSignedPreKeyRemoval = false
     var failLegacyStamp = false
+    var failPendingStore = false
+    var failPendingRemoval = false
+    var failMarkProcessed = false
+
+    /** If set, that many more session writes succeed; the ones after fail. */
+    var sessionStoresBeforeFailure: Int? = null
 
     override val identity get() = delegate.identity
     override val remoteIdentities get() = delegate.remoteIdentities
     override val sessions get() = delegate.sessions
     override val sessionInitiations get() = delegate.sessionInitiations
     override val preKeys get() = delegate.preKeys
+    override val pendingOutbound get() = delegate.pendingOutbound
+    override val processedInbound get() = delegate.processedInbound
 
     override suspend fun <T> transaction(block: suspend ClientStorage.() -> T): T =
         delegate.transaction { FailingView(this).block() }
@@ -166,6 +177,10 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
         override val sessions: SessionStore = object : SessionStore by tx.sessions {
             override suspend fun store(session: SecureSession) {
                 if (failSessionStore) throw StorageFailure()
+                sessionStoresBeforeFailure?.let {
+                    if (it == 0) throw StorageFailure()
+                    sessionStoresBeforeFailure = it - 1
+                }
                 tx.sessions.store(session)
             }
         }
@@ -201,6 +216,25 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
             override suspend fun removeSignedPreKey(id: SignedPreKeyId) {
                 if (failSignedPreKeyRemoval) throw StorageFailure()
                 tx.preKeys.removeSignedPreKey(id)
+            }
+        }
+
+        override val pendingOutbound: PendingOutboundStore = object : PendingOutboundStore by tx.pendingOutbound {
+            override suspend fun store(recipient: DeviceAddress, id: LogicalMessageId, frame: ByteArray): Long {
+                if (failPendingStore) throw StorageFailure()
+                return tx.pendingOutbound.store(recipient, id, frame)
+            }
+
+            override suspend fun remove(recipient: DeviceAddress, id: LogicalMessageId): Boolean {
+                if (failPendingRemoval) throw StorageFailure()
+                return tx.pendingOutbound.remove(recipient, id)
+            }
+        }
+
+        override val processedInbound: ProcessedInboundStore = object : ProcessedInboundStore by tx.processedInbound {
+            override suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId) {
+                if (failMarkProcessed) throw StorageFailure()
+                tx.processedInbound.markProcessed(sender, id)
             }
         }
 

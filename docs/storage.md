@@ -1,7 +1,8 @@
 # KSecureMessage client storage and local key lifecycle
 
 This document describes how a KSecureMessage client keeps its local protocol
-state: the identity key, prekeys and sessions. It also defines what a
+state: the identity key, prekeys and sessions, and since milestone 8 its
+message reliability state. It also defines what a
 `ClientStorage` implementation must guarantee.
 
 Contracts: `storage/core/.../storage/ClientStorage.kt`.
@@ -13,6 +14,13 @@ Lifecycle: `client/core/.../client/SecureMessageClient.kt` and `PreKeyManager.kt
 identity private key, signed and one-time prekey private keys, and session
 state (`SecureSession.state`, which contains the ratchet chain keys). Neither
 adapter encrypts these bytes. A persistent database is not a secure database.
+
+**Since milestone 8 client storage also contains application message
+content**: the plaintext of every sent message stays in
+`PendingOutboundStore` until the recipient acknowledges it
+([message-reliability.md](message-reliability.md)). It is stored
+unencrypted, like the keys. `ProcessedInboundStore` holds sender addresses
+and logical message IDs of received messages (metadata, no content).
 
 Until encryption at rest exists (a later milestone), the application must
 protect the storage with platform means. Examples are an app-private data
@@ -120,6 +128,8 @@ interface ClientStorage {
     val sessions: SessionStore
     val sessionInitiations: SessionInitiationStore
     val preKeys: PreKeyStore
+    val pendingOutbound: PendingOutboundStore
+    val processedInbound: ProcessedInboundStore
     suspend fun <T> transaction(block: suspend ClientStorage.() -> T): T
 }
 ```
@@ -155,6 +165,16 @@ Every implementation must provide:
   `signedPreKeyInfos()` returns metadata without key material.
   `removeSignedPreKey` refuses the current key and keeps the high-water mark.
   `stampLegacySignedPreKeys` only fills missing timestamps.
+- **Pending outbound messages** (milestone 8). `store(recipient, id, frame)`
+  fails with `IllegalArgumentException` if (recipient, id) is pending and
+  returns a sequence number that is higher than every earlier one, also after
+  removals and restarts. `list(recipient)` is ordered by sequence.
+  `remove` returns whether it removed something. The client stores a message
+  in the transaction that first encrypts it and removes it in the transaction
+  that decrypts its acknowledgement.
+- **Processed inbound messages** (milestone 8). `markProcessed` is idempotent
+  and scoped by sender. Entries are never removed. The client writes the
+  marker in the transaction that decrypts the message.
 - **Monotonic prekey IDs**, as described above.
 - **No aliasing.** Mutating an array after storing it, or an array returned
   by a load, must not change stored state.
@@ -208,12 +228,14 @@ Tables:
 - `session`: keyed by remote user and device ID
 - `remote_identity`: pinned remote identity public keys, keyed by remote user and device ID
 - `retired_session_initiation`: retired 32-byte session initiation IDs, keyed by remote user, device ID and initiation ID, with the nullable local `signed_pre_key_id` used for pruning
+- `pending_outbound_message`: `sequence INTEGER PRIMARY KEY AUTOINCREMENT` (never reused), recipient user and device ID, 16-byte `message_id`, and the encoded frame (**application plaintext**); unique per recipient and message ID
+- `processed_inbound_message`: sender user and device ID and 16-byte `message_id`
 
 Keys and session state are opaque BLOBs, and the schema does not depend on
 Kodium internals. All IDs have a `CHECK (id BETWEEN 0 AND 2147483647)`
 constraint.
 
-The schema version is 4. Version 1 (milestones 3 and 4) had no
+The schema version is 5. Version 1 (milestones 3 and 4) had no
 `remote_identity` table; `1.sqm` adds it and changes nothing else. Version 2
 (milestone 5) had no `retired_session_initiation` table; `2.sqm` adds it and
 changes nothing else. Version 3 (milestone 6) had no lifecycle columns;
@@ -223,10 +245,14 @@ nothing else. Upgraded signed prekeys get their timestamps on the next
 `initialize()`: the current key counts as created then, older keys start a
 full grace period then, and nothing is deleted on that first start
 ([signed-prekey-lifecycle.md](signed-prekey-lifecycle.md#migration)).
+Version 4 (milestone 7) had no reliability tables; `4.sqm` creates
+`pending_outbound_message` and `processed_inbound_message`, empty, and
+changes nothing else. Messages from before the upgrade are neither pending
+nor processed.
 A driver created with `SqlDelightClientStorage.Schema`,
 as in the table above, reads SQLite's `user_version` on open and runs the
 migrations itself. An application that manages schema versions on its own
-calls `SqlDelightClientStorage.Schema.migrate(driver, oldVersion, 4)`.
+calls `SqlDelightClientStorage.Schema.migrate(driver, oldVersion, 5)`.
 Existing identities, prekeys, sessions, pins and retired initiations are kept. Sessions from
 version 1 have no pin, see
 [identity-trust.md](identity-trust.md#sessions-from-before-pinning). Session
@@ -238,7 +264,8 @@ contract, closing and reopening the database, on-disk rollback, a client
 restart that continues an existing session, remote trust across restarts,
 replay protection and simultaneous-initiation resolution across restarts, the
 signed prekey lifecycle (grace, expiry, pruning, clock set back) across
-restarts, and migrating version 1, 2 and 3 databases.
+restarts, pending messages, duplicate suppression and collision recovery
+across restarts, and migrating version 1, 2, 3 and 4 databases.
 JS/Wasm have no SQLDelight tests: the web worker driver needs a browser worker.
 The linuxX64 and mingwX64 test binaries link against the target's `libsqlite3`,
 so they are only linked and run on a Linux or Windows host.
@@ -252,4 +279,6 @@ so they are only linked and run on a Linux or Windows host.
 - Pruning of retired session initiations that name no local signed prekey
   (initiations this device started, entries from before milestone 7).
 - A secure or monotonic clock for the signed prekey lifecycle.
-- Encryption at rest.
+- Pruning of processed message IDs (kept forever, see
+  [message-reliability.md](message-reliability.md#storage)).
+- Encryption at rest, including of pending message plaintext.

@@ -39,7 +39,7 @@ class ClientLifecycleTest {
         }
 
     private suspend fun SecureMessageClient.receiveText(): String =
-        decrypt(network.receive(localAddress).single()).decodeToString()
+        decryptRaw(network.receive(localAddress).single()).decodeToString()
 
     private suspend fun ClientStorage.oneTimePreKeyIds() = preKeys.publicOneTimePreKeys().map { it.id.value }
 
@@ -89,8 +89,8 @@ class ClientLifecycleTest {
         assertFailsWith<SecureMessageClientException.NotInitialized> { client.publicOneTimePreKeys() }
         assertFailsWith<SecureMessageClientException.NotInitialized> { client.rotateSignedPreKey() }
         assertFailsWith<SecureMessageClientException.NotInitialized> { client.ensureSession(ALICE) }
-        assertFailsWith<SecureMessageClientException.NotInitialized> { client.send(ALICE, byteArrayOf(1)) }
-        assertFailsWith<SecureMessageClientException.NotInitialized> { client.decrypt(envelope) }
+        assertFailsWith<SecureMessageClientException.NotInitialized> { client.sendRaw(ALICE, byteArrayOf(1)) }
+        assertFailsWith<SecureMessageClientException.NotInitialized> { client.decryptRaw(envelope) }
 
         assertNull(storage.identity.identity())
         assertNull(storage.preKeys.highestSignedPreKeyId())
@@ -104,7 +104,7 @@ class ClientLifecycleTest {
         val bob = initializedClient(BOB, storage)
         val identity = assertNotNull(storage.identity.identity())
 
-        alice.send(BOB, "Hello Bob".encodeToByteArray())
+        alice.sendRaw(BOB, "Hello Bob".encodeToByteArray())
         assertEquals("Hello Bob", bob.receiveText())
         assertEquals(listOf(1, 2), storage.oneTimePreKeyIds(), "one-time prekey 0 was consumed")
 
@@ -118,9 +118,9 @@ class ClientLifecycleTest {
         assertEquals(SignedPreKeyId(0), restarted.currentPreKeyBundle().signedPreKey.id)
         assertEquals(listOf(1, 2, 3), storage.oneTimePreKeyIds(), "only the consumed key is replaced, with a new ID")
 
-        restarted.send(ALICE, "Hello Alice".encodeToByteArray())
+        restarted.sendRaw(ALICE, "Hello Alice".encodeToByteArray())
         assertEquals("Hello Alice", alice.receiveText())
-        alice.send(BOB, "Still there?".encodeToByteArray())
+        alice.sendRaw(BOB, "Still there?".encodeToByteArray())
         assertEquals("Still there?", restarted.receiveText())
     }
 
@@ -206,7 +206,7 @@ class ClientLifecycleTest {
         val carol = initializedClient(CAROL)
         val bob = initializedClient(BOB, storage)
 
-        alice.send(BOB, "sent before rotation".encodeToByteArray())
+        alice.sendRaw(BOB, "sent before rotation".encodeToByteArray())
         val rotated = bob.rotateSignedPreKey()
         assertEquals(SignedPreKeyId(1), rotated.id)
         assertEquals(rotated.id, bob.currentPreKeyBundle().signedPreKey.id)
@@ -215,7 +215,7 @@ class ClientLifecycleTest {
         assertEquals("sent before rotation", bob.receiveText())
 
         network.bundles[BOB] = bob.currentPreKeyBundle()
-        carol.send(BOB, "sent after rotation".encodeToByteArray())
+        carol.sendRaw(BOB, "sent after rotation".encodeToByteArray())
         assertEquals("sent after rotation", bob.receiveText())
     }
 
@@ -266,7 +266,7 @@ class ClientLifecycleTest {
         val bob = initializedClient(BOB, storage)
         val consumed = assertNotNull(network.bundles.getValue(BOB).oneTimePreKey).id
 
-        alice.send(BOB, "Hello Bob".encodeToByteArray())
+        alice.sendRaw(BOB, "Hello Bob".encodeToByteArray())
         bob.receiveText()
         repeat(3) { bob.initialize() }
 

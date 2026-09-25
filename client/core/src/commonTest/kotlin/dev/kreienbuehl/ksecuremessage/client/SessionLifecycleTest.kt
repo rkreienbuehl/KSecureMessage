@@ -52,13 +52,13 @@ class SessionLifecycleTest {
 
         suspend fun identityKey(): ByteArray = assertNotNull(storage.identity.identity()).publicKey
 
-        suspend fun send(to: Device, text: String) = client.send(to.address, text.encodeToByteArray())
+        suspend fun send(to: Device, text: String) = client.sendRaw(to.address, text.encodeToByteArray())
 
         suspend fun receiveAll(): List<EncryptedEnvelope> = network.receive(address)
 
         suspend fun receiveOne(): EncryptedEnvelope = receiveAll().single()
 
-        suspend fun decryptText(envelope: EncryptedEnvelope): String = client.decrypt(envelope).decodeToString()
+        suspend fun decryptText(envelope: EncryptedEnvelope): String = client.decryptRaw(envelope).decodeToString()
 
         suspend fun sessionWith(remote: Device): SecureSession = assertNotNull(storage.sessions.load(remote.address))
 
@@ -177,7 +177,7 @@ class SessionLifecycleTest {
 
         // A duplicate is not a new initiation: it fails on the session and changes nothing.
         val before = bob.snapshot(alice)
-        assertFailsWith<ProtocolException.DecryptionFailed> { bob.client.decrypt(two) }
+        assertFailsWith<ProtocolException.DecryptionFailed> { bob.client.decryptRaw(two) }
         assertUnchanged(before, bob.snapshot(alice))
     }
 
@@ -202,8 +202,8 @@ class SessionLifecycleTest {
         val current = assertNotNull(bob.origin(alice))
 
         val before = bob.snapshot(alice)
-        assertFailsWith<SecureMessageClientException.StaleSessionInitiation> { bob.client.decrypt(oldFirst) }
-        assertFailsWith<SecureMessageClientException.StaleSessionInitiation> { bob.client.decrypt(oldSecond) }
+        assertFailsWith<SecureMessageClientException.StaleSessionInitiation> { bob.client.decryptRaw(oldFirst) }
+        assertFailsWith<SecureMessageClientException.StaleSessionInitiation> { bob.client.decryptRaw(oldSecond) }
         assertUnchanged(before, bob.snapshot(alice))
         assertEquals(current, bob.origin(alice))
         assertTrue(bob.isRetired(alice, old))
@@ -211,7 +211,7 @@ class SessionLifecycleTest {
 
         // Also after a restart of the client.
         bob.restart()
-        assertFailsWith<SecureMessageClientException.StaleSessionInitiation> { bob.client.decrypt(oldFirst) }
+        assertFailsWith<SecureMessageClientException.StaleSessionInitiation> { bob.client.decryptRaw(oldFirst) }
         assertUnchanged(before, bob.snapshot(alice))
 
         assertBidirectional(alice, bob, 1)
@@ -229,7 +229,7 @@ class SessionLifecycleTest {
         bob.decryptText(bob.receiveOne())
 
         bob.storage.sessions.remove(ALICE)
-        assertFailsWith<SecureMessageClientException.StaleSessionInitiation> { bob.client.decrypt(old) }
+        assertFailsWith<SecureMessageClientException.StaleSessionInitiation> { bob.client.decryptRaw(old) }
         assertNull(bob.storage.sessions.load(ALICE))
     }
 
@@ -276,11 +276,11 @@ class SessionLifecycleTest {
         suspend fun deliverToBob() = if (aliceWins) {
             assertEquals("from Alice", bob.decryptText(toBob))
         } else {
-            assertFailsWith<SecureMessageClientException.SessionCollision> { bob.client.decrypt(toBob) }
+            assertFailsWith<SecureMessageClientException.SessionCollision> { bob.client.decryptRaw(toBob) }
         }
 
         suspend fun deliverToAlice() = if (aliceWins) {
-            assertFailsWith<SecureMessageClientException.SessionCollision> { alice.client.decrypt(toAlice) }
+            assertFailsWith<SecureMessageClientException.SessionCollision> { alice.client.decryptRaw(toAlice) }
         } else {
             assertEquals("from Bob", alice.decryptText(toAlice))
         }
@@ -310,8 +310,8 @@ class SessionLifecycleTest {
         for ((a, b) in listOf(alice to bob, aliceCopy to bobCopy)) {
             assertBidirectional(a, b, 1)
             assertBidirectional(b, a, 2)
-            assertIs<RatchetMessage>(CiphertextMessageCodec.decode(a.client.encrypt(BOB, byteArrayOf(1)).payload))
-            assertIs<RatchetMessage>(CiphertextMessageCodec.decode(b.client.encrypt(ALICE, byteArrayOf(1)).payload))
+            assertIs<RatchetMessage>(CiphertextMessageCodec.decode(a.client.encryptRaw(BOB, byteArrayOf(1)).payload))
+            assertIs<RatchetMessage>(CiphertextMessageCodec.decode(b.client.encryptRaw(ALICE, byteArrayOf(1)).payload))
         }
     }
 
@@ -327,7 +327,7 @@ class SessionLifecycleTest {
         val otpk = assertNotNull(assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(toWinner.payload)).oneTimePreKeyId)
 
         val before = winner.snapshot(loser)
-        assertFailsWith<SecureMessageClientException.SessionCollision> { winner.client.decrypt(toWinner) }
+        assertFailsWith<SecureMessageClientException.SessionCollision> { winner.client.decryptRaw(toWinner) }
         assertUnchanged(before, winner.snapshot(loser))
         assertNotNull(winner.storage.preKeys.oneTimePreKey(otpk), "a rejected initiation consumes no one-time prekey")
         assertTrue(winner.isRetired(loser, losing))
@@ -338,7 +338,7 @@ class SessionLifecycleTest {
 
         // A replay of the losing initiation can never become current.
         val current = winner.origin(loser)
-        assertFailsWith<SecureMessageClientException.StaleSessionInitiation> { winner.client.decrypt(toWinner) }
+        assertFailsWith<SecureMessageClientException.StaleSessionInitiation> { winner.client.decryptRaw(toWinner) }
         assertEquals(current, winner.origin(loser))
         assertNotNull(winner.storage.preKeys.oneTimePreKey(otpk))
     }
@@ -354,8 +354,8 @@ class SessionLifecycleTest {
 
         loser.send(winner, "second on the losing session")
         val second = winner.receiveOne()
-        assertFailsWith<SecureMessageClientException.SessionCollision> { winner.client.decrypt(toWinner) }
-        assertFailsWith<SecureMessageClientException.StaleSessionInitiation> { winner.client.decrypt(second) }
+        assertFailsWith<SecureMessageClientException.SessionCollision> { winner.client.decryptRaw(toWinner) }
+        assertFailsWith<SecureMessageClientException.StaleSessionInitiation> { winner.client.decryptRaw(second) }
 
         loser.decryptText(toLoser)
         assertBidirectional(winner, loser, 1)
@@ -388,9 +388,9 @@ class SessionLifecycleTest {
         repeat(4) {
             val impostor = Device(ALICE).apply { client.initialize() }
             bob.publish()
-            impostor.client.send(BOB, "I am Alice".encodeToByteArray())
+            impostor.client.sendRaw(BOB, "I am Alice".encodeToByteArray())
             val envelope = bob.receiveOne()
-            val error = assertFailsWith<SecureMessageClientException.IdentityChanged> { bob.client.decrypt(envelope) }
+            val error = assertFailsWith<SecureMessageClientException.IdentityChanged> { bob.client.decryptRaw(envelope) }
             assertEquals(ALICE, error.address)
             assertUnchanged(before, bob.snapshot(alice))
             assertFalse(bob.isRetired(alice, bob.initiationOf(envelope)))
@@ -461,7 +461,7 @@ class SessionLifecycleTest {
         alice.storage.sessions.remove(BOB)
         alice.send(bob, "maybe a replay")
         val before = bob.snapshot(alice)
-        assertFailsWith<ProtocolException> { bob.client.decrypt(bob.receiveOne()) }
+        assertFailsWith<ProtocolException> { bob.client.decryptRaw(bob.receiveOne()) }
         assertUnchanged(before, bob.snapshot(alice))
         assertNull(bob.origin(alice))
     }
@@ -500,7 +500,7 @@ class SessionLifecycleTest {
         alice.storage.sessions.remove(BOB)
         alice.send(legacyBob, "new")
         val before = legacyBob.snapshot(alice)
-        assertFailsWith<ProtocolException.InvalidMessage> { legacyBob.client.decrypt(legacyBob.receiveOne()) }
+        assertFailsWith<ProtocolException.InvalidMessage> { legacyBob.client.decryptRaw(legacyBob.receiveOne()) }
         assertUnchanged(before, legacyBob.snapshot(alice))
         assertNull(before.pin)
     }
@@ -526,7 +526,7 @@ class SessionLifecycleTest {
 
         assertEquals("one", bob.decryptText(first))
         // Its one-time prekey is gone now, so the second one cannot be accepted.
-        assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decrypt(second) }
+        assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decryptRaw(second) }
         assertNotNull(bob.storage.preKeys.oneTimePreKey(OneTimePreKeyId(1)))
     }
 }

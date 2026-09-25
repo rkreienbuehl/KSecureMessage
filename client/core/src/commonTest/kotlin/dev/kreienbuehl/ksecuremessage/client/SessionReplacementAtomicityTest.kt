@@ -84,16 +84,16 @@ class SessionReplacementAtomicityTest {
     private suspend fun replacement(): Triple<Device, Device, Pair<EncryptedEnvelope, EncryptedEnvelope>> {
         val alice = device(ALICE)
         val bob = device(BOB)
-        alice.client.send(BOB, "hello".encodeToByteArray())
-        bob.client.decrypt(bob.receiveOne())
-        bob.client.send(ALICE, "hi".encodeToByteArray())
-        alice.client.decrypt(alice.receiveOne())
-        alice.client.send(BOB, "late on S1".encodeToByteArray())
+        alice.client.sendRaw(BOB, "hello".encodeToByteArray())
+        bob.client.decryptRaw(bob.receiveOne())
+        bob.client.sendRaw(ALICE, "hi".encodeToByteArray())
+        alice.client.decryptRaw(alice.receiveOne())
+        alice.client.sendRaw(BOB, "late on S1".encodeToByteArray())
         val late = bob.receiveOne()
 
         alice.storage.sessions.remove(BOB)
         network.publish(bob.client)
-        alice.client.send(BOB, "on S2".encodeToByteArray())
+        alice.client.sendRaw(BOB, "on S2".encodeToByteArray())
         return Triple(alice, bob, late to bob.receiveOne())
     }
 
@@ -105,14 +105,14 @@ class SessionReplacementAtomicityTest {
         val before = bob.state(ALICE, s1, s2Id)
 
         bob.failing.inject()
-        assertFailsWith<StorageFailure> { bob.client.decrypt(s2) }
+        assertFailsWith<StorageFailure> { bob.client.decryptRaw(s2) }
         assertSame(before, bob.state(ALICE, s1, s2Id))
         assertEquals(s1, bob.origin(ALICE))
 
         // The old session still works, and the replacement succeeds later.
         bob.healthy()
-        assertEquals("late on S1", bob.client.decrypt(late).decodeToString())
-        assertEquals("on S2", bob.client.decrypt(s2).decodeToString())
+        assertEquals("late on S1", bob.client.decryptRaw(late).decodeToString())
+        assertEquals("on S2", bob.client.decryptRaw(s2).decodeToString())
         assertEquals(s2Id, bob.origin(ALICE))
         assertTrue(bob.storage.sessionInitiations.isRetired(ALICE, s1))
         assertEquals(before.oneTimePreKeys.drop(1), bob.state(ALICE).oneTimePreKeys)
@@ -139,9 +139,9 @@ class SessionReplacementAtomicityTest {
         val (late, s2) = messages
         val s1 = assertNotNull(bob.origin(ALICE))
         val before = bob.state(ALICE, s1, bob.initiationOf(s2))
-        assertFails { bob.client.decrypt(s2.tampered()) }
+        assertFails { bob.client.decryptRaw(s2.tampered()) }
         assertSame(before, bob.state(ALICE, s1, bob.initiationOf(s2)))
-        assertEquals("late on S1", bob.client.decrypt(late).decodeToString())
+        assertEquals("late on S1", bob.client.decryptRaw(late).decodeToString())
     }
 
     /** Both sides started a session at once. [toWinner] carries the losing initiation. */
@@ -155,17 +155,17 @@ class SessionReplacementAtomicityTest {
     private suspend fun collision(): Collision {
         val alice = device(ALICE)
         val bob = device(BOB)
-        alice.client.send(BOB, "hello".encodeToByteArray())
-        bob.client.decrypt(bob.receiveOne())
-        bob.client.send(ALICE, "hi".encodeToByteArray())
-        alice.client.decrypt(alice.receiveOne())
+        alice.client.sendRaw(BOB, "hello".encodeToByteArray())
+        bob.client.decryptRaw(bob.receiveOne())
+        bob.client.sendRaw(ALICE, "hi".encodeToByteArray())
+        alice.client.decryptRaw(alice.receiveOne())
         alice.storage.sessions.remove(BOB)
         bob.storage.sessions.remove(ALICE)
         network.publish(alice.client)
         network.publish(bob.client)
 
-        alice.client.send(BOB, "from Alice".encodeToByteArray())
-        bob.client.send(ALICE, "from Bob".encodeToByteArray())
+        alice.client.sendRaw(BOB, "from Alice".encodeToByteArray())
+        bob.client.sendRaw(ALICE, "from Bob".encodeToByteArray())
         val toBob = bob.receiveOne()
         val toAlice = alice.receiveOne()
         return if (bob.initiationOf(toBob) < alice.initiationOf(toAlice)) {
@@ -182,11 +182,11 @@ class SessionReplacementAtomicityTest {
         val before = winner.state(loser.address, losing)
 
         winner.failing.failRetire = true
-        assertFailsWith<StorageFailure> { winner.client.decrypt(toWinner) }
+        assertFailsWith<StorageFailure> { winner.client.decryptRaw(toWinner) }
         assertSame(before, winner.state(loser.address, losing))
 
         winner.healthy()
-        assertFailsWith<SecureMessageClientException.SessionCollision> { winner.client.decrypt(toWinner) }
+        assertFailsWith<SecureMessageClientException.SessionCollision> { winner.client.decryptRaw(toWinner) }
         assertEquals(listOf(true), winner.state(loser.address, losing).retired)
         assertEquals(before.oneTimePreKeys, winner.state(loser.address).oneTimePreKeys)
     }
@@ -204,13 +204,13 @@ class SessionReplacementAtomicityTest {
         )) {
             val before = loser.state(winner.address, own, winning)
             loser.failing.inject()
-            assertFailsWith<StorageFailure> { loser.client.decrypt(toLoser) }
+            assertFailsWith<StorageFailure> { loser.client.decryptRaw(toLoser) }
             assertSame(before, loser.state(winner.address, own, winning))
             assertTrue(engine.sessionInfo(assertNotNull(loser.storage.sessions.load(winner.address))).awaitingReply)
             loser.healthy()
         }
 
-        assertEquals("from ${if (winner.address == ALICE) "Alice" else "Bob"}", loser.client.decrypt(toLoser).decodeToString())
+        assertEquals("from ${if (winner.address == ALICE) "Alice" else "Bob"}", loser.client.decryptRaw(toLoser).decodeToString())
         assertEquals(winning, loser.origin(winner.address))
         assertTrue(loser.storage.sessionInitiations.isRetired(winner.address, own))
         assertFalse(loser.storage.sessionInitiations.isRetired(winner.address, winning))

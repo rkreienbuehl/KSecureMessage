@@ -47,13 +47,13 @@ class SessionReorderingTest {
 
         suspend fun publish() = network.publish(client)
 
-        suspend fun send(to: Device, text: String) = client.send(to.address, text.encodeToByteArray())
+        suspend fun send(to: Device, text: String) = client.sendRaw(to.address, text.encodeToByteArray())
 
         suspend fun receiveAll(): List<EncryptedEnvelope> = network.receive(address)
 
         suspend fun receiveOne(): EncryptedEnvelope = receiveAll().single()
 
-        suspend fun decryptText(envelope: EncryptedEnvelope): String = client.decrypt(envelope).decodeToString()
+        suspend fun decryptText(envelope: EncryptedEnvelope): String = client.decryptRaw(envelope).decodeToString()
 
         /** What processing [envelope] gives, as text: the plaintext or the kind of rejection. */
         suspend fun outcome(envelope: EncryptedEnvelope): String = try {
@@ -119,7 +119,7 @@ class SessionReorderingTest {
         assertEquals(listOf("ping $round"), other.receiveAll().map { other.outcome(it) })
         other.send(one, "pong $round")
         assertEquals(listOf("pong $round"), one.receiveAll().map { one.outcome(it) })
-        assertIs<RatchetMessage>(CiphertextMessageCodec.decode(one.client.encrypt(other.address, byteArrayOf(1)).payload))
+        assertIs<RatchetMessage>(CiphertextMessageCodec.decode(one.client.encryptRaw(other.address, byteArrayOf(1)).payload))
     }
 
     // Scenario 1: simultaneous initiation, both delivery orders, then a reply.
@@ -233,8 +233,8 @@ class SessionReorderingTest {
         // loser's address is rejected, whatever its initiation ID.
         val impostor = Device(p.loser.address).apply { client.initialize() }
         p.winner.publish()
-        impostor.client.send(p.winner.address, "impostor".encodeToByteArray())
-        assertFailsWith<SecureMessageClientException.IdentityChanged> { p.winner.client.decrypt(p.winner.receiveOne()) }
+        impostor.client.sendRaw(p.winner.address, "impostor".encodeToByteArray())
+        assertFailsWith<SecureMessageClientException.IdentityChanged> { p.winner.client.decryptRaw(p.winner.receiveOne()) }
         assertContentEquals(session, p.winner.sessionBytes(p.loser))
 
         assertConverged(p)

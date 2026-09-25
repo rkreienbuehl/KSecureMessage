@@ -7,6 +7,7 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
@@ -17,7 +18,10 @@ import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.IdentityStore
+import dev.kreienbuehl.ksecuremessage.storage.PendingOutboundMessage
+import dev.kreienbuehl.ksecuremessage.storage.PendingOutboundStore
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
+import dev.kreienbuehl.ksecuremessage.storage.ProcessedInboundStore
 import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionInitiationStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
@@ -45,14 +49,17 @@ import kotlin.time.Instant
  * it. Transaction blocks must not move to another thread, so they must not
  * suspend on I/O or switch dispatchers. `SecureMessageClient` follows this.
  *
- * Private keys and session state are stored as plain BLOBs. This adapter does
- * not encrypt them: protect the database file with platform means.
+ * Private keys, session state and the plaintext of sent messages awaiting
+ * acknowledgement are stored as plain BLOBs. This adapter does not encrypt
+ * them: protect the database file with platform means.
  *
  * Schema version 2 added the `remote_identity` table (milestone 5), version 3
  * the `retired_session_initiation` table (milestone 6), version 4 nullable
- * signed prekey lifecycle columns (milestone 7). A driver created with
- * [Schema] upgrades an older database on open; an application that manages
- * versions itself calls `Schema.migrate(driver, oldVersion, 4)`. The
+ * signed prekey lifecycle columns (milestone 7), version 5 the
+ * `pending_outbound_message` and `processed_inbound_message` tables
+ * (milestone 8). A driver created with [Schema] upgrades an older database on
+ * open; an application that manages versions itself calls
+ * `Schema.migrate(driver, oldVersion, 5)`. The
  * migrations only add tables and nullable columns. Session state written
  * before milestone 6 stays readable; its format is versioned inside the BLOB.
  * Timestamps are stored as epoch milliseconds.
@@ -108,6 +115,22 @@ class SqlDelightClientStorage(driver: SqlDriver) : ClientStorage {
         override suspend fun highestOneTimePreKeyId() = transaction { preKeys.highestOneTimePreKeyId() }
     }
 
+    override val pendingOutbound: PendingOutboundStore = object : PendingOutboundStore {
+        override suspend fun store(recipient: DeviceAddress, id: LogicalMessageId, frame: ByteArray) =
+            transaction { pendingOutbound.store(recipient, id, frame) }
+        override suspend fun get(recipient: DeviceAddress, id: LogicalMessageId) = transaction { pendingOutbound.get(recipient, id) }
+        override suspend fun list(recipient: DeviceAddress) = transaction { pendingOutbound.list(recipient) }
+        override suspend fun remove(recipient: DeviceAddress, id: LogicalMessageId) =
+            transaction { pendingOutbound.remove(recipient, id) }
+    }
+
+    override val processedInbound: ProcessedInboundStore = object : ProcessedInboundStore {
+        override suspend fun isProcessed(sender: DeviceAddress, id: LogicalMessageId) =
+            transaction { processedInbound.isProcessed(sender, id) }
+        override suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId) =
+            transaction { processedInbound.markProcessed(sender, id) }
+    }
+
     override suspend fun <T> transaction(block: suspend ClientStorage.() -> T): T {
         val active = currentCoroutineContext()[ActiveTransaction]
         if (active != null && active.owner === this) return view.block()
@@ -134,6 +157,39 @@ class SqlDelightClientStorage(driver: SqlDriver) : ClientStorage {
 
 /** Store implementations. Only used inside a database transaction. */
 private class DatabaseView(private val queries: ClientStateQueries) : ClientStorage {
+    override val pendingOutbound: PendingOutboundStore = object : PendingOutboundStore {
+        override suspend fun store(recipient: DeviceAddress, id: LogicalMessageId, frame: ByteArray): Long {
+            require(get(recipient, id) == null) { "Message is already pending" }
+            queries.insertPendingOutbound(recipient.userId.value, recipient.deviceId.value, id.toByteArray(), frame.copyOf())
+            return checkNotNull(get(recipient, id)).sequence
+        }
+
+        override suspend fun get(recipient: DeviceAddress, id: LogicalMessageId): PendingOutboundMessage? =
+            queries.selectPendingOutbound(recipient.userId.value, recipient.deviceId.value, id.toByteArray()) { sequence, frame ->
+                PendingOutboundMessage(recipient, id, sequence, frame)
+            }.awaitAsOneOrNull()
+
+        override suspend fun list(recipient: DeviceAddress): List<PendingOutboundMessage> =
+            queries.selectPendingOutboundFor(recipient.userId.value, recipient.deviceId.value) { sequence, messageId, frame ->
+                PendingOutboundMessage(recipient, LogicalMessageId.fromByteArray(messageId), sequence, frame)
+            }.awaitAsList()
+
+        override suspend fun remove(recipient: DeviceAddress, id: LogicalMessageId): Boolean {
+            if (get(recipient, id) == null) return false
+            queries.deletePendingOutbound(recipient.userId.value, recipient.deviceId.value, id.toByteArray())
+            return true
+        }
+    }
+
+    override val processedInbound: ProcessedInboundStore = object : ProcessedInboundStore {
+        override suspend fun isProcessed(sender: DeviceAddress, id: LogicalMessageId): Boolean =
+            queries.countProcessedInbound(sender.userId.value, sender.deviceId.value, id.toByteArray()).awaitAsOne() > 0
+
+        override suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId) {
+            queries.insertProcessedInbound(sender.userId.value, sender.deviceId.value, id.toByteArray())
+        }
+    }
+
     override val identity: IdentityStore = object : IdentityStore {
         override suspend fun identity(): LocalIdentity? =
             queries.selectIdentity { publicKey, privateKey -> LocalIdentity(publicKey, privateKey) }.awaitAsOneOrNull()

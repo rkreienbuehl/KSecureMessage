@@ -1,6 +1,7 @@
 package dev.kreienbuehl.ksecuremessage.storage
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
@@ -11,8 +12,9 @@ import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 import kotlin.time.Instant
 
-// Every store below except RemoteIdentityStore and SessionInitiationStore holds secret key material or
-// ratchet state as raw bytes.
+// Every store below except RemoteIdentityStore, SessionInitiationStore and ProcessedInboundStore holds
+// secret key material, ratchet state or application message content as raw bytes.
+// PendingOutboundStore holds the plaintext of sent messages until the recipient acknowledges them.
 // Adapters persist those bytes as they are; none of them encrypts at rest.
 // Protect the underlying database or files with platform means.
 // See docs/storage.md.
@@ -168,6 +170,60 @@ interface PreKeyStore {
 }
 
 /**
+ * A sent application message the recipient has not acknowledged yet
+ * (docs/message-reliability.md).
+ *
+ * @property sequence local send order, assigned by [PendingOutboundStore.store].
+ *   Reliability metadata only; not a cryptographic value.
+ * @property frame the encoded `SecurePayload.ApplicationMessage` (logical ID
+ *   plus application plaintext). Every resend encrypts these bytes again.
+ */
+class PendingOutboundMessage(
+    val recipient: DeviceAddress,
+    val id: LogicalMessageId,
+    val sequence: Long,
+    val frame: ByteArray,
+)
+
+/**
+ * Sent application messages kept until the recipient acknowledges them, so
+ * they can be encrypted and sent again. Keyed by (recipient, logical ID).
+ *
+ * **Holds application plaintext, unencrypted.** Entries are removed when the
+ * acknowledgement arrives, never because the transport accepted an envelope.
+ */
+interface PendingOutboundStore {
+    /**
+     * Stores [frame] for [recipient] and returns its sequence number. Sequence
+     * numbers increase with every call and are never reused, also after
+     * removals and restarts. Throws [IllegalArgumentException] if [id] is
+     * already pending for [recipient].
+     */
+    suspend fun store(recipient: DeviceAddress, id: LogicalMessageId, frame: ByteArray): Long
+
+    suspend fun get(recipient: DeviceAddress, id: LogicalMessageId): PendingOutboundMessage?
+
+    /** The messages pending for [recipient], in [PendingOutboundMessage.sequence] order. */
+    suspend fun list(recipient: DeviceAddress): List<PendingOutboundMessage>
+
+    /** Removes the entry; returns `false` if it was not pending. */
+    suspend fun remove(recipient: DeviceAddress, id: LogicalMessageId): Boolean
+}
+
+/**
+ * Logical messages already accepted from a remote device, for duplicate
+ * suppression (docs/message-reliability.md). Keyed by (sender, logical ID):
+ * the same ID from another sender is a different message. IDs are kept
+ * forever; nothing here removes them.
+ */
+interface ProcessedInboundStore {
+    suspend fun isProcessed(sender: DeviceAddress, id: LogicalMessageId): Boolean
+
+    /** Records [id] from [sender]. Recording it again does nothing. */
+    suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId)
+}
+
+/**
  * Client storage boundary.
  *
  * [transaction] must be atomic: if [transaction]'s block throws, none of its
@@ -175,7 +231,10 @@ interface PreKeyStore {
  * together with the encrypt/decrypt work, and a consumed one-time prekey is
  * removed together with storing the session it created. A remote identity is
  * pinned in the same transaction that stores the first session with it. A
- * replaced session and the retired initiation are written together.
+ * replaced session and the retired initiation are written together. A sent
+message becomes pending together with the ratchet step that encrypted it; an
+accepted message is marked processed together with the ratchet step that
+decrypted it.
  *
  * Rules for the block:
  * - Use the receiver's stores, not those of the outer storage object.
@@ -191,6 +250,8 @@ interface ClientStorage {
     val sessions: SessionStore
     val sessionInitiations: SessionInitiationStore
     val preKeys: PreKeyStore
+    val pendingOutbound: PendingOutboundStore
+    val processedInbound: ProcessedInboundStore
 
     suspend fun <T> transaction(block: suspend ClientStorage.() -> T): T
 }

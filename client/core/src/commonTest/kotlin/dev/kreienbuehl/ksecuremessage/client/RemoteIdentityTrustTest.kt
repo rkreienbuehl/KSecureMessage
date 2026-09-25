@@ -46,7 +46,7 @@ class RemoteIdentityTrustTest {
 
         suspend fun receiveAll(): List<EncryptedEnvelope> = network.receive(client.localAddress)
 
-        suspend fun decryptText(envelope: EncryptedEnvelope) = client.decrypt(envelope).decodeToString()
+        suspend fun decryptText(envelope: EncryptedEnvelope) = client.decryptRaw(envelope).decodeToString()
     }
 
     private suspend fun device(
@@ -66,14 +66,14 @@ class RemoteIdentityTrustTest {
         val bob = device(BOB)
         assertNull(alice.client.remoteIdentityKey(BOB))
 
-        alice.client.send(BOB, "Hello Bob".encodeToByteArray())
+        alice.client.sendRaw(BOB, "Hello Bob".encodeToByteArray())
         assertContentEquals(bob.identityKey(), alice.client.remoteIdentityKey(BOB))
         assertNotNull(alice.storage.sessions.load(BOB))
 
         // A new session with the same identity is accepted.
         alice.storage.sessions.remove(BOB)
         network.publish(bob.client)
-        alice.client.send(BOB, "Again".encodeToByteArray())
+        alice.client.sendRaw(BOB, "Again".encodeToByteArray())
         assertNotNull(alice.storage.sessions.load(BOB))
         assertContentEquals(bob.identityKey(), alice.client.remoteIdentityKey(BOB))
     }
@@ -85,11 +85,11 @@ class RemoteIdentityTrustTest {
         val valid = network.bundles.getValue(BOB)
 
         network.bundles[BOB] = valid.copy(identityKey = valid.identityKey.copyOf(valid.identityKey.size - 1))
-        assertFailsWith<ProtocolException.InvalidPreKeyBundle> { alice.client.send(BOB, byteArrayOf(1)) }
+        assertFailsWith<ProtocolException.InvalidPreKeyBundle> { alice.client.sendRaw(BOB, byteArrayOf(1)) }
 
         val signature = valid.signedPreKey.signature.copyOf().also { it[0] = (it[0].toInt() xor 1).toByte() }
         network.bundles[BOB] = valid.copy(signedPreKey = valid.signedPreKey.copy(signature = signature))
-        assertFailsWith<ProtocolException.InvalidSignature> { alice.client.send(BOB, byteArrayOf(1)) }
+        assertFailsWith<ProtocolException.InvalidSignature> { alice.client.sendRaw(BOB, byteArrayOf(1)) }
 
         // A valid bundle for another device, served for BOB.
         network.bundles[BOB] = network.bundles.getValue(ALICE)
@@ -100,7 +100,7 @@ class RemoteIdentityTrustTest {
         assertNull(alice.client.remoteIdentityKey(ALICE))
 
         network.bundles[BOB] = valid
-        alice.client.send(BOB, byteArrayOf(1))
+        alice.client.sendRaw(BOB, byteArrayOf(1))
         assertContentEquals(valid.identityKey, alice.client.remoteIdentityKey(BOB))
     }
 
@@ -110,13 +110,13 @@ class RemoteIdentityTrustTest {
         val bob = device(BOB)
 
         alice.failing.failSessionStore = true
-        assertFailsWith<StorageFailure> { alice.client.send(BOB, byteArrayOf(1)) }
+        assertFailsWith<StorageFailure> { alice.client.sendRaw(BOB, byteArrayOf(1)) }
         assertFailsWith<StorageFailure> { alice.client.ensureSession(BOB) }
         assertNull(alice.client.remoteIdentityKey(BOB))
         assertNull(alice.storage.sessions.load(BOB))
 
         alice.failing.failSessionStore = false
-        alice.client.send(BOB, byteArrayOf(1))
+        alice.client.sendRaw(BOB, byteArrayOf(1))
         assertContentEquals(bob.identityKey(), alice.client.remoteIdentityKey(BOB))
     }
 
@@ -126,7 +126,7 @@ class RemoteIdentityTrustTest {
         device(BOB)
 
         alice.failing.failRemoteIdentityStore = true
-        assertFailsWith<StorageFailure> { alice.client.send(BOB, byteArrayOf(1)) }
+        assertFailsWith<StorageFailure> { alice.client.sendRaw(BOB, byteArrayOf(1)) }
         assertNull(alice.storage.sessions.load(BOB))
         assertNull(alice.client.remoteIdentityKey(BOB))
     }
@@ -135,7 +135,7 @@ class RemoteIdentityTrustTest {
     fun changedRemoteIdentityIsRejectedByTheInitiator() = runTest {
         val alice = device(ALICE)
         val bob = device(BOB)
-        alice.client.send(BOB, "Hello Bob".encodeToByteArray())
+        alice.client.sendRaw(BOB, "Hello Bob".encodeToByteArray())
         val pinned = bob.identityKey()
 
         // The server now serves a valid bundle of another identity for BOB.
@@ -144,7 +144,7 @@ class RemoteIdentityTrustTest {
         assertFalse(pinned.contentEquals(impostor.identityKey()))
 
         val error = assertFailsWith<SecureMessageClientException.IdentityChanged> {
-            alice.client.send(BOB, "secret".encodeToByteArray())
+            alice.client.sendRaw(BOB, "secret".encodeToByteArray())
         }
         assertEquals(BOB, error.address)
         assertEquals("Remote identity changed for $BOB", error.message)
@@ -161,8 +161,8 @@ class RemoteIdentityTrustTest {
         val alice = device(ALICE)
         val bob = device(BOB)
 
-        alice.client.send(BOB, "one".encodeToByteArray())
-        alice.client.send(BOB, "two".encodeToByteArray())
+        alice.client.sendRaw(BOB, "one".encodeToByteArray())
+        alice.client.sendRaw(BOB, "two".encodeToByteArray())
         val (first, second) = bob.receiveAll()
         assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(second.payload))
 
@@ -177,7 +177,7 @@ class RemoteIdentityTrustTest {
         val alice = device(ALICE)
         val bob = device(BOB)
         val mallory = device(CAROL)
-        alice.client.send(BOB, "Hello Bob".encodeToByteArray())
+        alice.client.sendRaw(BOB, "Hello Bob".encodeToByteArray())
         val envelope = bob.receiveAll().single()
 
         // Mallory claims her own valid identity key in Alice's message.
@@ -185,7 +185,7 @@ class RemoteIdentityTrustTest {
         val forged = envelope.copy(payload = CiphertextMessageCodec.encode(message.copy(identityKey = mallory.identityKey())))
 
         for (bad in listOf(envelope.tampered(), forged)) {
-            assertFailsWith<ProtocolException> { bob.client.decrypt(bad) }
+            assertFailsWith<ProtocolException> { bob.client.decryptRaw(bad) }
             assertNull(bob.client.remoteIdentityKey(ALICE))
             assertNull(bob.storage.sessions.load(ALICE))
             assertNotNull(bob.storage.preKeys.oneTimePreKey(OneTimePreKeyId(0)))
@@ -199,7 +199,7 @@ class RemoteIdentityTrustTest {
     fun changedSenderIdentityIsRejectedAndChangesNothing() = runTest {
         val alice = device(ALICE)
         val bob = device(BOB)
-        alice.client.send(BOB, "Hello Bob".encodeToByteArray())
+        alice.client.sendRaw(BOB, "Hello Bob".encodeToByteArray())
         bob.decryptText(bob.receiveAll().single())
         val pinned = alice.identityKey()
         val session = assertNotNull(bob.storage.sessions.load(ALICE)).state
@@ -207,12 +207,12 @@ class RemoteIdentityTrustTest {
         // Another valid identity for the same address, using Bob's next one-time prekey.
         network.publish(bob.client)
         val impostor = device(ALICE)
-        impostor.client.send(BOB, "It's me".encodeToByteArray())
+        impostor.client.sendRaw(BOB, "It's me".encodeToByteArray())
         val envelope = bob.receiveAll().single()
         val oneTimePreKeyId = assertNotNull((CiphertextMessageCodec.decode(envelope.payload) as PreKeyMessage).oneTimePreKeyId)
         val oneTimePreKeys = bob.storage.preKeys.oneTimePreKeyCount()
 
-        val error = assertFailsWith<SecureMessageClientException.IdentityChanged> { bob.client.decrypt(envelope) }
+        val error = assertFailsWith<SecureMessageClientException.IdentityChanged> { bob.client.decryptRaw(envelope) }
         assertEquals(ALICE, error.address)
         assertContentEquals(pinned, bob.client.remoteIdentityKey(ALICE))
         assertContentEquals(session, bob.storage.sessions.load(ALICE)?.state, "session unchanged")
@@ -221,7 +221,7 @@ class RemoteIdentityTrustTest {
 
         // Without a session the pin still decides.
         bob.storage.sessions.remove(ALICE)
-        assertFailsWith<SecureMessageClientException.IdentityChanged> { bob.client.decrypt(envelope) }
+        assertFailsWith<SecureMessageClientException.IdentityChanged> { bob.client.decryptRaw(envelope) }
         assertNull(bob.storage.sessions.load(ALICE))
         assertNotNull(bob.storage.preKeys.oneTimePreKey(oneTimePreKeyId))
         assertContentEquals(pinned, bob.client.remoteIdentityKey(ALICE))
@@ -235,8 +235,8 @@ class RemoteIdentityTrustTest {
         val phone = device(bobPhone)
         assertFalse(laptop.identityKey().contentEquals(phone.identityKey()))
 
-        alice.client.send(BOB, "to laptop".encodeToByteArray())
-        alice.client.send(bobPhone, "to phone".encodeToByteArray())
+        alice.client.sendRaw(BOB, "to laptop".encodeToByteArray())
+        alice.client.sendRaw(bobPhone, "to phone".encodeToByteArray())
         assertContentEquals(laptop.identityKey(), alice.client.remoteIdentityKey(BOB))
         assertContentEquals(phone.identityKey(), alice.client.remoteIdentityKey(bobPhone))
 
@@ -253,9 +253,9 @@ class RemoteIdentityTrustTest {
         var hook: YieldAfterPinLookup? = null
         val bob = device(BOB, publishOneTimePreKey = false) { YieldAfterPinLookup(it).also { w -> hook = w } }
         val first = device(ALICE)
-        first.client.send(BOB, "first".encodeToByteArray())
+        first.client.sendRaw(BOB, "first".encodeToByteArray())
         val second = device(ALICE)
-        second.client.send(BOB, "second".encodeToByteArray())
+        second.client.sendRaw(BOB, "second".encodeToByteArray())
         val envelopes = bob.receiveAll()
         assertEquals(2, envelopes.size)
 
@@ -278,15 +278,15 @@ class RemoteIdentityTrustTest {
         network.publish(legacyBob)
         val alice = device(ALICE)
 
-        alice.client.send(BOB, "Hello Bob".encodeToByteArray())
-        legacyBob.decrypt(network.receive(BOB).single())
-        legacyBob.send(ALICE, "Hello Alice".encodeToByteArray())
+        alice.client.sendRaw(BOB, "Hello Bob".encodeToByteArray())
+        legacyBob.decryptRaw(network.receive(BOB).single())
+        legacyBob.sendRaw(ALICE, "Hello Alice".encodeToByteArray())
         alice.decryptText(alice.receiveAll().single())
         assertNull(storage.remoteIdentities.identityKey(ALICE))
 
         val bob = SecureMessageClient(BOB, storage, engine, network)
-        alice.client.send(BOB, "Ratchet".encodeToByteArray())
-        assertEquals("Ratchet", bob.decrypt(network.receive(BOB).single()).decodeToString())
+        alice.client.sendRaw(BOB, "Ratchet".encodeToByteArray())
+        assertEquals("Ratchet", bob.decryptRaw(network.receive(BOB).single()).decodeToString())
         assertNull(bob.remoteIdentityKey(ALICE), "no pin invented from routing metadata")
     }
 
@@ -298,14 +298,14 @@ class RemoteIdentityTrustTest {
         network.publish(legacyBob)
         val alice = device(ALICE)
 
-        alice.client.send(BOB, "one".encodeToByteArray())
-        alice.client.send(BOB, "two".encodeToByteArray())
+        alice.client.sendRaw(BOB, "one".encodeToByteArray())
+        alice.client.sendRaw(BOB, "two".encodeToByteArray())
         val (first, second) = network.receive(BOB)
-        legacyBob.decrypt(first)
+        legacyBob.decryptRaw(first)
         assertNull(storage.remoteIdentities.identityKey(ALICE))
 
         val bob = SecureMessageClient(BOB, storage, engine, network)
-        assertEquals("two", bob.decrypt(second).decodeToString())
+        assertEquals("two", bob.decryptRaw(second).decodeToString())
         assertContentEquals(alice.identityKey(), bob.remoteIdentityKey(ALICE))
     }
 

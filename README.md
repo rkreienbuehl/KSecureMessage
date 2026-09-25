@@ -40,7 +40,7 @@ Shared serializable value types such as user/device addresses, prekey metadata, 
 Protocol-facing orchestration and Kodium dependency. Keep Kodium-specific types internal where possible so the public API remains stable.
 
 ### `client:core`
-Client lifecycle contracts such as transport, session access, sending, and receiving.
+Client lifecycle contracts such as transport, session access, sending, receiving, acknowledgements and resend.
 
 ### `client:ktor`
 Kotlin Multiplatform Ktor client transport adapter.
@@ -109,12 +109,27 @@ Transport ordering (milestone 6 follow-up): sessions converge only if, per (send
 
 Milestone 7 done: signed prekey lifecycle. Each signed prekey stores `createdAt` and, once replaced, `replacedAt`. `initialize()` rotates the current key after `PreKeyConfiguration.signedPreKeyRotationAge` (default 7 days). A replaced key keeps accepting delayed first contacts for `signedPreKeyGracePeriod` (default 30 days). After that, new initiations naming it fail with `SecureMessageClientException.ExpiredSignedPreKey`, and `initialize()` deletes its private key. Established sessions keep working. Retired session initiations record the local signed prekey they need and are pruned once it is deleted. Time comes from an injectable `kotlin.time.Clock`. Publication after rotation stays explicit (`publishPreKeys()`). SQLDelight schema version 4 adds nullable lifecycle columns; keys from before the upgrade start a full grace period on the next `initialize()`. This bounds, but does not close, the window in which a withheld initiation is accepted: wire v1 has no authenticated freshness. See [docs/signed-prekey-lifecycle.md](docs/signed-prekey-lifecycle.md).
 
+Milestone 8 done: logical message IDs, encrypted acknowledgements, duplicate suppression and resend. Every application message gets a random 128-bit `LogicalMessageId`, carried inside a versioned, encrypted reliability frame (`SecurePayloadCodec`; ciphertext wire v1 is unchanged). `send` returns `SentMessage` and keeps the message **with its plaintext** in `ClientStorage.pendingOutbound` until the recipient's encrypted acknowledgement arrives; an accepted HTTP request is not an acknowledgement. `decrypt` returns a `ReceiveResult` (`Message`, `Duplicate`, `Acknowledgement`): each (sender, logical ID) is delivered at most once, recorded in `ClientStorage.processedInbound`, and acknowledged automatically; acknowledgements are never acknowledged. `retryPendingMessages(remote)` encrypts pending messages again under the current session with the same logical ID, which recovers messages lost to a session collision, a lost envelope or a lost acknowledgement. SQLDelight schema version 5 adds the two tables. Breaking: `send`/`decrypt` changed, `encrypt` is no longer public, and both peers must run milestone 8 (raw plaintext from older peers is rejected). No exactly-once application side effects, no background retry, processed IDs are kept forever. See [docs/message-reliability.md](docs/message-reliability.md).
+
+```kotlin
+val sent = client.send(bob, "hello".encodeToByteArray())   // pending until acknowledged
+for (envelope in transport.receive(client.localAddress)) {
+    when (val result = client.decrypt(envelope)) {
+        is ReceiveResult.Message -> show(result.plaintext)    // once per logical message
+        is ReceiveResult.Duplicate, is ReceiveResult.Acknowledgement -> Unit
+    }
+}
+client.retryPendingMessages(bob)                            // e.g. after a SessionCollision
+```
+
+> Client storage now also holds the plaintext of sent messages until they are acknowledged. It is not encrypted.
+
 ## Next implementation steps
 
-1. Delivery acknowledgement and resend (messages lost to a session collision are currently dropped silently).
-2. Authenticated server API, device re-registration, persistent server storage.
-3. Safety numbers / manual identity verification, and a deliberate way to accept identity changes.
-4. Encryption at rest for client storage.
+1. Authenticated server API, device re-registration, persistent server storage.
+2. Safety numbers / manual identity verification, and a deliberate way to accept identity changes.
+3. Encryption at rest for client storage (keys, sessions and pending message plaintext).
+4. An application commit boundary for received messages and bounded dedup retention.
 5. Sealed sender.
 
 ## Gradle wrapper

@@ -58,11 +58,11 @@ class SignedPreKeyLifecycleTest {
 
         suspend fun publish(withOneTimePreKey: Boolean = true) = network.publish(client, withOneTimePreKey)
 
-        suspend fun send(to: Device, text: String) = client.send(to.address, text.encodeToByteArray())
+        suspend fun send(to: Device, text: String) = client.sendRaw(to.address, text.encodeToByteArray())
 
         suspend fun receiveOne(): EncryptedEnvelope = network.receive(address).single()
 
-        suspend fun decryptText(envelope: EncryptedEnvelope): String = client.decrypt(envelope).decodeToString()
+        suspend fun decryptText(envelope: EncryptedEnvelope): String = client.decryptRaw(envelope).decodeToString()
 
         suspend fun infos(): List<SignedPreKeyInfo> = storage.preKeys.signedPreKeyInfos()
 
@@ -242,7 +242,7 @@ class SignedPreKeyLifecycleTest {
 
         bob.client.rotateSignedPreKey()
         assertTrue(bob.hasSignedPreKey(0), "rotation itself never deletes")
-        assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { bob.client.decrypt(delayed) }
+        assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { bob.client.decryptRaw(delayed) }
         bob.client.initialize()
         assertFalse(bob.hasSignedPreKey(0))
     }
@@ -260,7 +260,7 @@ class SignedPreKeyLifecycleTest {
         // Refused as soon as the period is over, before maintenance deleted it.
         assertTrue(bob.hasSignedPreKey(0))
         val before = bob.snapshot(alice)
-        val error = assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { bob.client.decrypt(delayed) }
+        val error = assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { bob.client.decryptRaw(delayed) }
         assertEquals(ALICE, error.address)
         assertEquals(SignedPreKeyId(0), error.signedPreKeyId)
         assertUnchanged(before, bob.snapshot(alice))
@@ -268,19 +268,19 @@ class SignedPreKeyLifecycleTest {
         bob.client.initialize()
         assertFalse(bob.hasSignedPreKey(0), "private key deleted")
         assertNull(bob.storage.sessions.load(ALICE))
-        assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { bob.client.decrypt(delayed) }
+        assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { bob.client.decryptRaw(delayed) }
 
         // A new initiation from a stale bundle that still names key 0 fails too.
         val carol = device(CAROL)
         val staleBundle = network.bundles.getValue(BOB)
         assertEquals(SignedPreKeyId(0), staleBundle.signedPreKey.id)
         carol.send(bob, "stale bundle")
-        assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { bob.client.decrypt(bob.receiveOne()) }
+        assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { bob.client.decryptRaw(bob.receiveOne()) }
 
         bob.restart()
         bob.client.initialize()
         assertFalse(bob.hasSignedPreKey(0), "a deleted key does not come back after a restart")
-        assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { bob.client.decrypt(delayed) }
+        assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { bob.client.decryptRaw(delayed) }
     }
 
     @Test
@@ -291,7 +291,7 @@ class SignedPreKeyLifecycleTest {
             it.copy(signedPreKey = it.signedPreKey.copy(id = SignedPreKeyId(9)))
         }
         alice.send(bob, "never issued")
-        val error = assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decrypt(bob.receiveOne()) }
+        val error = assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decryptRaw(bob.receiveOne()) }
         assertEquals("Unknown signed prekey", error.message)
     }
 
@@ -349,7 +349,7 @@ class SignedPreKeyLifecycleTest {
         bob.client.initialize()
         assertEquals(after, bob.infos(), "negative ages are never due")
         assertEquals(highest, bob.storage.preKeys.highestSignedPreKeyId())
-        assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { bob.client.decrypt(delayed) }
+        assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { bob.client.decryptRaw(delayed) }
     }
 
     @Test
@@ -423,7 +423,7 @@ class SignedPreKeyLifecycleTest {
         clock.advanceBy(grace - 1.milliseconds)
         bob.client.initialize()
         assertTrue(bob.isRetired(alice, first))
-        assertFailsWith<SecureMessageClientException.StaleSessionInitiation> { bob.client.decrypt(replay) }
+        assertFailsWith<SecureMessageClientException.StaleSessionInitiation> { bob.client.decryptRaw(replay) }
 
         clock.advanceBy(1.milliseconds)
         bob.client.initialize()
@@ -432,7 +432,7 @@ class SignedPreKeyLifecycleTest {
 
         // Without the entry the replay still cannot become a session.
         val before = bob.snapshot(alice)
-        assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { bob.client.decrypt(replay) }
+        assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { bob.client.decryptRaw(replay) }
         assertUnchanged(before, bob.snapshot(alice))
         assertEquals(second, bob.origin(alice), "the current session is untouched")
         assertBidirectional(alice, bob, 1)
@@ -440,7 +440,7 @@ class SignedPreKeyLifecycleTest {
         bob.restart()
         bob.client.initialize()
         assertFalse(bob.isRetired(alice, first), "stays pruned after a restart")
-        assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { bob.client.decrypt(replay) }
+        assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { bob.client.decryptRaw(replay) }
         assertBidirectional(bob, alice, 2)
     }
 
@@ -501,7 +501,7 @@ class SignedPreKeyLifecycleTest {
         }
         val losingId = winner.initiationOf(losing)
 
-        assertFailsWith<SecureMessageClientException.SessionCollision> { winner.client.decrypt(losing) }
+        assertFailsWith<SecureMessageClientException.SessionCollision> { winner.client.decryptRaw(losing) }
         assertTrue(winner.isRetired(loser, losingId))
         assertEquals(setOf(SignedPreKeyId(0)), winner.storage.sessionInitiations.retiredSignedPreKeyIds())
 
@@ -509,7 +509,7 @@ class SignedPreKeyLifecycleTest {
         clock.advanceBy(grace)
         winner.client.initialize()
         assertFalse(winner.isRetired(loser, losingId))
-        assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { winner.client.decrypt(losing) }
+        assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { winner.client.decryptRaw(losing) }
     }
 
     // Failure atomicity
@@ -559,7 +559,7 @@ class SignedPreKeyLifecycleTest {
         bob.client.initialize()
         assertFalse(bob.hasSignedPreKey(0))
         assertFalse(bob.isRetired(alice, first))
-        assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { bob.client.decrypt(replay) }
+        assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { bob.client.decryptRaw(replay) }
         assertBidirectional(alice, bob, 1)
     }
 }

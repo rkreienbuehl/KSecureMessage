@@ -31,7 +31,7 @@ class FirstContactAtomicityTest {
         val bob = SecureMessageClient(BOB, failing, engine, network, config).apply { initialize() }
         network.publish(bob)
         val alice = SecureMessageClient(ALICE, InMemoryClientStorage(), engine, network, config).apply { initialize() }
-        alice.send(BOB, "Hello Bob".encodeToByteArray())
+        alice.sendRaw(BOB, "Hello Bob".encodeToByteArray())
         return bob to network.receive(BOB).single()
     }
 
@@ -45,7 +45,7 @@ class FirstContactAtomicityTest {
     @Test
     fun successCommitsSessionAndRemoval() = runTest {
         val (bob, envelope) = firstContact()
-        assertEquals("Hello Bob", bob.decrypt(envelope).decodeToString())
+        assertEquals("Hello Bob", bob.decryptRaw(envelope).decodeToString())
 
         assertNotNull(storage.sessions.load(ALICE))
         assertNull(storage.preKeys.oneTimePreKey(oneTimePreKey))
@@ -55,7 +55,7 @@ class FirstContactAtomicityTest {
     @Test
     fun tamperedMessageCommitsNothing() = runTest {
         val (bob, envelope) = firstContact()
-        assertFailsWith<ProtocolException> { bob.decrypt(envelope.tampered()) }
+        assertFailsWith<ProtocolException> { bob.decryptRaw(envelope.tampered()) }
         assertNothingCommitted()
     }
 
@@ -63,22 +63,22 @@ class FirstContactAtomicityTest {
     fun sessionStoreFailureKeepsTheOneTimePreKey() = runTest {
         val (bob, envelope) = firstContact()
         failing.failSessionStore = true
-        assertFailsWith<StorageFailure> { bob.decrypt(envelope) }
+        assertFailsWith<StorageFailure> { bob.decryptRaw(envelope) }
         assertNothingCommitted()
 
         failing.failSessionStore = false
-        assertEquals("Hello Bob", bob.decrypt(envelope).decodeToString())
+        assertEquals("Hello Bob", bob.decryptRaw(envelope).decodeToString())
     }
 
     @Test
     fun removalFailureRollsBackTheStoredSession() = runTest {
         val (bob, envelope) = firstContact()
         failing.failOneTimePreKeyRemoval = true
-        assertFailsWith<StorageFailure> { bob.decrypt(envelope) }
+        assertFailsWith<StorageFailure> { bob.decryptRaw(envelope) }
         assertNothingCommitted()
 
         failing.failOneTimePreKeyRemoval = false
-        assertEquals("Hello Bob", bob.decrypt(envelope).decodeToString())
+        assertEquals("Hello Bob", bob.decryptRaw(envelope).decodeToString())
         assertNull(storage.preKeys.oneTimePreKey(oneTimePreKey))
     }
 
@@ -86,11 +86,11 @@ class FirstContactAtomicityTest {
     fun pinFailureRollsBackSessionAndRemoval() = runTest {
         val (bob, envelope) = firstContact()
         failing.failRemoteIdentityStore = true
-        assertFailsWith<StorageFailure> { bob.decrypt(envelope) }
+        assertFailsWith<StorageFailure> { bob.decryptRaw(envelope) }
         assertNothingCommitted()
 
         failing.failRemoteIdentityStore = false
-        assertEquals("Hello Bob", bob.decrypt(envelope).decodeToString())
+        assertEquals("Hello Bob", bob.decryptRaw(envelope).decodeToString())
         assertNotNull(storage.remoteIdentities.identityKey(ALICE))
     }
 }

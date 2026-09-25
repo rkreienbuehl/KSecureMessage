@@ -38,7 +38,7 @@ class PreKeyPublicationTest {
         val storage = TransactionTrackingStorage(InMemoryClientStorage()).also { storages += it }
         val client = SecureMessageClient(address, storage, engine, network, PreKeyConfiguration(oneTimePreKeyTarget = TARGET))
 
-        suspend fun receiveText(): String = client.decrypt(network.receive(client.localAddress).single()).decodeToString()
+        suspend fun receiveText(): String = client.decryptRaw(network.receive(client.localAddress).single()).decodeToString()
     }
 
     private suspend fun device(address: DeviceAddress) = Device(address).also { it.client.initialize() }
@@ -50,7 +50,7 @@ class PreKeyPublicationTest {
         assertEquals(TARGET, network.server.preKeys.oneTimePreKeyCount(BOB))
         val alice = device(ALICE)
 
-        alice.client.send(BOB, "Hello Bob".encodeToByteArray())
+        alice.client.sendRaw(BOB, "Hello Bob".encodeToByteArray())
         assertEquals(TARGET - 1, network.server.preKeys.oneTimePreKeyCount(BOB), "the server consumed one")
         val first = network.receive(BOB).single()
         val preKeyMessage = assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(first.payload))
@@ -58,16 +58,16 @@ class PreKeyPublicationTest {
         // Handed out by the server, but Bob keeps the private key until the message arrives.
         assertNotNull(bob.storage.preKeys.oneTimePreKey(OneTimePreKeyId(0)))
 
-        assertEquals("Hello Bob", bob.client.decrypt(first).decodeToString())
+        assertEquals("Hello Bob", bob.client.decryptRaw(first).decodeToString())
         assertNotNull(bob.storage.sessions.load(ALICE))
         assertNull(bob.storage.preKeys.oneTimePreKey(OneTimePreKeyId(0)))
 
-        bob.client.send(ALICE, "Hello Alice".encodeToByteArray())
+        bob.client.sendRaw(ALICE, "Hello Alice".encodeToByteArray())
         val reply = network.receive(ALICE).single()
         assertIs<RatchetMessage>(CiphertextMessageCodec.decode(reply.payload))
-        assertEquals("Hello Alice", alice.client.decrypt(reply).decodeToString())
+        assertEquals("Hello Alice", alice.client.decryptRaw(reply).decodeToString())
 
-        alice.client.send(BOB, "again".encodeToByteArray())
+        alice.client.sendRaw(BOB, "again".encodeToByteArray())
         assertEquals("again", bob.receiveText())
         assertTrue(networkCalls >= 7)
 
@@ -83,16 +83,16 @@ class PreKeyPublicationTest {
         val alice = device(ALICE)
         val carol = device(CAROL)
 
-        alice.client.send(BOB, "from Alice".encodeToByteArray())
+        alice.client.sendRaw(BOB, "from Alice".encodeToByteArray())
         // Bob still holds private #0 and uploads it again before Alice's message arrives.
         bob.client.publishPreKeys()
-        carol.client.send(BOB, "from Carol".encodeToByteArray())
+        carol.client.sendRaw(BOB, "from Carol".encodeToByteArray())
 
         val (fromAlice, fromCarol) = network.receive(BOB)
         val carolMessage = assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(fromCarol.payload))
         assertEquals(OneTimePreKeyId(1), carolMessage.oneTimePreKeyId)
-        assertEquals("from Alice", bob.client.decrypt(fromAlice).decodeToString())
-        assertEquals("from Carol", bob.client.decrypt(fromCarol).decodeToString())
+        assertEquals("from Alice", bob.client.decryptRaw(fromAlice).decodeToString())
+        assertEquals("from Carol", bob.client.decryptRaw(fromCarol).decodeToString())
     }
 
     @Test
@@ -109,10 +109,10 @@ class PreKeyPublicationTest {
         repeat(TARGET) { network.server.preKeys.consumePreKeyBundle(BOB) }
         val alice = device(ALICE)
 
-        alice.client.send(BOB, "Hello Bob".encodeToByteArray())
+        alice.client.sendRaw(BOB, "Hello Bob".encodeToByteArray())
         val first = network.receive(BOB).single()
         assertNull(assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(first.payload)).oneTimePreKeyId)
-        assertEquals("Hello Bob", bob.client.decrypt(first).decodeToString())
+        assertEquals("Hello Bob", bob.client.decryptRaw(first).decodeToString())
     }
 
     @Test
@@ -128,7 +128,7 @@ class PreKeyPublicationTest {
         assertContentEquals(rotated.signature, bundle.signedPreKey.signature)
 
         val alice = device(ALICE)
-        alice.client.send(BOB, "after rotation".encodeToByteArray())
+        alice.client.sendRaw(BOB, "after rotation".encodeToByteArray())
         assertEquals("after rotation", bob.receiveText())
     }
 
@@ -136,7 +136,7 @@ class PreKeyPublicationTest {
     fun fetchingAnUnknownDeviceFails() = runTest {
         val alice = device(ALICE)
         assertFailsWith<SecureMessageTransportException.DeviceNotFound> {
-            alice.client.send(BOB, "nobody home".encodeToByteArray())
+            alice.client.sendRaw(BOB, "nobody home".encodeToByteArray())
         }
         assertNull(alice.storage.sessions.load(BOB))
     }

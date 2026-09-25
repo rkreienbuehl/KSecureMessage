@@ -31,4 +31,17 @@ sealed class ProtocolException(
 
     /** The message or one of its fields exceeds a wire format size limit. */
     class MessageTooLarge(message: String) : ProtocolException(message)
+
+    // Reliability frame errors raised by SecurePayloadCodec.
+
+    /** The decrypted payload uses a reliability-frame version this implementation does not support. */
+    class UnsupportedSecurePayloadVersion(val version: Int) :
+        ProtocolException("Unsupported secure payload version $version")
+
+    /**
+     * The decrypted payload is not a well-formed reliability frame: truncated,
+     * trailing bytes, unknown type or an invalid field. Also raised for
+     * plaintext from a peer that does not use the frame (before milestone 8).
+     */
+    class MalformedSecurePayload(message: String, cause: Throwable? = null) : ProtocolException(message, cause)
 }
