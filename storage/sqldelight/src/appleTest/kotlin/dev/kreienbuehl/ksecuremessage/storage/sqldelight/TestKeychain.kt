@@ -83,8 +83,4 @@ abstract class KeychainStorageTest(private val dataProtection: Boolean) : Platfo
     override fun corruptState(namespace: String) = keychain.truncateKey(namespace)
 
     override fun deleteProviderState(namespace: String) = keychain.deleteOrFail(namespace)
-
-    // A write shows whether this process may use the keychain; a lookup may not.
-    override fun unavailableReason(): String? =
-        keychain.delete("availability-probe").takeIf { it != errSecSuccess }?.let { "keychain not usable by this test process (OSStatus $it)" }
 }

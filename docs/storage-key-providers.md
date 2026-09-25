@@ -210,19 +210,168 @@ iOS (`iosArm64`, `iosX64`, `iosSimulatorArm64`) and macOS (`macosArm64`,
   byte-identical and creates no alias, namespace-swapped entry fails,
   leftover Keystore key reused) run instrumented on a device or emulator
   (`connectedAndroidDeviceTest`); `WrappedKeyFileTest` runs on the host.
-- Apple: the contract runs on the data protection keychain
-  (`AppleStorageKeyProviderContractTest`) and on the macOS legacy keychain
-  (`LegacyFileKeychainContractTest`). Kotlin/Native test binaries are
-  unsigned: on macOS the data protection keychain answers -34018, in the iOS
-  simulator runner there is no keychain (-25291). There the data protection
-  tests print `SKIPPED` with the OSStatus and check nothing; running them
-  needs a signed host application.
+- Apple, plain test tasks (`macos*Test`, `ios*Test`, unsigned Kotlin/Native
+  binaries): the contract on the macOS legacy keychain
+  (`LegacyFileKeychainContractTest`, `LegacyFileKeychainStorageTest`) and the
+  missing-entitlement behavior: `KeychainWithoutEntitlementTest` (the default
+  provider fails closed; on macOS writes get -34018 while lookups answer "not
+  found", so `key` returns `null`; the iOS simulator runner has no keychain,
+  -25291) and `NoLegacyFallbackTest` (macOS: after -34018 nothing is in the
+  legacy keychain). These tasks exclude every `*DataProtection*` test: nothing
+  is skipped or reported as passed without running.
+- Apple, data protection keychain: every `*DataProtection*` test runs only in
+  the signed keychain host (next section) and fails, never skips, when the
+  keychain is unusable there.
 - `PlatformKeyProviderStorageTest` (`storage:sqldelight`): new database and
   restart, milestone 8 migration with a new platform key, encrypted database
   with lost or damaged provider state (fails twice, database unchanged, no
   replacement), database bound to an unknown key ID. Subclassed for Android
   (instrumented; the whole SQLite suite runs on the device), the data
-  protection keychain and the macOS legacy keychain.
+  protection keychain (`DataProtectionKeychainStorageTest`, signed host) and
+  the macOS legacy keychain.
+
+## Signed keychain host (Apple data protection keychain tests)
+
+The data protection keychain needs keychain entitlements, which bare
+Kotlin/Native test binaries do not have. `apple-keychain-host/run.sh` wraps
+the test executable that Gradle already builds (`linkDebugTest<Target>`,
+`test.kexe`) in a minimal `.app` with those entitlements and runs the
+`*DataProtection*` tests in it with the Kotlin/Native test runner. There is no
+Xcode project and no Swift; the tests are the Kotlin tests.
+
+```
+test.kexe -> KeychainHost.app (Info.plist, bundle ID, entitlements, signature)
+          -> kotlin.test runner --ktest_filter=*DataProtection*
+          -> AppleStorageKeyProvider(namespace) (data protection keychain)
+          -> Security.framework -> StorageKeyProviderContractTest,
+             PlatformKeyProviderStorageTest (SQLDelight)
+```
+
+```bash
+./gradlew appleKeychainHostTest                 # macosArm64 + iosSimulatorArm64
+./gradlew iosSimulatorArm64KeychainHostTest     # needs a booted simulator, no signing
+./gradlew macosArm64KeychainHostTest            # needs macOS signing (below)
+./gradlew :storage:keyprovider:apple:iosSimulatorArm64KeychainHostPurge  # after an interrupted run
+```
+
+Each target task runs, one host at a time: the provider tests
+(`:storage:keyprovider:apple`), the SQLDelight tests and the relaunch test
+(`:storage:sqldelight`), then `DataProtectionLeftoverCheck` (no
+`dev.kreienbuehl.ksecuremessage.storage.*` item left in the host's groups).
+Every run prints one result line per module:
+`KEYCHAIN HOST <module> <target>: PASSED (...)`, `FAILED — ...` or
+`NOT EXECUTED — signing/entitlement environment unavailable (<reason>)`.
+NOT EXECUTED keeps the build green unless `ksm.apple.keychainHost.required=true`.
+A run with zero tests, a missing runner summary or any failed test is FAILED.
+The tasks are not part of `build`/`check`, like `connectedAndroidDeviceTest`.
+
+What runs in the host:
+
+- `DataProtectionKeychainContractTest`: the whole contract with the default
+  access group (first creation, idempotency, `key(createdId)`, restart,
+  unknown ID creates nothing, namespaces, lost item never replaced, 31-byte
+  item fails twice, 16 concurrent first calls on separate instances).
+- `DataProtectionAccessGroupContractTest`: the same contract with an explicit
+  entitled group (`<prefix>.<bundle ID>.shared`).
+- `DataProtectionKeychainItemTest`: the item as the Keychain reports it
+  (service, account `v1/1`, `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`,
+  not synchronizable, default group = first `keychain-access-groups` entry,
+  32 bytes); an explicit group holds the item and the default group does not;
+  a group the host is not entitled to fails with -34018 twice and nothing is
+  written elsewhere (no retry without the group); lookups never recreate a
+  deleted item.
+- `DataProtectionNotLegacyTest` (macOS): the item is in the data protection
+  keychain and not in the file-based one.
+- `DataProtectionKeychainStorageTest`: `PlatformKeyProviderStorageTest` (new
+  database and restart, milestone 8 migration with a new key, lost item and
+  damaged item: `KeyUnavailable` twice, database unchanged, no replacement;
+  database bound to an unknown key ID creates nothing).
+- `DataProtectionRelaunchTest`: persistence across processes. Three separate
+  launches share one `relaunch-<random>` namespace: `create` (new database,
+  new key, known identity stored), `verify` (another process opens the
+  database with a new provider and decrypts the identity, which only the same
+  key can do), `cleanup` (item and database deleted). Key bytes are never
+  printed or compared outside the process.
+
+Entitlements (found by experiment in the simulator host):
+
+- No keychain entitlement: every call fails with -34018.
+- `application-identifier` alone: the default provider works (items go to
+  the application identifier group); an explicit group fails with -34018.
+- `keychain-access-groups` alone: default and explicit groups work.
+- The host uses both, like a real application: application identifier
+  `<prefix>.<bundle ID>` and `keychain-access-groups` =
+  `[<prefix>.<bundle ID>, <prefix>.<bundle ID>.shared]`. Production
+  applications have their own identifier and groups; `accessGroup` must be one
+  of the application's entitled groups.
+
+### iOS simulator host
+
+Ad-hoc signed; no team, certificate or profile. The simulator reads
+entitlements from a `__TEXT,__entitlements` section, which the
+`iosSimulatorArm64` test binaries of both modules link from
+`apple-keychain-host/ios-simulator.entitlements` (fixed test values: prefix
+`KSMTEST000`, bundle ID `dev.kreienbuehl.ksecuremessage.keychainhost`). The
+script installs the app (`simctl install`), launches it with
+`simctl launch --console-pty` and `SIMCTL_CHILD_*` environment, and decides
+by the runner's summary (`simctl` does not report the exit code). It checks
+that the installed binary is the one it built.
+
+### macOS host
+
+Restricted entitlements (`com.apple.application-identifier`,
+`keychain-access-groups`) need an Apple Development signature and a macOS
+development provisioning profile that allows them; without the profile the
+system refuses to launch the binary. The script copies the profile to
+`Contents/embedded.provisionprofile`, fills `macos.entitlements.template`
+(`com.apple.application-identifier`, `com.apple.developer.team-identifier`,
+`keychain-access-groups`) and signs with `codesign --entitlements`, then
+prints the effective entitlements (`codesign -d --entitlements -`). No
+signing material is in the repository; configure it locally, for example in
+`~/.gradle/gradle.properties`:
+
+```properties
+ksm.apple.teamId=<your team ID>
+ksm.apple.macosProfile=/path/to/KSecureMessage_Keychain_Host.provisionprofile
+# optional
+ksm.apple.bundleId=dev.kreienbuehl.ksecuremessage.keychainhost
+ksm.apple.signingIdentity=<SHA-1 of the Apple Development identity>   # default: the one of the team
+ksm.apple.keychainHost.required=true
+```
+
+(or `KSM_APPLE_TEAM_ID`, `KSM_APPLE_MACOS_PROFILE`, ...). To get the profile,
+register the App ID (with your own bundle ID if you like) and create a macOS
+App Development profile for it that includes this Mac in the developer portal,
+or let Xcode do it: create a macOS app target with that bundle ID, your team
+and "Automatically manage signing", add a `keychain-access-groups` entitlement,
+and build it once in the Xcode app. Xcode stores the profile ("Mac Team
+Provisioning Profile: <bundle ID>") in
+`~/Library/Developer/Xcode/UserData/Provisioning Profiles`. A free Personal
+Team works too: there the portal is not available and `xcodebuild` cannot
+register the Mac ("Your team has no devices"), but building once in the Xcode
+app registers it. The profile used here allows
+`com.apple.application-identifier` = `<team>.<bundle ID>`,
+`com.apple.developer.team-identifier` and `keychain-access-groups` =
+`<team>.*`, which covers both host groups.
+
+Observed on the signed macOS host: a query without
+`kSecUseDataProtectionKeychain` (as `legacyFileKeychain` issues it) searches
+both keychains in an entitled process and so also finds data protection
+items; only `kSecUseDataProtectionKeychain = false` restricts it to the
+file-based keychain. A synchronizable attribute in a query routes it to the
+data protection keychain. This does not affect the default provider, which
+always sets the flag; the legacy provider is meant for processes without the
+entitlement, where the data protection keychain is unreachable.
+
+### Execution status
+
+| Target | Data protection keychain |
+|---|---|
+| macosArm64 | EXECUTED (signed macOS host, Apple Development + Mac Team Provisioning Profile) |
+| macosX64 | EXECUTED (same host, x86_64 binary under Rosetta) |
+| iosSimulatorArm64 | EXECUTED (entitled simulator host) |
+| iosX64 | NOT EXECUTED (compile only; no x86 simulator runtime) |
+| iosArm64 | NOT EXECUTED (compile only; needs a device) |
 
 ## Not covered
 

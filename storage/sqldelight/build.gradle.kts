@@ -34,6 +34,11 @@ kotlin {
     )
     val nativeTargets = appleTargets + listOf(linuxX64(), mingwX64())
 
+    // Simulated entitlements for the signed keychain host (apple-keychain-host/).
+    iosSimulatorArm64().binaries.getTest("DEBUG").linkerOpts(
+        "-sectcreate", "__TEXT", "__entitlements", rootProject.file("apple-keychain-host/ios-simulator.entitlements").absolutePath,
+    )
+
     sourceSets {
         commonMain.dependencies {
             api(project(":storage:core"))
@@ -103,3 +108,10 @@ nativeTestHosts.forEach { (target, supported) ->
     tasks.matching { it.name == "linkDebugTest$target" || it.name == "${target.replaceFirstChar(Char::lowercase)}Test" }
         .configureEach { onlyIf { supported } }
 }
+
+// The simulated entitlements are linked in: relink when they change.
+tasks.named("linkDebugTestIosSimulatorArm64") { inputs.file(rootProject.file("apple-keychain-host/ios-simulator.entitlements")) }
+
+// DataProtection tests run only in the signed keychain host (docs/storage-key-providers.md).
+extra["keychainHostModes"] = listOf("tests", "relaunch")
+apply(from = rootProject.file("apple-keychain-host/keychain-host.gradle.kts"))

@@ -7,7 +7,6 @@ import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.test.TestResult
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlin.random.Random
@@ -23,7 +22,8 @@ import kotlin.test.assertNull
  * Behavior every persistent [StorageKeyProvider] must have
  * (docs/storage-key-providers.md). Subclass it in a platform provider's
  * tests. Each test uses fresh random namespaces and deletes their state
- * afterwards, since platform key stores outlive the test process.
+ * afterwards, since platform key stores outlive the test process. Run it
+ * only where the platform store is usable: it fails otherwise, never skips.
  */
 abstract class StorageKeyProviderContractTest {
     /**
@@ -50,39 +50,24 @@ abstract class StorageKeyProviderContractTest {
      */
     protected abstract val lossKeepsDetectableState: Boolean
 
-    /**
-     * Why the platform store cannot be used where these tests run, or `null`.
-     * Tests then print the reason and check nothing.
-     */
-    protected open fun unavailableReason(): String? = null
-
     private val namespace = "contract-${Random.nextLong().toULong()}"
     private val otherNamespace = "$namespace-other"
 
     @AfterTest
     fun deleteState() {
-        if (unavailableReason() != null) return
         deleteTestState(namespace)
         deleteTestState(otherNamespace)
     }
 
-    private fun contract(name: String, block: suspend () -> Unit): TestResult = runTest {
-        val reason = unavailableReason()
-        if (reason != null) {
-            println("SKIPPED ${this@StorageKeyProviderContractTest::class.simpleName}.$name: $reason")
-            return@runTest
-        }
-        block()
-    }
 
     @Test
-    fun firstLoadCreatesA32ByteKey() = contract("firstLoadCreatesA32ByteKey") {
+    fun firstLoadCreatesA32ByteKey() = runTest {
         val key = provider(namespace).loadOrCreateKey()
         assertEquals(StorageEncryptionKey.SIZE, key.copyBytes().size)
     }
 
     @Test
-    fun loadOrCreateKeyIsIdempotent() = contract("loadOrCreateKeyIsIdempotent") {
+    fun loadOrCreateKeyIsIdempotent() = runTest {
         val provider = provider(namespace)
         val first = provider.loadOrCreateKey()
         val second = provider.loadOrCreateKey()
@@ -90,21 +75,21 @@ abstract class StorageKeyProviderContractTest {
     }
 
     @Test
-    fun keyReturnsTheCreatedKey() = contract("keyReturnsTheCreatedKey") {
+    fun keyReturnsTheCreatedKey() = runTest {
         val provider = provider(namespace)
         val created = provider.loadOrCreateKey()
         assertSameKey(created, provider.key(created.id))
     }
 
     @Test
-    fun restartedProviderReturnsTheSameKey() = contract("restartedProviderReturnsTheSameKey") {
+    fun restartedProviderReturnsTheSameKey() = runTest {
         val created = provider(namespace).loadOrCreateKey()
         assertSameKey(created, provider(namespace).key(created.id))
         assertSameKey(created, provider(namespace).loadOrCreateKey())
     }
 
     @Test
-    fun unknownKeyIdIsNotReturnedAndCreatesNothing() = contract("unknownKeyIdIsNotReturnedAndCreatesNothing") {
+    fun unknownKeyIdIsNotReturnedAndCreatesNothing() = runTest {
         val provider = provider(namespace)
         assertNull(provider.key(StorageKeyId(1)), "no key before creation")
         assertNull(provider(namespace).key(StorageKeyId(1)), "key() created nothing")
@@ -117,7 +102,7 @@ abstract class StorageKeyProviderContractTest {
     }
 
     @Test
-    fun namespacesHaveSeparateKeys() = contract("namespacesHaveSeparateKeys") {
+    fun namespacesHaveSeparateKeys() = runTest {
         val a = provider(namespace).loadOrCreateKey()
         assertNull(provider(otherNamespace).key(a.id), "another namespace has no key before creating one")
 
@@ -128,7 +113,7 @@ abstract class StorageKeyProviderContractTest {
     }
 
     @Test
-    fun lostBackingKeyIsNeverReplaced() = contract("lostBackingKeyIsNeverReplaced") {
+    fun lostBackingKeyIsNeverReplaced() = runTest {
         val created = provider(namespace).loadOrCreateKey()
         loseBackingKey(namespace)
 
@@ -142,7 +127,7 @@ abstract class StorageKeyProviderContractTest {
     }
 
     @Test
-    fun corruptStateFailsClosed() = contract("corruptStateFailsClosed") {
+    fun corruptStateFailsClosed() = runTest {
         val created = provider(namespace).loadOrCreateKey()
         corruptState(namespace)
 
@@ -154,7 +139,7 @@ abstract class StorageKeyProviderContractTest {
     }
 
     @Test
-    fun concurrentFirstCreationYieldsOneKey() = contract("concurrentFirstCreationYieldsOneKey") {
+    fun concurrentFirstCreationYieldsOneKey() = runTest {
         val keys = withContext(Dispatchers.Default) {
             (1..16).map { async { provider(namespace).loadOrCreateKey() } }.awaitAll()
         }

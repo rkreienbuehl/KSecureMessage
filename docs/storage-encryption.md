@@ -192,7 +192,8 @@ val storage = SqlDelightClientStorage.open(driver, keyProvider)
   tests. It keeps keys in memory and is not secure key storage.
 - Platform providers (milestone 10): `AndroidStorageKeyProvider` (random
   storage key wrapped by an Android Keystore key) and
-  `AppleStorageKeyProvider` (key in the Keychain), see
+  `AppleStorageKeyProvider` (key in the Keychain; its data protection
+  keychain default is tested in a signed host application), see
   [storage-key-providers.md](storage-key-providers.md). Other platforms
   (JVM/desktop/server: an application or OS secret store; JS/Wasm: a
   non-extractable WebCrypto key or an application secret) still need an

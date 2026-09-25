@@ -7,7 +7,6 @@ import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionExcept
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionKey
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyProvider
-import kotlinx.coroutines.test.TestResult
 import kotlinx.coroutines.test.runTest
 import kotlin.random.Random
 import kotlin.test.AfterTest
@@ -40,26 +39,15 @@ abstract class PlatformKeyProviderStorageTest {
     /** Deletes everything the provider stored for [namespace]. */
     protected abstract fun deleteProviderState(namespace: String)
 
-    /** Why the platform store cannot be used by this test process, or `null`. */
-    protected open fun unavailableReason(): String? = null
-
     private val database = TestDatabase()
     private val namespace = "storage-${Random.nextLong().toULong()}"
 
     @AfterTest
     fun cleanUp() {
         database.close()
-        if (unavailableReason() == null) deleteProviderState(namespace)
+        deleteProviderState(namespace)
     }
 
-    private fun platform(name: String, block: suspend () -> Unit): TestResult = runTest {
-        val reason = unavailableReason()
-        if (reason != null) {
-            println("SKIPPED ${this@PlatformKeyProviderStorageTest::class.simpleName}.$name: $reason")
-            return@runTest
-        }
-        block()
-    }
 
     /** Opens the database file like an application start, with a new provider instance. */
     private suspend fun open(provider: StorageKeyProvider = provider(namespace)): SqlDelightClientStorage {
@@ -96,7 +84,7 @@ abstract class PlatformKeyProviderStorageTest {
     }
 
     @Test
-    fun newDatabaseKeepsItsKeyAcrossRestarts() = platform("newDatabaseKeepsItsKeyAcrossRestarts") {
+    fun newDatabaseKeepsItsKeyAcrossRestarts() = runTest {
         val key = encryptedDatabase()
         assertEquals(key.id.value.toLong(), boundKeyId())
 
@@ -106,7 +94,7 @@ abstract class PlatformKeyProviderStorageTest {
     }
 
     @Test
-    fun milestone8DatabaseIsEncryptedWithANewPlatformKey() = platform("milestone8DatabaseIsEncryptedWithANewPlatformKey") {
+    fun milestone8DatabaseIsEncryptedWithANewPlatformKey() = runTest {
         val old = database.open(Version5Schema)
         old.exec("INSERT INTO local_identity (id, public_key, private_key) VALUES (0, ?, ?)", PUBLIC, SECRET)
 
@@ -121,7 +109,7 @@ abstract class PlatformKeyProviderStorageTest {
     }
 
     @Test
-    fun encryptedDatabaseWithLostBackingKeyFailsClosed() = platform("encryptedDatabaseWithLostBackingKeyFailsClosed") {
+    fun encryptedDatabaseWithLostBackingKeyFailsClosed() = runTest {
         val key = encryptedDatabase()
         val before = raw().dump()
         loseBackingKey(namespace)
@@ -134,7 +122,7 @@ abstract class PlatformKeyProviderStorageTest {
     }
 
     @Test
-    fun encryptedDatabaseWithCorruptProviderStateFailsClosed() = platform("encryptedDatabaseWithCorruptProviderStateFailsClosed") {
+    fun encryptedDatabaseWithCorruptProviderStateFailsClosed() = runTest {
         val key = encryptedDatabase()
         val before = raw().dump()
         corruptState(namespace)
@@ -147,7 +135,7 @@ abstract class PlatformKeyProviderStorageTest {
     }
 
     @Test
-    fun databaseBoundToAnUnknownKeyIdCreatesNothing() = platform("databaseBoundToAnUnknownKeyIdCreatesNothing") {
+    fun databaseBoundToAnUnknownKeyIdCreatesNothing() = runTest {
         val foreign = StorageEncryptionKey(StorageKeyId(7), ByteArray(32) { 0x44 })
         open(StaticStorageKeyProvider(foreign)).identity.store(LocalIdentity(PUBLIC, SECRET))
 

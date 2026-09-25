@@ -145,11 +145,13 @@ val storage = SqlDelightClientStorage.open(driver, AndroidStorageKeyProvider(con
 val storage = SqlDelightClientStorage.open(driver, AppleStorageKeyProvider(namespace = "account-42"))
 ```
 
+Milestone 10.1 done: the Apple data protection keychain path is tested in a real entitled process. `apple-keychain-host/` wraps the Kotlin/Native test executables in a signed `.app` (ad-hoc with simulated entitlements in the iOS simulator; Apple Development signature and provisioning profile on macOS, configured locally, never in the repository) and runs the provider contract, the SQLDelight integration and a three-process relaunch test against the default `AppleStorageKeyProvider` (`./gradlew appleKeychainHostTest`). Results are PASSED, FAILED or NOT EXECUTED; tests no longer print `SKIPPED` and pass. No provider, storage format, wire, protocol or messaging API change. See [docs/storage-key-providers.md](docs/storage-key-providers.md#signed-keychain-host-apple-data-protection-keychain-tests).
+
 ## Next implementation steps
 
-1. Authenticated server API, device re-registration, persistent server storage.
-2. Safety numbers / manual identity verification, and a deliberate way to accept identity changes.
-3. Storage key rotation.
+1. Storage key rotation and safe retirement (milestone 11).
+2. Authenticated server API, device re-registration, persistent server storage.
+3. Safety numbers / manual identity verification, and a deliberate way to accept identity changes.
 4. An application commit boundary for received messages and bounded dedup retention.
 5. Sealed sender.
 

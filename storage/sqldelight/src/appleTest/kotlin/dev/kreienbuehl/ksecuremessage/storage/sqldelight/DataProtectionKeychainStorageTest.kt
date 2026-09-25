@@ -4,10 +4,10 @@ import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyProvider
 import dev.kreienbuehl.ksecuremessage.storage.keyprovider.apple.AppleStorageKeyProvider
 
 /**
- * Storage with the default (data protection keychain) provider. Skipped
- * where the test process has no keychain entitlements: macOS test binaries
- * and the iOS simulator runner.
+ * Storage with the default (data protection keychain) provider. Needs
+ * keychain entitlements: runs only in the signed host
+ * (`appleKeychainHostTest`); the plain test tasks exclude it.
  */
-class AppleKeyProviderStorageTest : KeychainStorageTest(dataProtection = true) {
+class DataProtectionKeychainStorageTest : KeychainStorageTest(dataProtection = true) {
     override fun provider(namespace: String): StorageKeyProvider = AppleStorageKeyProvider(namespace)
 }
