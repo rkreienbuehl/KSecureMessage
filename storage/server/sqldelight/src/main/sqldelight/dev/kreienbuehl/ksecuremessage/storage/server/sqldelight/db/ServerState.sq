@@ -1,0 +1,140 @@
+-- Server state, schema version 1 (docs/server-storage.md). Independent of the
+-- client schema. Holds only public keys, opaque encrypted envelopes, routing
+-- metadata and replay metadata: never client private keys, session secrets
+-- or application plaintext. Timestamps are epoch milliseconds.
+--
+-- Uniqueness is enforced by the primary keys below, not only by Kotlin checks.
+-- Rows are never written with INSERT OR REPLACE: a conflict must never
+-- overwrite what is stored.
+
+-- Single row that marks a database created with this schema. format 1 is the
+-- only format; open() refuses a database without it.
+CREATE TABLE server_storage (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    format INTEGER NOT NULL
+);
+
+INSERT INTO server_storage (id, format) VALUES (0, 1);
+
+-- Device authentication public key per device. Added once, never replaced.
+CREATE TABLE device_registration (
+    user_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    auth_public_key BLOB NOT NULL,
+    PRIMARY KEY (user_id, device_id)
+);
+
+-- Accepted request nonces per device with their request timestamp, kept
+-- until the timestamp leaves the validity window.
+CREATE TABLE authentication_nonce (
+    user_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    nonce BLOB NOT NULL,
+    request_timestamp INTEGER NOT NULL,
+    PRIMARY KEY (user_id, device_id, nonce)
+);
+
+CREATE INDEX authentication_nonce_timestamp ON authentication_nonce (request_timestamp);
+
+-- Identity key and current signed prekey per device.
+CREATE TABLE device_prekey_state (
+    user_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    identity_key BLOB NOT NULL,
+    signed_pre_key_id INTEGER NOT NULL,
+    signed_pre_key BLOB NOT NULL,
+    signed_pre_key_signature BLOB NOT NULL,
+    PRIMARY KEY (user_id, device_id)
+);
+
+-- Published one-time prekeys not yet handed out.
+CREATE TABLE available_one_time_prekey (
+    user_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    pre_key_id INTEGER NOT NULL,
+    public_key BLOB NOT NULL,
+    PRIMARY KEY (user_id, device_id, pre_key_id)
+);
+
+-- IDs of handed-out one-time prekeys. A consumed ID is never available again.
+CREATE TABLE consumed_one_time_prekey (
+    user_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    pre_key_id INTEGER NOT NULL,
+    PRIMARY KEY (user_id, device_id, pre_key_id)
+);
+
+-- Queued envelopes. AUTOINCREMENT never reuses a sequence, also after a drain
+-- or a restart, so ORDER BY sequence is the global enqueue order, which keeps
+-- every (sender, recipient) stream in order.
+CREATE TABLE mailbox_message (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_user_id TEXT NOT NULL,
+    sender_device_id TEXT NOT NULL,
+    recipient_user_id TEXT NOT NULL,
+    recipient_device_id TEXT NOT NULL,
+    envelope_id TEXT NOT NULL,
+    protocol_version INTEGER NOT NULL,
+    payload BLOB NOT NULL
+);
+
+CREATE INDEX mailbox_message_recipient ON mailbox_message (recipient_user_id, recipient_device_id, sequence);
+
+selectFormat:
+SELECT format FROM server_storage WHERE id = 0;
+
+selectRegistration:
+SELECT auth_public_key FROM device_registration WHERE user_id = ? AND device_id = ?;
+
+insertRegistration:
+INSERT OR IGNORE INTO device_registration (user_id, device_id, auth_public_key) VALUES (?, ?, ?);
+
+pruneNonces:
+DELETE FROM authentication_nonce WHERE request_timestamp < ?;
+
+insertNonce:
+INSERT OR IGNORE INTO authentication_nonce (user_id, device_id, nonce, request_timestamp) VALUES (?, ?, ?, ?);
+
+selectPreKeyState:
+SELECT identity_key, signed_pre_key_id, signed_pre_key, signed_pre_key_signature
+FROM device_prekey_state WHERE user_id = ? AND device_id = ?;
+
+insertPreKeyState:
+INSERT INTO device_prekey_state (user_id, device_id, identity_key, signed_pre_key_id, signed_pre_key, signed_pre_key_signature)
+VALUES (?, ?, ?, ?, ?, ?);
+
+updateSignedPreKey:
+UPDATE device_prekey_state SET signed_pre_key_id = ?, signed_pre_key = ?, signed_pre_key_signature = ?
+WHERE user_id = ? AND device_id = ?;
+
+selectOneTimePreKey:
+SELECT public_key FROM available_one_time_prekey WHERE user_id = ? AND device_id = ? AND pre_key_id = ?;
+
+selectLowestOneTimePreKey:
+SELECT pre_key_id, public_key FROM available_one_time_prekey
+WHERE user_id = ? AND device_id = ? ORDER BY pre_key_id ASC LIMIT 1;
+
+insertOneTimePreKey:
+INSERT INTO available_one_time_prekey (user_id, device_id, pre_key_id, public_key) VALUES (?, ?, ?, ?);
+
+deleteOneTimePreKey:
+DELETE FROM available_one_time_prekey WHERE user_id = ? AND device_id = ? AND pre_key_id = ?;
+
+countOneTimePreKeys:
+SELECT count(*) FROM available_one_time_prekey WHERE user_id = ? AND device_id = ?;
+
+isConsumed:
+SELECT count(*) FROM consumed_one_time_prekey WHERE user_id = ? AND device_id = ? AND pre_key_id = ?;
+
+insertConsumed:
+INSERT INTO consumed_one_time_prekey (user_id, device_id, pre_key_id) VALUES (?, ?, ?);
+
+insertMessage:
+INSERT INTO mailbox_message (sender_user_id, sender_device_id, recipient_user_id, recipient_device_id, envelope_id, protocol_version, payload)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+selectMessages:
+SELECT * FROM mailbox_message WHERE recipient_user_id = ? AND recipient_device_id = ? ORDER BY sequence ASC;
+
+deleteMessagesUpTo:
+DELETE FROM mailbox_message WHERE recipient_user_id = ? AND recipient_device_id = ? AND sequence <= ?;

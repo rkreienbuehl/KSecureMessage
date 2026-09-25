@@ -223,8 +223,10 @@ request that fails steps 1–4 consumes nothing.
 - **Retention**: an entry is needed only while its timestamp is inside the
   window; afterwards step 3 rejects the request anyway. Every claim first
   removes entries with `timestamp < now − 5 min` (in the same lock hold in the
-  in-memory repository). A persistent server repository will need equivalent
-  retention.
+  in-memory repository, in the same SQLite transaction in
+  `storage:server:sqldelight`, see docs/server-storage.md). With persistent
+  storage, claimed nonces survive a server restart: a request replayed after
+  a restart, while its timestamp is still in the window, is rejected.
 - **Clock**: the window assumes the server clock does not jump back by more
   than the window; after such a jump a pruned nonce could be accepted again
   until the clock catches up.
@@ -234,7 +236,10 @@ request that fails steps 1–4 consumes nothing.
 - Registration: one atomic `register` (compare-and-insert).
 - Replay: one atomic `claim` per request, before the operation. There is no
   transaction spanning the claim and the operation: M12 guarantees *at most
-  one execution per nonce*, not exactly-once.
+  one execution per nonce*, not exactly-once. The SQLDelight adapter keeps
+  this boundary: the claim commits in its own transaction, the publication or
+  drain runs in a separate one, so a failed operation never un-claims the
+  nonce.
 - Protected operations take an `AuthenticatedDevice`, which only
   `DeviceAuthenticator` can create (internal constructor) and which names the
   endpoint and address it was issued for. `publishPreKeys` and `receive`
@@ -288,8 +293,8 @@ requests for another address. Applications never build signatures.
 
 - First registration is not proof of human or account ownership.
 - No auth-key recovery, reset, rotation, deletion or multiple keys per device.
-- No persistent server storage: registrations, nonces, prekeys and mailboxes
-  live in `InMemoryServerStorage` (`storage:server:inmemory`).
+- Persistent server storage (`storage:server:sqldelight`, M13) is SQLite
+  only, single node, unencrypted (docs/server-storage.md).
 - The server still sees sender and recipient metadata; `POST /v1/messages`
   does not authenticate the envelope sender (no sealed sender).
 - Replay protection is at most once per signed request, not exactly-once

@@ -34,7 +34,8 @@ KSecureMessage/
     │   ├── inmemory/
     │   └── sqldelight/
     ├── server/
-    │   └── inmemory/
+    │   ├── inmemory/
+    │   └── sqldelight/
     ├── keyprovider/
     │   ├── android/
     │   └── apple/
@@ -70,6 +71,9 @@ Non-persistent `InMemoryClientStorage` for tests and examples. Transactions are 
 
 ### `storage:server:inmemory`
 Non-persistent `InMemoryServerStorage` (prekey, mailbox, device registration and authentication nonce repositories) for tests and examples. Each repository operation is atomic.
+
+### `storage:server:sqldelight`
+Persistent `SqlDelightServerStorage` on SQLite via SQLDelight, JVM only. The host application creates, configures and closes the `SqlDriver`; the adapter only runs the repository logic, each operation in one SQLite transaction. SQLite dialect only: a configurable driver does not mean support for arbitrary SQL databases. See [docs/server-storage.md](docs/server-storage.md).
 
 ### `storage:client:sqldelight`
 Persistent `ClientStorage` on SQLite via SQLDelight, for all client targets. The application supplies the platform driver and a `StorageKeyProvider`; key pairs, session state and pending message plaintext are stored as encrypted records, see [docs/storage.md](docs/storage.md) and [docs/storage-encryption.md](docs/storage-encryption.md). The storage key can be rotated explicitly, see [docs/storage-key-rotation.md](docs/storage-key-rotation.md).
@@ -182,9 +186,11 @@ client.publishPreKeys()  // signed
 for (envelope in client.receive()) client.decrypt(envelope) // signed drain
 ```
 
+Milestone 13 done: persistent server storage. `storage:server:sqldelight` implements the four server repositories on SQLite through a caller-supplied SQLDelight `SqlDriver` (server schema version 1, independent of the client schema). Registrations, claimed nonces, prekeys with consumed one-time prekey tombstones and queued envelopes survive a restart; every operation keeps the in-memory semantics and is one SQLite transaction (the nonce claim stays separate from the protected operation). Both server adapters run the same contract tests. The HTTP routes now answer unexpected server or storage failures with a generic `500` `internal_error`, never the exception text. Wire, protocol, authentication and client storage are unchanged. SQLite, single node, unencrypted. See [docs/server-storage.md](docs/server-storage.md).
+
 ## Next implementation steps
 
-1. Persistent server storage (registrations, nonces with bounded retention, prekeys, mailboxes), then device re-registration/reset with an explicit recovery policy.
+1. Device re-registration/reset with an explicit recovery policy (auth key loss, identity change), then a PostgreSQL server adapter if multi-node deployment is needed.
 2. Safety numbers / manual identity verification, and a deliberate way to accept identity changes.
 3. An application commit boundary for received messages and bounded dedup retention.
 4. Sealed sender.

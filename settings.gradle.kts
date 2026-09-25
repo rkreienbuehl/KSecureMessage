@@ -31,5 +31,6 @@ include(
     ":storage:keyprovider:apple",
     ":storage:rotation:core",
     ":storage:server:inmemory",
+    ":storage:server:sqldelight",
     ":storage:testing",
 )

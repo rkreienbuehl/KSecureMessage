@@ -12,6 +12,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
 import dev.kreienbuehl.ksecuremessage.server.SecureMessageServer
+import dev.kreienbuehl.ksecuremessage.storage.ServerStorage
 import dev.kreienbuehl.ksecuremessage.storage.server.inmemory.InMemoryServerStorage
 import io.ktor.client.HttpClient
 import io.ktor.client.request.header
@@ -35,8 +36,14 @@ import io.ktor.server.plugins.contentnegotiation.ContentNegotiation as ServerCon
 internal fun testServer(
     clock: Clock = Clock.System,
     block: suspend ApplicationTestBuilder.(storage: InMemoryServerStorage, http: HttpClient) -> Unit,
+) = testServer(InMemoryServerStorage(), clock, block)
+
+/** Runs [block] against the v1 routes backed by [storage], which the test chose and owns. */
+internal fun <S : ServerStorage> testServer(
+    storage: S,
+    clock: Clock = Clock.System,
+    block: suspend ApplicationTestBuilder.(storage: S, http: HttpClient) -> Unit,
 ) {
-    val storage = InMemoryServerStorage()
     testApplication {
         install(ServerContentNegotiation) { json() }
         routing { kSecureMessageRoutes(SecureMessageServer(storage, clock)) }

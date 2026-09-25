@@ -14,6 +14,7 @@ import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyPublicationException
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.application.log
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
@@ -21,6 +22,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import kotlinx.serialization.json.Json
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.io.encoding.Base64
 import kotlin.time.Instant
 
@@ -35,7 +37,8 @@ import kotlin.time.Instant
  * the device: the signature covers the exact body bytes, so those routes read
  * the raw body and authenticate it before parsing anything that is acted on.
  * A request that fails authentication gets 401 and changes nothing. Prekey
- * bundle fetch and message submission are public.
+ * bundle fetch and message submission are public. Unexpected failures of
+ * the server or its storage get 500 with `internal_error` and no details.
  */
 fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
     put("/v1/devices/{user}/{device}/registration") {
@@ -57,6 +60,8 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
                 is DeviceRegistrationException.InvalidRegistration -> call.respondError(HttpStatusCode.BadRequest, INVALID_REGISTRATION)
                 is DeviceRegistrationException.Conflict -> call.respondError(HttpStatusCode.Conflict, "device_registration_conflict")
             }
+        } catch (e: Exception) {
+            call.respondInternalError(e)
         }
     }
 
@@ -67,6 +72,8 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
             server.authenticate(address, ProtectedEndpoint.PUBLISH_PRE_KEYS, body, call.authentication())
         } catch (e: DeviceAuthenticationException) {
             return@put call.respondAuthenticationError(e)
+        } catch (e: Exception) {
+            return@put call.respondInternalError(e)
         }
         val publication = try {
             Json.decodeFromString<PreKeyPublicationRequest>(body.decodeToString()).toPublication(address)
@@ -84,17 +91,30 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
                 is PreKeyPublicationException.SignedPreKeyConflict -> call.respondError(HttpStatusCode.Conflict, "signed_pre_key_conflict")
                 is PreKeyPublicationException.OneTimePreKeyConflict -> call.respondError(HttpStatusCode.Conflict, "one_time_pre_key_conflict")
             }
+        } catch (e: Exception) {
+            call.respondInternalError(e)
         }
     }
 
     get("/v1/devices/{user}/{device}/prekey-bundle") {
-        val bundle = server.fetchPreKeyBundle(call.deviceAddress())
+        val address = call.deviceAddress()
+        val bundle = try {
+            server.fetchPreKeyBundle(address)
+        } catch (e: Exception) {
+            return@get call.respondInternalError(e)
+        }
         if (bundle == null) call.respondError(HttpStatusCode.NotFound, "device_not_found")
         else call.respond(bundle.toResponse())
     }
 
     post("/v1/messages") {
-        server.relay(call.receive<EncryptedEnvelope>())
+        val envelope = call.receive<EncryptedEnvelope>()
+        try {
+            // Returns once the envelope is stored, so 202 is never sent for an envelope that was not.
+            server.relay(envelope)
+        } catch (e: Exception) {
+            return@post call.respondInternalError(e)
+        }
         call.respond(HttpStatusCode.Accepted)
     }
 
@@ -105,8 +125,15 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
             server.authenticate(address, ProtectedEndpoint.DRAIN_MAILBOX, body, call.authentication())
         } catch (e: DeviceAuthenticationException) {
             return@get call.respondAuthenticationError(e)
+        } catch (e: Exception) {
+            return@get call.respondInternalError(e)
         }
-        call.respond(server.receive(device))
+        val envelopes = try {
+            server.receive(device)
+        } catch (e: Exception) {
+            return@get call.respondInternalError(e)
+        }
+        call.respond(envelopes)
     }
 }
 
@@ -115,6 +142,18 @@ private const val INVALID_REGISTRATION = "invalid_registration"
 
 private suspend fun ApplicationCall.respondError(status: HttpStatusCode, error: String) =
     respond(status, ErrorResponse(error))
+
+/**
+ * Any other failure of the server or its storage, for example a database
+ * error: a generic 500 whose body never carries the exception message (it may
+ * name SQL tables or statements). Logged on the server. Cancellation is
+ * rethrown.
+ */
+private suspend fun ApplicationCall.respondInternalError(e: Exception) {
+    if (e is CancellationException) throw e
+    application.log.error("Unexpected server failure", e)
+    respondError(HttpStatusCode.InternalServerError, "internal_error")
+}
 
 private suspend fun ApplicationCall.respondAuthenticationError(e: DeviceAuthenticationException) =
     respondError(

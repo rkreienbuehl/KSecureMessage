@@ -158,6 +158,34 @@ abstract class MailboxRepositoryContractTest {
         assertPerSenderOrder(drained, senders, PER_PRODUCER)
     }
 
+    /**
+     * Concurrent drains of one recipient, released together: every envelope
+     * comes out in exactly one of them. The first drain takes the whole
+     * queue, so the others get nothing.
+     */
+    @Test
+    fun concurrentDrainsNeverReturnAnEnvelopeTwice() = runTest {
+        repeat(20) {
+            val repository = newRepository()
+            val senders = List(4) { sender(it) }
+            repeat(25) { sequence -> for (sender in senders) repository.enqueue(envelope(sender, bob, sequence)) }
+            val results = withContext(Dispatchers.Default) {
+                val start = CompletableDeferred<Unit>()
+                val drains = List(8) {
+                    async {
+                        start.await()
+                        repository.drain(bob)
+                    }
+                }
+                start.complete(Unit)
+                drains.awaitAll()
+            }
+            assertEquals(1, results.count { it.isNotEmpty() }, "one drain got the messages, the others none")
+            assertPerSenderOrder(results.flatten(), senders, 25)
+            assertEquals(emptyList(), repository.drain(bob))
+        }
+    }
+
     private companion object {
         const val PRODUCERS = 16
         const val PER_PRODUCER = 200

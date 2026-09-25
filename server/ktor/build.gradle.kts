@@ -22,4 +22,7 @@ dependencies {
     testImplementation(project(":client:ktor"))
     testImplementation(project(":storage:client:inmemory"))
     testImplementation(project(":storage:server:inmemory"))
+    // Persistent server storage injected into the same routes (docs/server-storage.md).
+    testImplementation(project(":storage:server:sqldelight"))
+    testImplementation(libs.sqldelight.sqlite.driver)
 }
