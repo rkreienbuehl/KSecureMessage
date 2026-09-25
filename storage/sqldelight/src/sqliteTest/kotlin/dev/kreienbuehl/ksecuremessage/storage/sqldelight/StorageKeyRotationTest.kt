@@ -142,9 +142,13 @@ class StorageKeyRotationTest {
 
     private fun state(column: String): Long? = driver.longs("SELECT $column FROM storage_encryption").single()
 
+    /** Resumes until STABLE (bounded) and returns the number of resume calls. */
     private suspend fun SqlDelightClientStorage.finishRotation(maxRecords: Int = 3): Int {
         var steps = 0
-        while (resumeStorageKeyRotation(maxRecords).phase != StorageKeyRotationPhase.STABLE) steps++
+        completeStorageKeyRotation {
+            steps++
+            resumeStorageKeyRotation(maxRecords)
+        }
         return steps
     }
 
@@ -557,6 +561,9 @@ class StorageKeyRotationTest {
             "UPDATE storage_encryption SET rotation_phase = 1",
             "UPDATE storage_encryption SET retiring_key_id = 1",
             "UPDATE storage_encryption SET highest_key_id = 0",
+            // Invalid high-water mark together with an inconsistent phase; a value above Int.MAX_VALUE.
+            "UPDATE storage_encryption SET highest_key_id = 0, rotation_phase = 2",
+            "UPDATE storage_encryption SET highest_key_id = 2147483648",
         )) {
             val driver = raw()
             val before = driver.dump()

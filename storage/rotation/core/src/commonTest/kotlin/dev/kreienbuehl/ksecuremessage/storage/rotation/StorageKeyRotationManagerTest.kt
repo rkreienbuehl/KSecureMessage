@@ -11,6 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /** The state machine alone, over [FakeRotationBackend] and [RecordingKeyProvider]. */
@@ -21,7 +22,7 @@ class StorageKeyRotationManagerTest {
     private val manager = StorageKeyRotationManager(backend, keys)
 
     private suspend fun finish(maxRecords: Int = 100) {
-        while (manager.resume(maxRecords).phase != StorageKeyRotationPhase.STABLE) continue
+        completeStorageKeyRotation { manager.resume(maxRecords) }
     }
 
     @Test
@@ -60,6 +61,20 @@ class StorageKeyRotationManagerTest {
         // The last record: the batch leaves none, so the same call proves and retires.
         assertEquals(StorageKeyRotationStatus(StorageKeyRotationPhase.STABLE, K2, null, null, 0), manager.resume(2))
         assertEquals(listOf("migrate 2", "migrate 2", "migrate 1", "retiring 1", "removeKey 1 true", "complete"), log.drop(4))
+    }
+
+    @Test
+    fun nonProgressingMigrationFailsTheHarnessAfterTheStepBound() = runTest {
+        manager.rotate()
+        backend.stallMigration = true
+        val failure = assertFailsWith<AssertionError> { completeStorageKeyRotation(maxSteps = 7) { manager.resume(2) } }
+        val message = assertNotNull(failure.message)
+        assertTrue("did not converge after 7 resume steps" in message, message)
+        assertTrue("phase=MIGRATING, currentKeyId=2, nextKeyId=null, retiringKeyId=1, remainingRecords=5" in message, message)
+        // Exactly the bound: seven batches, none retired anything.
+        assertEquals(List(7) { "migrate 0" }, log.drop(4))
+        assertEquals(Migrating(K2, K2, K1), backend.state)
+        assertEquals(setOf(K1, K2), keys.keys.keys)
     }
 
     @Test

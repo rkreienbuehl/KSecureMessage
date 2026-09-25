@@ -4,6 +4,7 @@ import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionExcept
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionKey
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyProvider
+import kotlin.test.fail
 
 class InjectedCrash(message: String) : IllegalStateException(message)
 
@@ -24,6 +25,9 @@ class FakeRotationBackend(val log: MutableList<String>, records: Int = 5) : Stor
      * like a key check or a sealed location a batch forgot.
      */
     val otherSealedValues: MutableList<StorageKeyId> = mutableListOf()
+
+    /** [migrateBatch] re-encrypts nothing, like a batch that skips a sealed location: MIGRATING never ends. */
+    var stallMigration = false
 
     /** Steps (`prepare`, `activate`, `migrate`, `retiring`, `complete`) that throw right after they committed. */
     val crashAfter = mutableSetOf<String>()
@@ -59,7 +63,7 @@ class FakeRotationBackend(val log: MutableList<String>, records: Int = 5) : Stor
         commit("migrate", from) {
             var budget = maxRecords
             for (i in records.indices) {
-                if (budget == 0) break
+                if (budget == 0 || stallMigration) break
                 if (records[i] != from.currentKeyId) {
                     // Like a record that names a key the storage does not have: the batch fails.
                     if (records[i] != from.retiringKeyId) throw StorageEncryptionException.KeyUnavailable("unknown key")
@@ -158,6 +162,29 @@ class RecordingKeyProvider(private val log: MutableList<String>) : StorageKeyPro
         if (crashAfterRemove) throw InjectedCrash("crash after removeKey")
         return true
     }
+}
+
+/**
+ * Calls [resume] until it reports STABLE, at most [maxSteps] times, and
+ * returns the STABLE status. A rotation that stops making progress fails the
+ * test after the bound instead of hanging it. The failure names the last
+ * status (phase, key IDs, remaining records), never key material.
+ */
+suspend fun completeStorageKeyRotation(
+    maxSteps: Int = 100,
+    resume: suspend () -> StorageKeyRotationStatus,
+): StorageKeyRotationStatus {
+    require(maxSteps > 0) { "maxSteps must be positive" }
+    lateinit var last: StorageKeyRotationStatus
+    repeat(maxSteps) {
+        last = resume()
+        if (last.phase == StorageKeyRotationPhase.STABLE) return last
+    }
+    fail(
+        "Storage key rotation did not converge after $maxSteps resume steps; last status: " +
+            "phase=${last.phase}, currentKeyId=${last.currentKeyId.value}, nextKeyId=${last.nextKeyId?.value}, " +
+            "retiringKeyId=${last.retiringKeyId?.value}, remainingRecords=${last.remainingRecords}",
+    )
 }
 
 val K1 = StorageKeyId(1)

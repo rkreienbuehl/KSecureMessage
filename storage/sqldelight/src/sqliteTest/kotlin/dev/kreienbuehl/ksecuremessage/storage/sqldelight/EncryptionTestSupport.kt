@@ -12,7 +12,10 @@ import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 import dev.kreienbuehl.ksecuremessage.storage.encryption.ClientRecordCipher
+import dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationPhase
+import dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationStatus
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.test.fail
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -78,4 +81,27 @@ class FailingRecords(private val delegate: ClientRecordCipher) : ClientRecordCip
         fun factory(created: MutableList<FailingRecords>, failAtSeal: Int? = null): RecordCipherFactory =
             { key, retained -> FailingRecords(ClientRecordCipher(key, *retained.toTypedArray())).also { it.failAtSeal = failAtSeal; created += it } }
     }
+}
+
+/**
+ * Calls [resume] until it reports STABLE, at most [maxSteps] times, and
+ * returns the STABLE status. A rotation that stops making progress fails the
+ * test after the bound instead of hanging it. The failure names the last
+ * status (phase, key IDs, remaining records), never key material.
+ */
+suspend fun completeStorageKeyRotation(
+    maxSteps: Int = 100,
+    resume: suspend () -> StorageKeyRotationStatus,
+): StorageKeyRotationStatus {
+    require(maxSteps > 0) { "maxSteps must be positive" }
+    lateinit var last: StorageKeyRotationStatus
+    repeat(maxSteps) {
+        last = resume()
+        if (last.phase == StorageKeyRotationPhase.STABLE) return last
+    }
+    fail(
+        "Storage key rotation did not converge after $maxSteps resume steps; last status: " +
+            "phase=${last.phase}, currentKeyId=${last.currentKeyId.value}, nextKeyId=${last.nextKeyId?.value}, " +
+            "retiringKeyId=${last.retiringKeyId?.value}, remainingRecords=${last.remainingRecords}",
+    )
 }

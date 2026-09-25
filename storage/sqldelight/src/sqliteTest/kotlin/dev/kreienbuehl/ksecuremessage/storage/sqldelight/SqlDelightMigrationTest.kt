@@ -429,7 +429,7 @@ class SqlDelightMigrationTest {
         // Restart, resume to the end, retire key 1.
         val restarted = reopen(keys = provider())
         assertEquals(StorageKeyRotationPhase.MIGRATING, restarted.storageKeyRotationStatus().phase)
-        while (restarted.resumeStorageKeyRotation(2).phase != StorageKeyRotationPhase.STABLE) Unit
+        completeStorageKeyRotation { restarted.resumeStorageKeyRotation(2) }
         assertEquals(setOf(StorageKeyId(2)), keys.ids("m8"))
         assertTrue(sensitiveValues().all { SealedRecords.keyId(it) == StorageKeyId(2) })
 

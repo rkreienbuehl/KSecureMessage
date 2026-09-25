@@ -172,7 +172,7 @@ abstract class PlatformKeyProviderStorageTest {
         val restarted = open()
         assertEquals(StorageKeyRotationStatus(StorageKeyRotationPhase.MIGRATING, StorageKeyId(2), null, StorageKeyId(1), 2), restarted.storageKeyRotationStatus())
         assertContentEquals(SECRET, restarted.identity.identity()?.privateKey)
-        while (restarted.resumeStorageKeyRotation(1).phase != StorageKeyRotationPhase.STABLE) Unit
+        completeStorageKeyRotation { restarted.resumeStorageKeyRotation(1) }
 
         // Key 1 is gone from the platform store, key 2 unchanged, and the database opens with it.
         assertNull(provider(namespace).key(StorageKeyId(1)))
