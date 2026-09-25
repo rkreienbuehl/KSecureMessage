@@ -13,6 +13,11 @@ kotlin {
         namespace = "dev.kreienbuehl.ksecuremessage.storage.sqldelight"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
+
+        // The SQLite tests on a device or emulator, with the Android Keystore provider.
+        withDeviceTestBuilder {}.configure {
+            instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        }
     }
 
     js(IR) { browser(); nodejs() }
@@ -20,15 +25,14 @@ kotlin {
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs { browser(); nodejs() }
 
-    val nativeTargets = listOf(
+    val appleTargets = listOf(
         iosX64(),
         iosArm64(),
         iosSimulatorArm64(),
         macosX64(),
         macosArm64(),
-        linuxX64(),
-        mingwX64(),
     )
+    val nativeTargets = appleTargets + listOf(linuxX64(), mingwX64())
 
     sourceSets {
         commonMain.dependencies {
@@ -57,8 +61,27 @@ kotlin {
             dependsOn(sqliteTest)
             dependencies { implementation(libs.sqldelight.native.driver) }
         }
+        // Storage opened with the Keychain provider (docs/storage-key-providers.md).
+        val appleTest by creating {
+            dependsOn(nativeTest)
+            dependencies { implementation(project(":storage:keyprovider:apple")) }
+        }
+        val macosTest by creating { dependsOn(appleTest) }
         nativeTargets.forEach { target ->
-            getByName("${target.name}Test").dependsOn(nativeTest)
+            val testSet = when {
+                target.name.startsWith("macos") -> macosTest
+                target in appleTargets -> appleTest
+                else -> nativeTest
+            }
+            getByName("${target.name}Test").dependsOn(testSet)
+        }
+        getByName("androidDeviceTest") {
+            dependsOn(sqliteTest)
+            dependencies {
+                implementation(libs.sqldelight.android.driver)
+                implementation(libs.androidx.test.runner)
+                implementation(project(":storage:keyprovider:android"))
+            }
         }
     }
 }

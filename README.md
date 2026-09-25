@@ -63,8 +63,11 @@ Persistent `ClientStorage` on SQLite via SQLDelight, for all client targets. The
 ### `storage:encryption`
 Record-level encryption of sensitive client storage records: AES-256-GCM (cryptography-kotlin) with associated data bound to record type and row key, the versioned record format, `StorageKeyProvider` and `StorageEncryptionKey`. Used by `storage:sqldelight`.
 
+### `storage:keyprovider:android`, `storage:keyprovider:apple`
+Platform `StorageKeyProvider`s: the storage key wrapped by an Android Keystore key, or stored in the Apple Keychain. See [docs/storage-key-providers.md](docs/storage-key-providers.md).
+
 ### `storage:testing`
-Shared `ClientStorage` and server `PreKeyRepository` contract tests that every storage adapter runs. Not published.
+Shared `ClientStorage`, server `PreKeyRepository` and `StorageKeyProvider` contract tests that every adapter runs. Not published.
 
 ## Coordinates
 
@@ -135,11 +138,18 @@ val storage = SqlDelightClientStorage.open(driver, keyProvider) // keyProvider: 
 val client = SecureMessageClient(address, storage, KodiumProtocolEngine(), transport)
 ```
 
+Milestone 10 done: platform storage key providers. `AndroidStorageKeyProvider(context, namespace)` wraps the 32-byte storage key with AES-GCM under a non-exportable Android Keystore key and keeps only the wrapped form in a versioned file in `noBackupFilesDir`. `AppleStorageKeyProvider(namespace)` stores the key as a Keychain generic password item (data protection keychain, after first unlock, this device only, not synchronized); macOS applications without keychain entitlements can choose `AppleStorageKeyProvider.legacyFileKeychain(namespace)` explicitly. A key is created only when the provider has no state; a missing Keystore key, a damaged file or item, or any platform error fails with `KeyUnavailable` and nothing is regenerated. Creation is durable before it returns and concurrent first calls get one key. Namespaces separate databases. No storage format, wire, protocol or messaging API change. See [docs/storage-key-providers.md](docs/storage-key-providers.md).
+
+```kotlin
+val storage = SqlDelightClientStorage.open(driver, AndroidStorageKeyProvider(context, namespace = "account-42"))
+val storage = SqlDelightClientStorage.open(driver, AppleStorageKeyProvider(namespace = "account-42"))
+```
+
 ## Next implementation steps
 
 1. Authenticated server API, device re-registration, persistent server storage.
 2. Safety numbers / manual identity verification, and a deliberate way to accept identity changes.
-3. Platform storage key providers (Android Keystore, Apple Keychain) and storage key rotation.
+3. Storage key rotation.
 4. An application commit boundary for received messages and bounded dedup retention.
 5. Sealed sender.
 

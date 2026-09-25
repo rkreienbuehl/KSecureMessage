@@ -26,6 +26,8 @@ include(
     ":storage:core",
     ":storage:encryption",
     ":storage:inmemory",
+    ":storage:keyprovider:android",
+    ":storage:keyprovider:apple",
     ":storage:sqldelight",
     ":storage:testing",
 )

@@ -1,6 +1,7 @@
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
-// Shared test fixtures: ClientStorage contract tests for every adapter.
+// Shared test fixtures: ClientStorage and StorageKeyProvider contract tests
+// for every adapter.
 // Not meant to be published.
 
 plugins {
@@ -36,6 +37,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":storage:core"))
+            api(project(":storage:encryption"))
             api(kotlin("test"))
             api(libs.kotlinx.coroutines.test)
         }

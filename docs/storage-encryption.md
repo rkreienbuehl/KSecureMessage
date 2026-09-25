@@ -190,12 +190,14 @@ val storage = SqlDelightClientStorage.open(driver, keyProvider)
 - `StaticStorageKeyProvider(current, others…)` wraps keys the application
   already holds (for example loaded from its own secret store) and is used by
   tests. It keeps keys in memory and is not secure key storage.
-- Platform providers are not part of milestone 9. Suitable designs:
-  Android: a random storage key wrapped by an Android Keystore key;
-  Apple: the key in the Keychain with a suitable accessibility class;
-  JVM/desktop/server: an application or OS secret store; JS/Wasm: a
-  non-extractable WebCrypto key or an application secret. A plain file next
-  to the database is not key storage.
+- Platform providers (milestone 10): `AndroidStorageKeyProvider` (random
+  storage key wrapped by an Android Keystore key) and
+  `AppleStorageKeyProvider` (key in the Keychain), see
+  [storage-key-providers.md](storage-key-providers.md). Other platforms
+  (JVM/desktop/server: an application or OS secret store; JS/Wasm: a
+  non-extractable WebCrypto key or an application secret) still need an
+  application provider. A plain file next to the database is not key
+  storage.
 - There is no plaintext mode and no API to delete the storage key. Losing
   the key makes identity, sessions, prekeys and pending messages
   permanently unreadable; a future reset needs deliberate semantics.
@@ -312,7 +314,8 @@ nothing to the transport.
 
 ## Not covered
 
-- Platform key providers (Android Keystore, Apple Keychain, WebCrypto).
+- Platform key providers other than Android Keystore and Apple Keychain
+  (milestone 10, [storage-key-providers.md](storage-key-providers.md)).
 - Storage key rotation.
 - Rollback protection, integrity of plaintext metadata, hiding metadata.
 - Secure erasure of pre-milestone-9 plaintext.
