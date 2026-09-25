@@ -25,6 +25,10 @@ import kotlinx.coroutines.withContext
  * [accessGroup] is the keychain access group for sharing the key with app
  * extensions, or `null` for the application's default group.
  *
+ * During a storage key rotation (docs/storage-key-rotation.md) there is one
+ * item per key ID under the same service; [createKey] adds an item and never
+ * updates one, [removeKey] deletes exactly one account's item.
+ *
  * A lost key is never replaced: [key] returns `null`, and an encrypted
  * database fails to open.
  */
@@ -43,28 +47,52 @@ class AppleStorageKeyProvider internal constructor(
 
     override suspend fun loadOrCreateKey(): StorageEncryptionKey = keychainCall {
         creationLock.withLock {
-            val ids = keychain.accounts().map { account -> keyId(account) ?: throw unavailable("Unknown storage key item in the Keychain") }
+            val ids = storedKeyIds()
             when (ids.size) {
-                0 -> {
-                    val created = StorageEncryptionKey.generate(INITIAL_KEY_ID)
-                    val bytes = created.copyBytes()
-                    try {
-                        // Another process may have added the item meanwhile: then
-                        // add reports a duplicate and the stored key wins.
-                        keychain.add(account(INITIAL_KEY_ID), bytes)
-                    } finally {
-                        bytes.fill(0)
-                    }
-                    // Only a key read back from the Keychain is returned.
-                    readKey(INITIAL_KEY_ID) ?: throw unavailable("Storage key was not persisted in the Keychain")
-                }
+                0 -> addAndRead(INITIAL_KEY_ID)
                 1 -> readKey(ids.single()) ?: throw unavailable("Storage key disappeared from the Keychain")
-                else -> throw unavailable("More than one storage key in the Keychain; key rotation is not supported yet")
+                else -> throw unavailable("More than one storage key in the Keychain; the storage key is chosen by the database")
             }
         }
     }
 
     override suspend fun key(id: StorageKeyId): StorageEncryptionKey? = keychainCall { readKey(id) }
+
+    override suspend fun createKey(id: StorageKeyId): StorageEncryptionKey = keychainCall {
+        creationLock.withLock {
+            if (storedKeyIds().isEmpty()) throw unavailable("No storage key has been provisioned; a rotation key needs an existing key")
+            readKey(id) ?: addAndRead(id)
+        }
+    }
+
+    override suspend fun removeKey(id: StorageKeyId): Boolean = keychainCall {
+        creationLock.withLock {
+            val ids = storedKeyIds()
+            if (id !in ids) return@withLock false
+            check(ids.size > 1) { "The provider's last storage key cannot be removed" }
+            // Only the item of this one account; never a query without an account.
+            val removed = keychain.remove(account(id))
+            if (readKey(id) != null) throw unavailable("Storage key ${id.value} was not removed from the Keychain")
+            removed
+        }
+    }
+
+    private fun storedKeyIds(): List<StorageKeyId> =
+        keychain.accounts().map { account -> keyId(account) ?: throw unavailable("Unknown storage key item in the Keychain") }
+
+    /** Adds item [id] unless it exists and returns the stored key, read back from the Keychain. */
+    private fun addAndRead(id: StorageKeyId): StorageEncryptionKey {
+        val created = StorageEncryptionKey.generate(id)
+        val bytes = created.copyBytes()
+        try {
+            // Another process may have added the item meanwhile: then add
+            // reports a duplicate, nothing is overwritten and the stored key wins.
+            keychain.add(account(id), bytes)
+        } finally {
+            bytes.fill(0)
+        }
+        return readKey(id) ?: throw unavailable("Storage key was not persisted in the Keychain")
+    }
 
     private fun readKey(id: StorageKeyId): StorageEncryptionKey? {
         val bytes = keychain.read(account(id)) ?: return null
@@ -92,7 +120,7 @@ class AppleStorageKeyProvider internal constructor(
         private val NAMESPACE = Regex("[A-Za-z0-9._-]{1,64}")
         private val INITIAL_KEY_ID = StorageKeyId(1)
 
-        // Serializes creation within the process; SecItemAdd's uniqueness of
+        // Serializes creation and removal within the process; SecItemAdd's uniqueness of
         // service + account resolves races with other processes.
         private val creationLock = Mutex()
 

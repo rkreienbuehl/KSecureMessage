@@ -40,6 +40,26 @@ val storage = SqlDelightClientStorage.open(driver, AppleStorageKeyProvider(names
 - `loadOrCreateKey()` is idempotent: later calls and new provider instances
   (application restarts) return the same key.
 - `key(id)` never creates. Unknown IDs return `null`.
+- With several keys (a namespace in a storage key rotation),
+  `loadOrCreateKey()` throws `KeyUnavailable`: the database, not the
+  provider, knows which key is current.
+
+### `createKey` and `removeKey` (storage key rotation)
+
+Milestone 11 ([storage-key-rotation.md](storage-key-rotation.md)):
+
+- `createKey(id)` returns key `id`. If the provider already has it, that key
+  is returned unchanged; otherwise a new random key is created, persisted and
+  read back first. It never overwrites or replaces a key and never touches
+  other keys. Concurrent calls for one ID yield one key. It requires a
+  provisioned provider (at least one key); otherwise, or if the state cannot
+  be read, it throws `KeyUnavailable` and changes nothing. The database
+  allocates the ID; providers never choose one.
+- `removeKey(id)` removes exactly key `id` and returns `true`, or `false` if
+  the provider does not have it. Other keys are untouched. It never removes
+  the provider's last key (`IllegalStateException`, nothing changed); there
+  is no "delete all". The storage only removes a key after it proved that no
+  record uses it, and never the current key.
 - Concurrent first calls return one key (see the platform sections).
 - `CancellationException` is rethrown unchanged. A key persisted before a
   cancellation is found by the next call; an existing key is never
@@ -76,17 +96,18 @@ both databases to one key. Namespaces do not change key IDs.
 ### Key IDs
 
 The first key of a namespace has key ID 1. Platform state is keyed by key ID
-(Android: file entries; Apple: account `v1/<id>`), so a future rotation can
-keep several keys. Milestone 10 writes only one key per namespace and has no
-rotation; `loadOrCreateKey()` fails with `KeyUnavailable` if an Apple
-namespace holds more than one key.
+(Android: file entries; Apple: account `v1/<id>`), so a namespace holds
+several keys during a storage key rotation: key 1, key 2, … Key IDs come from
+the database's high-water mark and are never reused.
 
-### No reset or delete API
+### No reset API
 
-Neither provider can delete, reset or regenerate a key. Losing the key makes
-the encrypted client state permanently unreadable; a reset flow needs
-deliberate semantics (identity reset, prekey republication) and is future
-work. Tests delete their own state through test-only helpers.
+Neither provider can reset or regenerate a key, and neither can delete all
+keys of a namespace. The only deletion is `removeKey(id)` of one key the
+database retires after a rotation. Losing a needed key makes the encrypted
+client state permanently unreadable; a reset flow needs deliberate semantics
+(identity reset, prekey republication) and is future work. Tests delete
+their own state through test-only helpers.
 
 ### Application responsibilities
 
@@ -121,9 +142,13 @@ work. Tests delete their own state through test-only helpers.
   | entries sorted by key ID: key ID i32 | IV length u8 = 12 | IV | length u16 = 48 | ciphertext + tag
   ```
 
-  The file holds the wrapped key only, never the raw key. Parsing is
+  The file holds wrapped keys only, never a raw key. Parsing is
   strict: wrong magic or version, truncation, trailing bytes, unsorted or
   duplicate IDs, a current ID without entry or another alias fail closed.
+  All entries are wrapped by the same Keystore key, each with the key ID in
+  its associated data. The "current key ID" field is kept for the frozen
+  format but is not rotation state: writers set it to the lowest entry; the
+  database decides which key is current.
 - **Writing**: a temporary file is written and synced, then moved into place
   atomically (`ATOMIC_MOVE`), then the directory is synced where possible.
   A crash leaves no file or the complete file.
@@ -131,6 +156,12 @@ work. Tests delete their own state through test-only helpers.
   interrupted creation (it never protected a key that was handed out),
   otherwise generate it; generate the storage key; wrap; write; read back and
   unwrap; compare; return.
+- **Rotation keys**: `createKey(id)` needs the file and the Keystore key;
+  it wraps a new key under the same Keystore key and writes a new file with
+  every existing entry copied byte for byte (a damaged entry included) plus
+  the new one, then reads it back. `removeKey(id)` writes the file without
+  that entry. Both use the same atomic write. A damaged entry makes only its
+  own key ID fail with `KeyUnavailable`; it is never regenerated or dropped.
 - **Loading** (file present): parse, get the Keystore key, unwrap, check 32
   bytes. A missing alias, `KeyPermanentlyInvalidatedException`, tag failure,
   damaged file or any Keystore error throws `KeyUnavailable`; the file is not
@@ -184,6 +215,10 @@ iOS (`iosArm64`, `iosX64`, `iosSimulatorArm64`) and macOS (`macosArm64`,
   Enclave. A Secure Enclave wrapping key could be added later.
 - **First creation**: if the namespace has no item, generate the key and
   `SecItemAdd` it as `v1/1`; then read it back and return the stored bytes.
+- **Rotation keys**: `createKey(id)` adds item `v1/<id>` (never
+  `SecItemUpdate`; a duplicate means the stored key wins) and reads it back;
+  `removeKey(id)` deletes the item of that one account with a query that
+  always names the account, so it cannot match other keys.
 - **Loading**: data of any size other than 32 bytes throws `KeyUnavailable`
   (never truncated, padded or regenerated). Any OSStatus other than success
   or "item not found" (for example `errSecInteractionNotAllowed` before the
@@ -205,10 +240,21 @@ iOS (`iosArm64`, `iosX64`, `iosSimulatorArm64`) and macOS (`macosArm64`,
   namespace separation, lost backing key (never a replacement; with
   detectable state `loadOrCreateKey` keeps failing), damaged state (fails
   twice, no repair), 16 concurrent first calls on separate instances.
+  Storage key rotation (milestone 11): a second key by `createKey` differs
+  from the first, both survive a restart, `createKey` is idempotent and never
+  overwrites, 16 concurrent `createKey` calls for one ID yield one key,
+  `createKey` without a provisioned key fails and creates nothing,
+  `loadOrCreateKey` refuses several keys, `removeKey` removes only that key
+  (repeat: `false`), never the last key, and not in another namespace. The
+  same contract also runs on the in-memory test key store in
+  `storage:sqldelight` (`MemoryStorageKeyProviderContractTest`).
 - Android: the contract and `AndroidStorageKeyProviderTest` (no raw key in
   the file, non-exportable Keystore key, missing alias leaves the file
   byte-identical and creates no alias, namespace-swapped entry fails,
-  leftover Keystore key reused) run instrumented on a device or emulator
+  leftover Keystore key reused, rotation keys are wrapped entries of one file
+  and removal keeps the other entries byte for byte, a damaged entry fails
+  only for its own ID and is preserved, `createKey` with a missing alias
+  changes nothing) run instrumented on a device or emulator
   (`connectedAndroidDeviceTest`); `WrappedKeyFileTest` runs on the host.
 - Apple, plain test tasks (`macos*Test`, `ios*Test`, unsigned Kotlin/Native
   binaries): the contract on the macOS legacy keychain
@@ -225,7 +271,9 @@ iOS (`iosArm64`, `iosX64`, `iosSimulatorArm64`) and macOS (`macosArm64`,
 - `PlatformKeyProviderStorageTest` (`storage:sqldelight`): new database and
   restart, milestone 8 migration with a new platform key, encrypted database
   with lost or damaged provider state (fails twice, database unchanged, no
-  replacement), database bound to an unknown key ID. Subclassed for Android
+  replacement), database bound to an unknown key ID, and a storage key
+  rotation with a restart in the middle that ends with key 1 removed from the
+  platform store. Subclassed for Android
   (instrumented; the whole SQLite suite runs on the device), the data
   protection keychain (`DataProtectionKeychainStorageTest`, signed host) and
   the macOS legacy keychain.
@@ -375,7 +423,7 @@ entitlement, where the data protection keychain is unreachable.
 
 ## Not covered
 
-- Storage key rotation and re-encryption.
+- Deleting orphan keys left by an abandoned rotation start.
 - Key reset or recovery.
 - Protection against a compromised application process: the running
   application can always obtain the key.

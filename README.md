@@ -58,7 +58,7 @@ Shared storage contracts.
 Simple in-memory implementations useful for tests and examples. Transactions are atomic.
 
 ### `storage:sqldelight`
-Persistent `ClientStorage` on SQLite via SQLDelight, for all client targets. The application supplies the platform driver and a `StorageKeyProvider`; key pairs, session state and pending message plaintext are stored as encrypted records, see [docs/storage.md](docs/storage.md) and [docs/storage-encryption.md](docs/storage-encryption.md).
+Persistent `ClientStorage` on SQLite via SQLDelight, for all client targets. The application supplies the platform driver and a `StorageKeyProvider`; key pairs, session state and pending message plaintext are stored as encrypted records, see [docs/storage.md](docs/storage.md) and [docs/storage-encryption.md](docs/storage-encryption.md). The storage key can be rotated explicitly, see [docs/storage-key-rotation.md](docs/storage-key-rotation.md).
 
 ### `storage:encryption`
 Record-level encryption of sensitive client storage records: AES-256-GCM (cryptography-kotlin) with associated data bound to record type and row key, the versioned record format, `StorageKeyProvider` and `StorageEncryptionKey`. Used by `storage:sqldelight`.
@@ -147,13 +147,19 @@ val storage = SqlDelightClientStorage.open(driver, AppleStorageKeyProvider(names
 
 Milestone 10.1 done: the Apple data protection keychain path is tested in a real entitled process. `apple-keychain-host/` wraps the Kotlin/Native test executables in a signed `.app` (ad-hoc with simulated entitlements in the iOS simulator; Apple Development signature and provisioning profile on macOS, configured locally, never in the repository) and runs the provider contract, the SQLDelight integration and a three-process relaunch test against the default `AppleStorageKeyProvider` (`./gradlew appleKeychainHostTest`). Results are PASSED, FAILED or NOT EXECUTED; tests no longer print `SKIPPED` and pass. No provider, storage format, wire, protocol or messaging API change. See [docs/storage-key-providers.md](docs/storage-key-providers.md#signed-keychain-host-apple-data-protection-keychain-tests).
 
+Milestone 11 done: storage key rotation and safe retirement. `SqlDelightClientStorage.rotateStorageKey()` allocates the next key ID from a persisted high-water mark (never reused, no wraparound), has the provider create and persist that key, and only then makes it current: from that commit on every new record is sealed with it, while records of the previous key stay readable by the key ID in their header. `resumeStorageKeyRotation(maxRecords)` re-encrypts old records in bounded, transactional, resumable batches (same associated data, fresh nonces, only the sealed column changes), then proves by scanning every sealed value that no record uses the old key, and only then removes it from the provider. The rotation state (STABLE, PREPARING, MIGRATING, RETIRING) lives in the database; every crash window between database and Keystore/Keychain is recoverable, a missing required key fails closed, and a record that does not open stops the rotation with the old key kept. `StorageKeyProvider` gained `createKey(id)` and `removeKey(id)`; the Android wrapped key file and Apple Keychain items hold one entry per key ID. SQLDelight schema version 7 adds the rotation columns; existing databases become STABLE on their key without re-encryption. Rotation is explicit: no scheduler. The record format, wire, protocol and messaging API are unchanged. See [docs/storage-key-rotation.md](docs/storage-key-rotation.md).
+
+```kotlin
+storage.rotateStorageKey()
+while (storage.resumeStorageKeyRotation(maxRecords = 256).phase != StorageKeyRotationPhase.STABLE) Unit
+```
+
 ## Next implementation steps
 
-1. Storage key rotation and safe retirement (milestone 11).
-2. Authenticated server API, device re-registration, persistent server storage.
-3. Safety numbers / manual identity verification, and a deliberate way to accept identity changes.
-4. An application commit boundary for received messages and bounded dedup retention.
-5. Sealed sender.
+1. Authenticated server API, device re-registration, persistent server storage.
+2. Safety numbers / manual identity verification, and a deliberate way to accept identity changes.
+3. An application commit boundary for received messages and bounded dedup retention.
+4. Sealed sender.
 
 ## Gradle wrapper
 

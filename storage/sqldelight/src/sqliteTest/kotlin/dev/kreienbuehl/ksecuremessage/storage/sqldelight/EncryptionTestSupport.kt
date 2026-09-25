@@ -12,7 +12,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 import dev.kreienbuehl.ksecuremessage.storage.encryption.ClientRecordCipher
-import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionKey
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -52,11 +52,15 @@ class FailingRecords(private val delegate: ClientRecordCipher) : ClientRecordCip
 
     /** Fails the seal call with this number (1-based, all record kinds counted), if set. */
     var failAtSeal: Int? = null
+    /** Cancels the coroutine at the seal call with this number (1-based), if set. */
+    var cancelAtSeal: Int? = null
+
     var seals = 0
         private set
 
     private fun check(kind: String) {
         seals++
+        if (seals == cancelAtSeal) throw CancellationException("Injected cancellation at $kind encryption")
         if (kind in failing || seals == failAtSeal) throw IllegalStateException("Injected $kind encryption failure")
     }
 
@@ -71,7 +75,7 @@ class FailingRecords(private val delegate: ClientRecordCipher) : ClientRecordCip
 
     companion object {
         /** A factory for [SqlDelightClientStorage.open] that records the cipher it created. */
-        fun factory(created: MutableList<FailingRecords>, failAtSeal: Int? = null): (StorageEncryptionKey) -> ClientRecordCipher =
-            { key -> FailingRecords(ClientRecordCipher(key)).also { it.failAtSeal = failAtSeal; created += it } }
+        fun factory(created: MutableList<FailingRecords>, failAtSeal: Int? = null): RecordCipherFactory =
+            { key, retained -> FailingRecords(ClientRecordCipher(key, *retained.toTypedArray())).also { it.failAtSeal = failAtSeal; created += it } }
     }
 }

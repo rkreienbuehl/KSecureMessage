@@ -24,4 +24,10 @@ sealed class StorageEncryptionException(message: String, cause: Throwable? = nul
 
     /** The record is truncated or its structure is invalid. */
     class MalformedRecord(message: String) : StorageEncryptionException(message)
+
+    /**
+     * A storage key rotation needs a new key ID, but the storage has used
+     * every ID up to [Int.MAX_VALUE]. IDs are never reused or wrapped around.
+     */
+    class KeyIdsExhausted(message: String) : StorageEncryptionException(message)
 }

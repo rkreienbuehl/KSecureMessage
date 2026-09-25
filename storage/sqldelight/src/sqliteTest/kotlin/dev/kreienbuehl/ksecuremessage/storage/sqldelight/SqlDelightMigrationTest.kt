@@ -17,6 +17,14 @@ import dev.kreienbuehl.ksecuremessage.protocol.CiphertextMessageCodec
 import dev.kreienbuehl.ksecuremessage.protocol.KodiumProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
+import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId
+import dev.kreienbuehl.ksecuremessage.storage.encryption.SealedRecords
+import dev.kreienbuehl.ksecuremessage.storage.encryption.ClientRecordCipher
+import dev.kreienbuehl.ksecuremessage.storage.SignedPreKeyInfo
+import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
+import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
+import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
+import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionException
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyProvider
 import dev.kreienbuehl.ksecuremessage.storage.inmemory.InMemoryClientStorage
@@ -347,5 +355,99 @@ class SqlDelightMigrationTest {
         val sealed = driver.blob("SELECT sealed_identity FROM local_identity")
         reopen()
         assertContentEquals(sealed, driver.blob("SELECT sealed_identity FROM local_identity"))
+    }
+
+    @Test
+    fun milestone10DatabaseIsStableOnItsKeyWithoutReEncryption() = runTest {
+        // A schema version 6 database as milestones 9 and 10 wrote it, sealed with key 1.
+        val records = ClientRecordCipher(TestKeys.A)
+        val old = database.open(Version6Schema)
+        old.exec("INSERT INTO local_identity (id, sealed_identity) VALUES (0, ?)", records.sealIdentity(LocalIdentity(ByteArray(32) { 1 }, ByteArray(32) { 2 })))
+        val spk = SignedPreKeyPair(SignedPreKeyId(4), ByteArray(32) { 3 }, ByteArray(64) { 4 }, ByteArray(32) { 5 })
+        old.exec("INSERT INTO signed_pre_key (id, sealed_key_pair, created_at, replaced_at) VALUES (4, ?, 1000, NULL)", records.sealSignedPreKey(spk))
+        old.exec("UPDATE pre_key_state SET current_signed_pre_key_id = 4, highest_signed_pre_key_id = 4, highest_one_time_pre_key_id = 8")
+        old.exec("INSERT INTO one_time_pre_key (id, sealed_key_pair) VALUES (8, ?)", records.sealOneTimePreKey(OneTimePreKeyPair(OneTimePreKeyId(8), ByteArray(32) { 6 }, ByteArray(32) { 7 })))
+        old.exec("INSERT INTO session (remote_user_id, remote_device_id, sealed_state) VALUES ('alice', 'phone', ?)", records.sealSession(SecureSession(ALICE, byteArrayOf(9, 9))))
+        old.exec("INSERT INTO remote_identity (remote_user_id, remote_device_id, identity_key) VALUES ('alice', 'phone', ?)", ByteArray(32) { 8 })
+        old.exec("INSERT INTO retired_session_initiation (remote_user_id, remote_device_id, initiation_id, signed_pre_key_id) VALUES ('dave', 'desktop', ?, 4)", ByteArray(32) { 7 })
+        val pendingId = LogicalMessageId.random()
+        old.exec(
+            "INSERT INTO pending_outbound_message (recipient_user_id, recipient_device_id, message_id, sealed_frame) VALUES ('alice', 'phone', ?, ?)",
+            pendingId.toByteArray(),
+            records.sealPendingFrame(ALICE, pendingId, PENDING_TEXT.encodeToByteArray()),
+        )
+        old.exec("INSERT INTO processed_inbound_message (sender_user_id, sender_device_id, message_id) VALUES ('alice', 'phone', ?)", ByteArray(16) { 1 })
+        old.exec("UPDATE storage_encryption SET key_id = 1, key_check = ?", records.sealKeyCheck())
+        val before = old.dump()
+        database.closeOpenDrivers()
+
+        val storage = reopen()
+        assertEquals(StorageKeyRotationStatus(StorageKeyRotationPhase.STABLE, StorageKeyId(1), null, null, 0), storage.storageKeyRotationStatus())
+        assertEquals(listOf(7L), driver.longs("PRAGMA user_version"))
+        // Every row is unchanged; storage_encryption only gained the rotation columns.
+        val after = driver.dump()
+        assertEquals(before - "storage_encryption", after - "storage_encryption")
+        assertEquals(before.getValue("storage_encryption").single() + "|1|0|NULL|NULL|NULL", after.getValue("storage_encryption").single())
+
+        assertContentEquals(ByteArray(32) { 2 }, storage.identity.identity()?.privateKey)
+        assertEquals(listOf(SignedPreKeyInfo(SignedPreKeyId(4), true, Instant.fromEpochMilliseconds(1000), null)), storage.preKeys.signedPreKeyInfos())
+        assertContentEquals(ByteArray(32) { 7 }, storage.preKeys.oneTimePreKey(OneTimePreKeyId(8))?.privateKey)
+        assertContentEquals(byteArrayOf(9, 9), storage.sessions.load(ALICE)?.state)
+        assertContentEquals(ByteArray(32) { 8 }, storage.remoteIdentities.identityKey(ALICE))
+        assertTrue(storage.sessionInitiations.isRetired(DAVE, SessionInitiationId(ByteArray(32) { 7 })))
+        assertEquals(PENDING_TEXT, storage.pendingOutbound.get(ALICE, pendingId)?.frame?.decodeToString())
+        assertTrue(storage.processedInbound.isProcessed(ALICE, LogicalMessageId.fromByteArray(ByteArray(16) { 1 })))
+    }
+
+    @Test
+    fun milestone8DatabaseRotatesItsStorageKeyAndMessagingContinues() = runTest {
+        val keys = MemoryKeyStore()
+        val provider = { keys.provider("m8") }
+        val alice = aliceClient()
+        val m8 = m8Database(alice)
+        // Milestone 9: the first open encrypts with provider key 1.
+        val encrypted = reopen(keys = provider())
+        assertEquals(setOf(StorageKeyId(1)), keys.ids("m8"))
+        val spkInfos = encrypted.preKeys.signedPreKeyInfos()
+        suspend fun bob() = client(BOB, reopen(keys = provider()))
+
+        // Milestone 11: rotate, migrate a part, restart.
+        assertEquals(StorageKeyId(2), encrypted.rotateStorageKey())
+        assertEquals(StorageKeyRotationPhase.MIGRATING, encrypted.resumeStorageKeyRotation(2).phase)
+        val mixed = sensitiveValues().map { SealedRecords.keyId(it).value }.groupingBy { it }.eachCount()
+        assertEquals(mapOf(1 to 5, 2 to 2), mixed)
+
+        // Messaging during the migration: the existing ratchet session continues, no new X3DH.
+        alice.send(BOB, "during rotation".encodeToByteArray())
+        val envelope = network.receive(BOB).single()
+        assertIs<RatchetMessage>(CiphertextMessageCodec.decode(envelope.payload))
+        assertEquals("during rotation", assertIs<ReceiveResult.Message>(bob().decrypt(envelope)).plaintext.decodeToString())
+        network.receive(ALICE).forEach { alice.decrypt(it) } // acknowledgement
+
+        // Restart, resume to the end, retire key 1.
+        val restarted = reopen(keys = provider())
+        assertEquals(StorageKeyRotationPhase.MIGRATING, restarted.storageKeyRotationStatus().phase)
+        while (restarted.resumeStorageKeyRotation(2).phase != StorageKeyRotationPhase.STABLE) Unit
+        assertEquals(setOf(StorageKeyId(2)), keys.ids("m8"))
+        assertTrue(sensitiveValues().all { SealedRecords.keyId(it) == StorageKeyId(2) })
+
+        // Signed prekey lifecycle metadata is untouched by the storage key rotation.
+        assertEquals(spkInfos, reopen(keys = provider()).preKeys.signedPreKeyInfos())
+
+        // The pending M8 message keeps its logical ID, sequence and frame, is resent and acknowledged.
+        val pending = reopen(keys = provider()).pendingOutbound.list(ALICE).single()
+        assertEquals(m8.pendingId, pending.id)
+        assertEquals(m8.pendingSequence, pending.sequence)
+        assertContentEquals(m8.pendingFrame, pending.frame)
+        assertEquals(listOf(m8.pendingId), bob().retryPendingMessages(ALICE))
+        val resent = network.receive(ALICE).single()
+        assertIs<RatchetMessage>(CiphertextMessageCodec.decode(resent.payload))
+        assertEquals(PENDING_TEXT, assertIs<ReceiveResult.Message>(alice.decrypt(resent)).plaintext.decodeToString())
+        assertTrue(assertIs<ReceiveResult.Acknowledgement>(bob().decrypt(network.receive(BOB).single())).cleared)
+        assertEquals(emptyList(), bob().pendingMessages(ALICE))
+
+        // Both directions keep working on the migrated storage.
+        bob().send(ALICE, "after rotation".encodeToByteArray())
+        assertEquals("after rotation", assertIs<ReceiveResult.Message>(alice.decrypt(network.receive(ALICE).single())).plaintext.decodeToString())
     }
 }

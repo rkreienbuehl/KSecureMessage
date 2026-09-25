@@ -21,8 +21,14 @@ import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
  * [StorageEncryptionException].
  */
 interface ClientRecordCipher {
-    /** The key this cipher seals with, and the only key it opens records of. */
+    /** The key this cipher seals with (the current storage key). */
     val keyId: StorageKeyId
+
+    /**
+     * The keys this cipher opens records of: [keyId] and, during a storage key
+     * rotation, the retained previous key (docs/storage-key-rotation.md).
+     */
+    val openableKeyIds: Set<StorageKeyId>
 
     /** The whole identity key pair. */
     suspend fun sealIdentity(identity: LocalIdentity): ByteArray
@@ -51,8 +57,33 @@ interface ClientRecordCipher {
     suspend fun verifyKeyCheck(sealed: ByteArray)
 }
 
-/** The AES-256-GCM [ClientRecordCipher] for [key]. */
-fun ClientRecordCipher(key: StorageEncryptionKey): ClientRecordCipher = AeadClientRecordCipher(StorageCipher(key))
+/**
+ * The AES-256-GCM [ClientRecordCipher] that seals with [current] and opens
+ * records of [current] and of every [retained] key, chosen by the key ID in
+ * each record. Retained keys are for storage key rotation only.
+ */
+fun ClientRecordCipher(current: StorageEncryptionKey, vararg retained: StorageEncryptionKey): ClientRecordCipher =
+    AeadClientRecordCipher(StorageCipher(current, retained.toList()))
+
+/**
+ * Reads the header of a sealed storage record without decrypting it, for
+ * storage key rotation (docs/storage-key-rotation.md). Only the format
+ * module knows the record layout; storage adapters use this instead.
+ */
+object SealedRecords {
+    /** Size of the record header that [header] returns. */
+    const val HEADER_SIZE: Int = EncryptedRecordFormat.HEADER_SIZE
+
+    /**
+     * The ID of the key that sealed [record]. Checks magic, version,
+     * algorithm and minimum size; throws [StorageEncryptionException]. Does
+     * not authenticate the record.
+     */
+    fun keyId(record: ByteArray): StorageKeyId = EncryptedRecordFormat.parse(record).keyId
+
+    /** The header every record sealed with key [keyId] starts with. */
+    fun header(keyId: StorageKeyId): ByteArray = EncryptedRecordFormat.header(keyId)
+}
 
 /**
  * Record plaintext encodings, version 1. Local storage format, not wire
@@ -70,6 +101,8 @@ fun ClientRecordCipher(key: StorageEncryptionKey): ClientRecordCipher = AeadClie
  */
 internal class AeadClientRecordCipher(private val cipher: StorageCipher) : ClientRecordCipher {
     override val keyId: StorageKeyId get() = cipher.keyId
+
+    override val openableKeyIds: Set<StorageKeyId> get() = cipher.openableKeyIds
 
     override suspend fun sealIdentity(identity: LocalIdentity): ByteArray =
         sealEncoded(StorageRecordType.LOCAL_IDENTITY, emptyList()) {

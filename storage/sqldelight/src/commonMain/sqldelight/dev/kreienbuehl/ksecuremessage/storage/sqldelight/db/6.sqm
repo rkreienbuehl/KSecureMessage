@@ -1,0 +1,17 @@
+-- Schema version 6 to 7 (milestone 11): storage key rotation
+-- (docs/storage-key-rotation.md). Adds the rotation state to the
+-- storage_encryption row. Every existing database becomes STABLE (phase 0)
+-- on its bound key; no record is read, re-encrypted or changed.
+--
+-- highest_key_id: storage key ID high-water mark, never lowered.
+-- rotation_phase: 0 STABLE, 1 PREPARING, 2 MIGRATING, 3 RETIRING.
+-- next_key_id: the allocated key while PREPARING.
+-- retiring_key_id: the previous key while MIGRATING and RETIRING.
+-- retiring_key_check: key check sealed with retiring_key_id, while MIGRATING.
+ALTER TABLE storage_encryption ADD COLUMN highest_key_id INTEGER;
+ALTER TABLE storage_encryption ADD COLUMN rotation_phase INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE storage_encryption ADD COLUMN next_key_id INTEGER;
+ALTER TABLE storage_encryption ADD COLUMN retiring_key_id INTEGER;
+ALTER TABLE storage_encryption ADD COLUMN retiring_key_check BLOB;
+
+UPDATE storage_encryption SET highest_key_id = key_id;

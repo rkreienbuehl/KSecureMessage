@@ -67,7 +67,7 @@ Not protected:
 | Retired initiations (`retired_session_initiation`) | none (public hashes) | nothing | all | none | Replay-protection lookups. |
 | Processed inbound (`processed_inbound_message`) | metadata only | nothing | all | none | Duplicate lookups; hiding communication metadata is out of scope. |
 | `pre_key_state` | none | nothing | current signed prekey ID, high-water marks | none | Needed by SQL; tampering is denial of service. |
-| `storage_encryption` | none | key check record (sealed, empty) | format, key ID | key check: record type, key ID | Marker and key binding. |
+| `storage_encryption` | none | key check records (sealed, empty) for the current and, while rotating, the retiring key | format, key IDs, rotation phase, key ID high-water mark | key check: record type, key ID | Marker, key binding, storage key rotation state. |
 
 `InMemoryClientStorage` does not encrypt: it never persists bytes. Its
 observable behavior for valid data is the same as SQLDelight's
@@ -211,7 +211,7 @@ whether bytes are plaintext by trying to decrypt them.
 
 | `format` | `key_id` | What `open` does |
 |---|---|---|
-| 1 | set | `keyProvider.key(key_id)`; `null` or a throw → `KeyUnavailable`. Opens the key check record; the wrong key fails here with `AuthenticationFailed`, before anything is read. Never creates a key. |
+| 1 | set | `keyProvider.key(key_id)`; `null` or a throw → `KeyUnavailable`. Opens the key check record; the wrong key fails here with `AuthenticationFailed`, before anything is read. Never creates a key. During a storage key rotation the retiring key is required too ([storage-key-rotation.md](storage-key-rotation.md)). |
 | 1 | NULL | A new database (created with format 1). `loadOrCreateKey()`, then binds the key ID and a key check in one transaction. If sensitive rows exist without a bound key, the database was tampered with → `KeyUnavailable`, nothing is bound. |
 | 0 | NULL | A database upgraded from schema version 5 or older: still milestone 8 plaintext. `loadOrCreateKey()`, then the legacy migration (below). |
 | other | | `UnsupportedFormat`. |
@@ -277,22 +277,17 @@ needs that must take its own measures (for example `PRAGMA secure_delete`
 plus `VACUUM` after the migration, and handling of backups), and even then
 flash storage may keep old blocks.
 
-## Key IDs and future rotation
+## Key IDs and rotation
 
 Every record carries the ID of the key that sealed it, and the database binds
-one current key ID. Milestone 9 uses exactly one key per database and has no
-rotation. A future rotation (v1 → v2) can:
-
-1. get key 2 from the provider while key 1 stays available through
-   `key(StorageKeyId(1))`;
-2. re-seal records in batches or in one transaction, each record opened with
-   the key its header names;
-3. bind key 2 once no record names key 1, then let the provider retire key 1.
-
-That needs a resolver of several keys in the storage and a marker for "rotation
-in progress"; neither exists yet, and records of an unknown key fail with
-`KeyUnavailable` instead of trying other keys. No background re-encryption is
-planned.
+one current key ID. Milestone 11 adds explicit storage key rotation on top of
+this format, without changing it: a new key becomes current, records of the
+previous key are re-sealed in resumable batches (each opened with the key its
+header names, re-sealed with the same associated data and a fresh nonce), and
+the previous key is retired after a scan proves no record uses it. See
+[storage-key-rotation.md](storage-key-rotation.md). Records of a key the
+storage does not hold still fail with `KeyUnavailable`; no key is ever tried
+at random. There is no background re-encryption.
 
 ## Memory handling
 
@@ -317,7 +312,8 @@ nothing to the transport.
 
 - Platform key providers other than Android Keystore and Apple Keychain
   (milestone 10, [storage-key-providers.md](storage-key-providers.md)).
-- Storage key rotation.
+- Automatic or scheduled storage key rotation (rotation is explicit, see
+  [storage-key-rotation.md](storage-key-rotation.md)).
 - Rollback protection, integrity of plaintext metadata, hiding metadata.
 - Secure erasure of pre-milestone-9 plaintext.
 - SQLDelight tests on JS/Wasm (no web worker in the test runner).

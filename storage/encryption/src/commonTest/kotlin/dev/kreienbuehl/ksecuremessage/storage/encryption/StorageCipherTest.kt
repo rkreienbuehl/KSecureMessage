@@ -124,6 +124,36 @@ class StorageCipherTest {
     }
 
     @Test
+    fun retainedKeyOpensItsRecordsAndSealingUsesTheCurrentKey() = runTest {
+        val old = StorageCipher(testKey(1, 0))
+        val oldRecord = old.seal(StorageRecordType.SESSION, fields, plaintext)
+        val rotating = StorageCipher(testKey(2, 50), listOf(testKey(1, 0)))
+        assertEquals(setOf(StorageKeyId(1), StorageKeyId(2)), rotating.openableKeyIds)
+
+        assertContentEquals(plaintext, rotating.open(StorageRecordType.SESSION, fields, oldRecord))
+        val resealed = rotating.seal(StorageRecordType.SESSION, fields, plaintext)
+        assertEquals(StorageKeyId(2), SealedRecords.keyId(resealed))
+        assertFalse(oldRecord.copyOfRange(10, 22).contentEquals(resealed.copyOfRange(10, 22)), "re-encryption uses a fresh nonce")
+        assertContentEquals(plaintext, StorageCipher(testKey(2, 50)).open(StorageRecordType.SESSION, fields, resealed))
+        // Same associated data after re-encryption: another row key still fails.
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> {
+            rotating.open(StorageRecordType.SESSION, listOf("bob".encodeToByteArray(), "phone".encodeToByteArray()), resealed)
+        }
+        // Once the old key is no longer retained, its records name an unavailable key.
+        assertFailsWith<StorageEncryptionException.KeyUnavailable> { StorageCipher(testKey(2, 50)).open(StorageRecordType.SESSION, fields, oldRecord) }
+        assertFailsWith<IllegalArgumentException> { StorageCipher(testKey(2, 50), listOf(testKey(2, 0))) }
+    }
+
+    @Test
+    fun sealedRecordHeaderInspection() = runTest {
+        val record = cipher.seal(StorageRecordType.SESSION, fields, plaintext)
+        assertEquals(StorageKeyId(7), SealedRecords.keyId(record))
+        assertContentEquals(record.copyOfRange(0, SealedRecords.HEADER_SIZE), SealedRecords.header(StorageKeyId(7)))
+        assertFailsWith<StorageEncryptionException.UnsupportedFormat> { SealedRecords.keyId(plaintext) }
+        assertFailsWith<StorageEncryptionException.MalformedRecord> { SealedRecords.keyId(record.copyOf(20)) }
+    }
+
+    @Test
     fun associatedDataIsCanonical() {
         val header = EncryptedRecordFormat.header(StorageKeyId(1))
         fun ad(type: StorageRecordType, vararg fields: String) =

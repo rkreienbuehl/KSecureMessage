@@ -86,15 +86,27 @@ internal object EncryptedRecordFormat {
 }
 
 /**
- * Seals and opens records with one storage key. Knows nothing about record
- * contents; [ClientRecordCipher] does.
+ * Seals records with [key] and opens records of [key] or of a [retained] key,
+ * chosen by the key ID in the record header (storage key rotation,
+ * docs/storage-key-rotation.md). Knows nothing about record contents;
+ * [ClientRecordCipher] does.
  */
 internal class StorageCipher(
     private val key: StorageEncryptionKey,
+    retained: List<StorageEncryptionKey> = emptyList(),
     // Replaced only by fixed-vector tests. Production nonces are random.
     private val nonces: () -> ByteArray = { secureRandomBytes(AesGcm.NONCE_SIZE) },
 ) {
+    private val keys: Map<StorageKeyId, StorageEncryptionKey> = (listOf(key) + retained).associateBy { it.id }
+
+    init {
+        require(keys.size == retained.size + 1) { "Duplicate storage key ID" }
+    }
+
     val keyId: StorageKeyId get() = key.id
+
+    /** IDs of the keys this cipher opens records of. */
+    val openableKeyIds: Set<StorageKeyId> get() = keys.keys
 
     suspend fun seal(type: StorageRecordType, fields: List<ByteArray>, plaintext: ByteArray): ByteArray {
         val header = EncryptedRecordFormat.header(key.id)
@@ -111,9 +123,8 @@ internal class StorageCipher(
 
     suspend fun open(type: StorageRecordType, fields: List<ByteArray>, record: ByteArray): ByteArray {
         val parsed = EncryptedRecordFormat.parse(record)
-        if (parsed.keyId != key.id) {
-            throw StorageEncryptionException.KeyUnavailable("Record uses storage key ${parsed.keyId.value}, which this storage does not use")
-        }
+        val key = keys[parsed.keyId]
+            ?: throw StorageEncryptionException.KeyUnavailable("Record uses storage key ${parsed.keyId.value}, which this storage does not use")
         val keyBytes = key.copyBytes()
         val plaintext = try {
             AesGcm.decrypt(keyBytes, parsed.nonce, parsed.ciphertext, EncryptedRecordFormat.associatedData(parsed.header, type, fields))

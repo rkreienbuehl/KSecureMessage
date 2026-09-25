@@ -1,6 +1,5 @@
 package dev.kreienbuehl.ksecuremessage.storage.sqldelight
 
-import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlDriver
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
@@ -149,28 +148,7 @@ internal class LegacyPlaintextMigration(private val driver: SqlDriver, private v
         driver.execute(null, sql, if (blob == null) 0 else 1) { blob?.let { bindBytes(0, it) } }.await()
     }
 
-    // Like SQLDelight's awaitAsList: a synchronous driver's cursor must be
-    // read before executeQuery returns, an asynchronous one when awaited.
-    private suspend fun <T> query(sql: String, map: (SqlCursor) -> T): List<T> =
-        driver.executeQuery(null, sql, { cursor ->
-            val rows = mutableListOf<T>()
-            when (val first = cursor.next()) {
-                is QueryResult.AsyncValue -> QueryResult.AsyncValue {
-                    if (first.await()) {
-                        rows += map(cursor)
-                        while (cursor.next().await()) rows += map(cursor)
-                    }
-                    rows
-                }
-                is QueryResult.Value -> {
-                    if (first.value) {
-                        rows += map(cursor)
-                        while (cursor.next().value) rows += map(cursor)
-                    }
-                    QueryResult.Value(rows)
-                }
-            }
-        }, 0).await()
+    private suspend fun <T> query(sql: String, map: (SqlCursor) -> T): List<T> = driver.queryRows(sql, map)
 
     private fun SqlCursor.bytes(index: Int): ByteArray = checkNotNull(getBytes(index)) { "Unexpected NULL in legacy row" }
     private fun SqlCursor.long(index: Int): Long = checkNotNull(getLong(index)) { "Unexpected NULL in legacy row" }

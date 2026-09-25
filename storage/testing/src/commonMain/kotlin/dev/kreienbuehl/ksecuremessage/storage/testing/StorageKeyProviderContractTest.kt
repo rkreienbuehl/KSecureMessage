@@ -17,6 +17,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Behavior every persistent [StorageKeyProvider] must have
@@ -145,6 +146,100 @@ abstract class StorageKeyProviderContractTest {
         }
         keys.forEach { assertSameKey(keys.first(), it) }
         assertSameKey(keys.first(), provider(namespace).key(keys.first().id))
+    }
+
+    // Several keys: storage key rotation (docs/storage-key-rotation.md).
+
+    @Test
+    fun createKeyAddsADistinctSecondKey() = runTest {
+        val first = provider(namespace).loadOrCreateKey()
+        val secondId = StorageKeyId(first.id.value + 1)
+        val second = provider(namespace).createKey(secondId)
+
+        assertEquals(secondId, second.id)
+        assertEquals(StorageEncryptionKey.SIZE, second.copyBytes().size)
+        assertFalse(first.copyBytes().contentEquals(second.copyBytes()), "a new key, not a copy")
+        // Restart: both keys load, neither changed.
+        assertSameKey(first, provider(namespace).key(first.id))
+        assertSameKey(second, provider(namespace).key(secondId))
+    }
+
+    @Test
+    fun createKeyIsIdempotentAndNeverOverwrites() = runTest {
+        val first = provider(namespace).loadOrCreateKey()
+        val second = provider(namespace).createKey(StorageKeyId(2))
+
+        assertSameKey(second, provider(namespace).createKey(StorageKeyId(2)))
+        assertSameKey(first, provider(namespace).createKey(first.id))
+        assertSameKey(first, provider(namespace).key(first.id))
+        assertSameKey(second, provider(namespace).key(StorageKeyId(2)))
+    }
+
+    @Test
+    fun concurrentCreateKeyForOneIdYieldsOneKey() = runTest {
+        val first = provider(namespace).loadOrCreateKey()
+        val keys = withContext(Dispatchers.Default) {
+            (1..16).map { async { provider(namespace).createKey(StorageKeyId(5)) } }.awaitAll()
+        }
+        keys.forEach { assertSameKey(keys.first(), it) }
+        assertSameKey(keys.first(), provider(namespace).key(StorageKeyId(5)))
+        assertSameKey(first, provider(namespace).key(first.id))
+    }
+
+    @Test
+    fun createKeyNeedsAProvisionedProvider() = runTest {
+        assertFailsWith<StorageEncryptionException.KeyUnavailable> { provider(namespace).createKey(StorageKeyId(2)) }
+        assertNull(provider(namespace).key(StorageKeyId(2)), "a failed createKey created nothing")
+        assertNull(provider(namespace).key(StorageKeyId(1)))
+    }
+
+    @Test
+    fun loadOrCreateKeyRefusesAProviderWithSeveralKeys() = runTest {
+        val first = provider(namespace).loadOrCreateKey()
+        val second = provider(namespace).createKey(StorageKeyId(2))
+        assertFailsWith<StorageEncryptionException.KeyUnavailable> { provider(namespace).loadOrCreateKey() }
+        assertSameKey(first, provider(namespace).key(first.id))
+        assertSameKey(second, provider(namespace).key(second.id))
+    }
+
+    @Test
+    fun removeKeyRemovesOnlyThatKey() = runTest {
+        val first = provider(namespace).loadOrCreateKey()
+        val second = provider(namespace).createKey(StorageKeyId(2))
+        val third = provider(namespace).createKey(StorageKeyId(3))
+
+        assertTrue(provider(namespace).removeKey(first.id))
+        assertNull(provider(namespace).key(first.id))
+        assertSameKey(second, provider(namespace).key(second.id))
+        assertSameKey(third, provider(namespace).key(third.id))
+        // Idempotent: a second removal finds nothing.
+        assertFalse(provider(namespace).removeKey(first.id))
+        assertFalse(provider(namespace).removeKey(StorageKeyId(99)))
+        assertSameKey(second, provider(namespace).key(second.id))
+
+        // Down to one key: that key is the provider's only key again.
+        assertTrue(provider(namespace).removeKey(second.id))
+        assertSameKey(third, provider(namespace).loadOrCreateKey())
+    }
+
+    @Test
+    fun lastKeyIsNeverRemoved() = runTest {
+        val first = provider(namespace).loadOrCreateKey()
+        assertFailsWith<IllegalStateException> { provider(namespace).removeKey(first.id) }
+        assertSameKey(first, provider(namespace).key(first.id))
+        assertSameKey(first, provider(namespace).loadOrCreateKey())
+    }
+
+    @Test
+    fun removeKeyDoesNotAffectOtherNamespaces() = runTest {
+        val a1 = provider(namespace).loadOrCreateKey()
+        provider(namespace).createKey(StorageKeyId(2))
+        val b1 = provider(otherNamespace).loadOrCreateKey()
+        val b2 = provider(otherNamespace).createKey(StorageKeyId(2))
+
+        assertTrue(provider(namespace).removeKey(a1.id))
+        assertSameKey(b1, provider(otherNamespace).key(b1.id))
+        assertSameKey(b2, provider(otherNamespace).key(b2.id))
     }
 
     private suspend fun assertNoOtherKey(original: StorageEncryptionKey, provider: StorageKeyProvider) {

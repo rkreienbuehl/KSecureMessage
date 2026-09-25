@@ -127,6 +127,19 @@ internal class Keychain(
         }
     }
 
+    /**
+     * Deletes the one item [account]; `true` if it existed. The account is
+     * required, so this never matches every item of the service.
+     */
+    fun remove(account: String): Boolean {
+        val status = withQuery(account) { SecItemDelete(it) }
+        return when (status) {
+            errSecSuccess -> true
+            errSecItemNotFound -> false
+            else -> throw KeychainException(status, "delete")
+        }
+    }
+
     /** Replaces the data of item [account]. Tests only: providers never overwrite a key. */
     fun update(account: String, data: ByteArray) {
         val status = withData(data) { value ->

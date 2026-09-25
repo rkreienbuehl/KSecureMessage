@@ -9,13 +9,26 @@
 
 -- Single row. format: 0 = milestone 8 plaintext, still to be encrypted
 -- (databases upgraded by 5.sqm); 1 = record encryption version 1. key_id is
--- the storage key the records are sealed with and key_check a sealed empty
--- record that proves that key; both NULL until the first open binds a key.
+-- the current storage key (new records are sealed with it) and key_check a
+-- sealed empty record that proves that key; both NULL until the first open
+-- binds a key.
+--
+-- Storage key rotation (schema version 7, see 6.sqm and
+-- docs/storage-key-rotation.md): highest_key_id is the key ID high-water
+-- mark; rotation_phase 0 STABLE, 1 PREPARING (next_key_id allocated, not
+-- yet current), 2 MIGRATING (records of retiring_key_id are re-encrypted;
+-- retiring_key_check proves that key), 3 RETIRING (no record uses
+-- retiring_key_id; its provider key is being removed).
 CREATE TABLE storage_encryption (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
     format INTEGER NOT NULL,
     key_id INTEGER,
-    key_check BLOB
+    key_check BLOB,
+    highest_key_id INTEGER,
+    rotation_phase INTEGER NOT NULL DEFAULT 0,
+    next_key_id INTEGER,
+    retiring_key_id INTEGER,
+    retiring_key_check BLOB
 );
 
 INSERT INTO storage_encryption (id, format) VALUES (0, 1);
@@ -104,10 +117,75 @@ CREATE TABLE processed_inbound_message (
 );
 
 selectStorageEncryption:
-SELECT format, key_id, key_check FROM storage_encryption;
+SELECT format, key_id, key_check, highest_key_id, rotation_phase, next_key_id, retiring_key_id, retiring_key_check
+FROM storage_encryption;
 
 bindStorageKey:
-UPDATE storage_encryption SET key_id = ?, key_check = ?;
+UPDATE storage_encryption SET key_id = :keyId, key_check = :keyCheck, highest_key_id = :keyId;
+
+-- Storage key rotation (docs/storage-key-rotation.md). Each statement checks
+-- the phase it leaves, so a stale caller changes nothing.
+
+prepareStorageKeyRotation:
+UPDATE storage_encryption SET rotation_phase = 1, next_key_id = :nextKeyId, highest_key_id = :nextKeyId
+WHERE rotation_phase = 0 AND key_id = :currentKeyId;
+
+activateStorageKey:
+UPDATE storage_encryption
+SET rotation_phase = 2, retiring_key_id = key_id, retiring_key_check = key_check,
+    key_id = next_key_id, key_check = :keyCheck, next_key_id = NULL
+WHERE rotation_phase = 1 AND key_id = :retiringKeyId AND next_key_id = :keyId;
+
+markStorageKeyRetiring:
+UPDATE storage_encryption SET rotation_phase = 3, retiring_key_check = NULL
+WHERE rotation_phase = 2 AND key_id = :keyId AND retiring_key_id = :retiringKeyId;
+
+finishStorageKeyRotation:
+UPDATE storage_encryption SET rotation_phase = 0, retiring_key_id = NULL
+WHERE rotation_phase = 3 AND key_id = :keyId AND retiring_key_id = :retiringKeyId;
+
+-- Re-encryption batches: rows whose record does not start with the current
+-- key's header, given as upper-case hex (malformed rows too, so they fail
+-- the batch instead of being skipped). Fixed order for reproducible progress.
+
+selectIdentityToReseal:
+SELECT sealed_identity FROM local_identity WHERE hex(substr(sealed_identity, 1, 10)) IS NOT :header;
+
+updateIdentityRecord:
+UPDATE local_identity SET sealed_identity = ?;
+
+selectSignedPreKeysToReseal:
+SELECT id, sealed_key_pair FROM signed_pre_key WHERE hex(substr(sealed_key_pair, 1, 10)) IS NOT :header ORDER BY id LIMIT :limit;
+
+updateSignedPreKeyRecord:
+UPDATE signed_pre_key SET sealed_key_pair = ? WHERE id = ?;
+
+selectOneTimePreKeysToReseal:
+SELECT id, sealed_key_pair FROM one_time_pre_key WHERE hex(substr(sealed_key_pair, 1, 10)) IS NOT :header ORDER BY id LIMIT :limit;
+
+updateOneTimePreKeyRecord:
+UPDATE one_time_pre_key SET sealed_key_pair = ? WHERE id = ?;
+
+selectSessionsToReseal:
+SELECT remote_user_id, remote_device_id, sealed_state FROM session
+WHERE hex(substr(sealed_state, 1, 10)) IS NOT :header ORDER BY remote_user_id, remote_device_id LIMIT :limit;
+
+updateSessionRecord:
+UPDATE session SET sealed_state = ? WHERE remote_user_id = ? AND remote_device_id = ?;
+
+selectPendingOutboundToReseal:
+SELECT sequence, recipient_user_id, recipient_device_id, message_id, sealed_frame FROM pending_outbound_message
+WHERE hex(substr(sealed_frame, 1, 10)) IS NOT :header ORDER BY sequence LIMIT :limit;
+
+updatePendingOutboundRecord:
+UPDATE pending_outbound_message SET sealed_frame = ? WHERE sequence = ?;
+
+countRecordsToReseal:
+SELECT (SELECT count(*) FROM local_identity WHERE hex(substr(sealed_identity, 1, 10)) IS NOT :header)
+    + (SELECT count(*) FROM signed_pre_key WHERE hex(substr(sealed_key_pair, 1, 10)) IS NOT :header)
+    + (SELECT count(*) FROM one_time_pre_key WHERE hex(substr(sealed_key_pair, 1, 10)) IS NOT :header)
+    + (SELECT count(*) FROM session WHERE hex(substr(sealed_state, 1, 10)) IS NOT :header)
+    + (SELECT count(*) FROM pending_outbound_message WHERE hex(substr(sealed_frame, 1, 10)) IS NOT :header);
 
 countSealedRecords:
 SELECT (SELECT count(*) FROM local_identity) + (SELECT count(*) FROM signed_pre_key)

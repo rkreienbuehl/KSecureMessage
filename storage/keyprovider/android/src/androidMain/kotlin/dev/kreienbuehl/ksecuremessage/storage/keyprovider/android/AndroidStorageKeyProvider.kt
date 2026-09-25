@@ -39,10 +39,15 @@ import kotlin.coroutines.cancellation.CancellationException
  * [namespace] separates the keys of different databases, accounts or
  * profiles of one application (letters, digits, `.`, `_`, `-`; at most 64).
  *
- * A key is created only if there is no wrapped key file. If the file exists
- * but the Keystore key is gone or the file is damaged, every call fails with
- * [StorageEncryptionException.KeyUnavailable]; nothing is regenerated or
- * overwritten.
+ * The file holds one entry per storage key (several during a storage key
+ * rotation, docs/storage-key-rotation.md), all wrapped by the same Keystore
+ * key. [createKey] and [removeKey] rewrite the file atomically and keep every
+ * other entry byte for byte.
+ *
+ * The first key is created only if there is no wrapped key file. If the file
+ * exists but the Keystore key is gone or the file is damaged, every call
+ * fails with [StorageEncryptionException.KeyUnavailable]; nothing is
+ * regenerated or overwritten. A damaged entry fails only for its own key ID.
  */
 class AndroidStorageKeyProvider(context: Context, private val namespace: String = DEFAULT_NAMESPACE) : StorageKeyProvider {
     init {
@@ -55,12 +60,47 @@ class AndroidStorageKeyProvider(context: Context, private val namespace: String 
 
     override suspend fun loadOrCreateKey(): StorageEncryptionKey = locked {
         val state = readState()
-        if (state != null) unwrap(state, state.currentKeyId) else create()
+        when {
+            state == null -> create()
+            state.entries.size == 1 -> unwrap(state, state.entries.single().keyId)
+            else -> throw unavailable("More than one storage key in the wrapped key file; the storage key is chosen by the database")
+        }
     }
 
     override suspend fun key(id: StorageKeyId): StorageEncryptionKey? = locked {
         val state = readState()
         if (state?.entry(id) == null) null else unwrap(state, id)
+    }
+
+    override suspend fun createKey(id: StorageKeyId): StorageEncryptionKey = locked {
+        val state = readState() ?: throw unavailable("No storage key has been provisioned; a rotation key needs an existing key")
+        if (state.alias != alias) throw unavailable("Wrapped storage key belongs to another Keystore alias")
+        if (state.entry(id) != null) {
+            unwrap(state, id)
+        } else {
+            // Rotation keys are wrapped by the same Keystore key. It must exist:
+            // a new one could not unwrap the entries already in the file.
+            val wrappingKey = keyStore().getKey(alias, null) as SecretKey?
+                ?: throw unavailable("Keystore wrapping key is missing; the storage key cannot be recovered")
+            val bytes = StorageEncryptionKey.generate(id).copyBytes()
+            try {
+                // Existing entries are copied unchanged, damaged ones included.
+                writeEntries(state.entries + wrap(wrappingKey, id, bytes))
+                verifyPersisted(id, bytes)
+            } finally {
+                bytes.fill(0)
+            }
+        }
+    }
+
+    override suspend fun removeKey(id: StorageKeyId): Boolean = locked {
+        val state = readState() ?: return@locked false
+        if (state.alias != alias) throw unavailable("Wrapped storage key belongs to another Keystore alias")
+        if (state.entry(id) == null) return@locked false
+        if (state.entries.size == 1) throw LastKeyRemoval()
+        writeEntries(state.entries.filter { it.keyId != id })
+        if (readState()?.entry(id) != null) throw unavailable("Storage key ${id.value} was not removed")
+        true
     }
 
     private fun create(): StorageEncryptionKey {
@@ -70,26 +110,40 @@ class AndroidStorageKeyProvider(context: Context, private val namespace: String 
         val id = INITIAL_KEY_ID
         val bytes = StorageEncryptionKey.generate(id).copyBytes()
         try {
-            val cipher = Cipher.getInstance(TRANSFORMATION)
-            // The Keystore picks a fresh random IV for every encryption.
-            cipher.init(Cipher.ENCRYPT_MODE, wrappingKey)
-            cipher.updateAAD(associatedData(id))
-            val ciphertext = cipher.doFinal(bytes)
-            writeAtomically(WrappedKeyFile(alias, id, listOf(WrappedKeyFile.Entry(id, cipher.iv, ciphertext))).encode())
-
-            // Only a key that can be read back after a restart is returned.
-            val stored = readState() ?: throw unavailable("Wrapped storage key was not persisted")
-            val key = unwrap(stored, id)
-            val check = key.copyBytes()
-            try {
-                if (!check.contentEquals(bytes)) throw unavailable("Persisted storage key does not match")
-            } finally {
-                check.fill(0)
-            }
-            return key
+            writeEntries(listOf(wrap(wrappingKey, id, bytes)))
+            return verifyPersisted(id, bytes)
         } finally {
             bytes.fill(0)
         }
+    }
+
+    private fun wrap(wrappingKey: SecretKey, id: StorageKeyId, bytes: ByteArray): WrappedKeyFile.Entry {
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        // The Keystore picks a fresh random IV for every encryption.
+        cipher.init(Cipher.ENCRYPT_MODE, wrappingKey)
+        cipher.updateAAD(associatedData(id))
+        return WrappedKeyFile.Entry(id, cipher.iv, cipher.doFinal(bytes))
+    }
+
+    /**
+     * Writes [entries] as the new file. The file's current key ID is only
+     * the lowest entry: which key is current is recorded in the database.
+     */
+    private fun writeEntries(entries: List<WrappedKeyFile.Entry>) {
+        writeAtomically(WrappedKeyFile(alias, entries.minBy { it.keyId.value }.keyId, entries).encode())
+    }
+
+    /** Only a key that can be read back after a restart is returned. */
+    private fun verifyPersisted(id: StorageKeyId, bytes: ByteArray): StorageEncryptionKey {
+        val stored = readState() ?: throw unavailable("Wrapped storage key was not persisted")
+        val key = unwrap(stored, id)
+        val check = key.copyBytes()
+        try {
+            if (!check.contentEquals(bytes)) throw unavailable("Persisted storage key does not match")
+        } finally {
+            check.fill(0)
+        }
+        return key
     }
 
     private fun unwrap(state: WrappedKeyFile, id: StorageKeyId): StorageEncryptionKey {
@@ -165,6 +219,8 @@ class AndroidStorageKeyProvider(context: Context, private val namespace: String 
                 throw e
             } catch (e: StorageEncryptionException) {
                 throw e
+            } catch (e: LastKeyRemoval) {
+                throw e
             } catch (e: MalformedWrappedKeyFile) {
                 throw StorageEncryptionException.KeyUnavailable("Wrapped storage key file is damaged: ${e.message}", e)
             } catch (e: Exception) {
@@ -193,4 +249,7 @@ class AndroidStorageKeyProvider(context: Context, private val namespace: String 
 
         private fun unavailable(message: String) = StorageEncryptionException.KeyUnavailable(message)
     }
+
+    /** [removeKey] of the last entry. Passed through [locked] unwrapped. */
+    private class LastKeyRemoval : IllegalStateException("The provider's last storage key cannot be removed")
 }
