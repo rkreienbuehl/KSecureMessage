@@ -7,11 +7,17 @@ CREATE TABLE local_identity (
     private_key BLOB NOT NULL
 );
 
+-- created_at and replaced_at (epoch milliseconds) were added in schema
+-- version 4, see 3.sqm. NULL means a key from before that version that the
+-- client has not stamped yet. replaced_at is NULL for the current key.
+-- Rows are deleted once their grace period is over.
 CREATE TABLE signed_pre_key (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id BETWEEN 0 AND 2147483647),
     public_key BLOB NOT NULL,
     signature BLOB NOT NULL,
-    private_key BLOB NOT NULL
+    private_key BLOB NOT NULL,
+    created_at INTEGER,
+    replaced_at INTEGER
 );
 
 CREATE TABLE one_time_pre_key (
@@ -48,12 +54,15 @@ CREATE TABLE remote_identity (
 );
 
 -- Session initiations that must never become current again (replaced or
--- lost a collision). Public values, only inserted. Added in schema version 3,
--- see 2.sqm.
+-- lost a collision). Public values. Added in schema version 3, see 2.sqm.
+-- signed_pre_key_id (version 4, 3.sqm) is the local signed prekey accepting
+-- the initiation needs; rows are deleted once that key is deleted. NULL rows
+-- are kept forever.
 CREATE TABLE retired_session_initiation (
     remote_user_id TEXT NOT NULL,
     remote_device_id TEXT NOT NULL,
     initiation_id BLOB NOT NULL CHECK (length(initiation_id) = 32),
+    signed_pre_key_id INTEGER,
     PRIMARY KEY (remote_user_id, remote_device_id, initiation_id)
 );
 
@@ -84,7 +93,14 @@ SELECT count(*) FROM retired_session_initiation
 WHERE remote_user_id = ? AND remote_device_id = ? AND initiation_id = ?;
 
 insertRetiredSessionInitiation:
-INSERT OR IGNORE INTO retired_session_initiation (remote_user_id, remote_device_id, initiation_id) VALUES (?, ?, ?);
+INSERT OR IGNORE INTO retired_session_initiation (remote_user_id, remote_device_id, initiation_id, signed_pre_key_id)
+VALUES (?, ?, ?, ?);
+
+selectRetiredSignedPreKeyIds:
+SELECT DISTINCT signed_pre_key_id FROM retired_session_initiation WHERE signed_pre_key_id IS NOT NULL;
+
+deleteRetiredForSignedPreKey:
+DELETE FROM retired_session_initiation WHERE signed_pre_key_id = ?;
 
 selectPreKeyState:
 SELECT current_signed_pre_key_id, highest_signed_pre_key_id, highest_one_time_pre_key_id FROM pre_key_state;
@@ -93,7 +109,26 @@ selectSignedPreKey:
 SELECT id, public_key, signature, private_key FROM signed_pre_key WHERE id = ?;
 
 insertSignedPreKey:
-INSERT INTO signed_pre_key (id, public_key, signature, private_key) VALUES (?, ?, ?, ?);
+INSERT INTO signed_pre_key (id, public_key, signature, private_key, created_at) VALUES (?, ?, ?, ?, ?);
+
+-- Moves the current key into its grace period. Runs before makeSignedPreKeyCurrent.
+markCurrentSignedPreKeyReplaced:
+UPDATE signed_pre_key SET replaced_at = :replacedAt
+WHERE id = (SELECT current_signed_pre_key_id FROM pre_key_state);
+
+selectSignedPreKeyInfos:
+SELECT signed_pre_key.id, signed_pre_key.id IS pre_key_state.current_signed_pre_key_id AS is_current, created_at, replaced_at
+FROM signed_pre_key, pre_key_state ORDER BY signed_pre_key.id;
+
+stampLegacySignedPreKeyCreation:
+UPDATE signed_pre_key SET created_at = :at WHERE created_at IS NULL;
+
+stampLegacySignedPreKeyReplacement:
+UPDATE signed_pre_key SET replaced_at = :at
+WHERE replaced_at IS NULL AND id IS NOT (SELECT current_signed_pre_key_id FROM pre_key_state);
+
+deleteSignedPreKey:
+DELETE FROM signed_pre_key WHERE id = ?;
 
 makeSignedPreKeyCurrent:
 UPDATE pre_key_state SET current_signed_pre_key_id = :id, highest_signed_pre_key_id = :id;

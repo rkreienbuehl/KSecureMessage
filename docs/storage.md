@@ -40,13 +40,21 @@ val oneTimePreKeys = client.publicOneTimePreKeys()
    - If it exists, keep it.
    - If it is missing and no prekey state exists, create it (`ProtocolEngine.createIdentity`) and store it.
    - If it is missing but prekeys exist, fail with `SecureMessageClientException.InconsistentStorage`. A new identity would not match the stored prekeys, so the client never creates one silently.
-2. If there is no current signed prekey, create and store one. It is signed by the identity.
+2. Signed prekey maintenance (milestone 7, see
+   [signed-prekey-lifecycle.md](signed-prekey-lifecycle.md)): stamp keys stored
+   before milestone 7 with the current time, create a current signed prekey if
+   there is none or rotate it once it reached
+   `PreKeyConfiguration.signedPreKeyRotationAge` (default 7 days), delete
+   replaced keys whose `signedPreKeyGracePeriod` (default 30 days) is over,
+   and prune retired session initiations that only those keys could accept.
+   New signed prekeys are signed by the identity.
 3. If fewer than `PreKeyConfiguration.oneTimePreKeyTarget` one-time prekeys
    (default 100) are stored, create only the missing number.
 
 `initialize()` is idempotent. A second call, or a call after an app restart
 on the same storage, changes nothing unless one-time prekeys were consumed
-since the last call. Sessions are never touched.
+or time moved past a rotation or expiry deadline. Sessions are never touched.
+Time comes from the client's `clock` parameter (`Clock.System` by default).
 
 Initialization is explicit. Other operations do not create state. Without
 a stored identity they throw `SecureMessageClientException.NotInitialized`.
@@ -59,11 +67,15 @@ it.
 
 ### Signed prekeys
 
-The current signed prekey is the one to publish. `rotateSignedPreKey()`
-creates a new current signed prekey. The replaced one stays stored and
-available by ID. A `PreKeyMessage` created from an older bundle names the old
-ID, and its private key is needed to accept it. No signed prekey is deleted
-yet: there is no retention policy and no time-based rotation.
+The current signed prekey is the one to publish. `rotateSignedPreKey()`, or
+`initialize()` once the current key reached the rotation age, creates a new
+current signed prekey. The replaced one stays stored and available by ID for
+the grace period. A `PreKeyMessage` created from an older bundle names the
+old ID, and its private key is needed to accept it. After the grace period,
+new initiations naming it fail with `ExpiredSignedPreKey`, and `initialize()`
+deletes it. Established sessions are not affected. Each key stores
+`createdAt` and, once replaced, `replacedAt`. See
+[signed-prekey-lifecycle.md](signed-prekey-lifecycle.md).
 
 ### One-time prekeys
 
@@ -78,7 +90,7 @@ keeps a persisted high-water mark, the highest ID ever stored
 (`highestSignedPreKeyId`, `highestOneTimePreKeyId`). Deleting keys does not
 lower it. New IDs are allocated upward from `highest + 1`, starting at 0.
 
-- IDs of consumed one-time prekeys are never reused.
+- IDs of consumed one-time prekeys and deleted signed prekeys are never reused.
 - Stores reject a key whose ID is not above the high-water mark.
 - There is no wraparound. When the next IDs would pass `Int.MAX_VALUE`,
   `initialize()` or `rotateSignedPreKey()` fails with
@@ -133,8 +145,16 @@ Every implementation must provide:
 - **No pin replacement.** `RemoteIdentityStore.store` is a no-op for the key
   already pinned for an address and fails with `IllegalStateException` for a
   different key. Pins are per `DeviceAddress` and are never removed.
-- **Retired initiations are kept.** `SessionInitiationStore.retire` is
-  idempotent, and entries are per `DeviceAddress` and never removed.
+- **Retired initiations are kept until pruned.** `SessionInitiationStore.retire`
+  is idempotent (the first entry wins), and entries are per `DeviceAddress`.
+  Each entry may name a local signed prekey. Entries are removed only by
+  `removeRetiredFor(signedPreKeyId)`, which the client calls after that key
+  was deleted.
+- **Signed prekey lifecycle.** `storeCurrentSignedPreKey(key, createdAt)` sets
+  the previous current key's `replacedAt` to `createdAt` in the same call.
+  `signedPreKeyInfos()` returns metadata without key material.
+  `removeSignedPreKey` refuses the current key and keeps the high-water mark.
+  `stampLegacySignedPreKeys` only fills missing timestamps.
 - **Monotonic prekey IDs**, as described above.
 - **No aliasing.** Mutating an array after storing it, or an array returned
   by a load, must not change stored state.
@@ -182,25 +202,32 @@ the instance.
 Tables:
 
 - `local_identity`: one row
-- `signed_pre_key`
+- `signed_pre_key`, with `created_at` and `replaced_at` (epoch milliseconds, nullable)
 - `one_time_pre_key`
 - `pre_key_state`: one row holding the current signed prekey ID and both high-water marks
 - `session`: keyed by remote user and device ID
 - `remote_identity`: pinned remote identity public keys, keyed by remote user and device ID
-- `retired_session_initiation`: retired 32-byte session initiation IDs, keyed by remote user, device ID and initiation ID
+- `retired_session_initiation`: retired 32-byte session initiation IDs, keyed by remote user, device ID and initiation ID, with the nullable local `signed_pre_key_id` used for pruning
 
 Keys and session state are opaque BLOBs, and the schema does not depend on
 Kodium internals. All IDs have a `CHECK (id BETWEEN 0 AND 2147483647)`
 constraint.
 
-The schema version is 3. Version 1 (milestones 3 and 4) had no
+The schema version is 4. Version 1 (milestones 3 and 4) had no
 `remote_identity` table; `1.sqm` adds it and changes nothing else. Version 2
 (milestone 5) had no `retired_session_initiation` table; `2.sqm` adds it and
-changes nothing else. A driver created with `SqlDelightClientStorage.Schema`,
+changes nothing else. Version 3 (milestone 6) had no lifecycle columns;
+`3.sqm` adds `signed_pre_key.created_at`, `signed_pre_key.replaced_at` and
+`retired_session_initiation.signed_pre_key_id`, all nullable, and changes
+nothing else. Upgraded signed prekeys get their timestamps on the next
+`initialize()`: the current key counts as created then, older keys start a
+full grace period then, and nothing is deleted on that first start
+([signed-prekey-lifecycle.md](signed-prekey-lifecycle.md#migration)).
+A driver created with `SqlDelightClientStorage.Schema`,
 as in the table above, reads SQLite's `user_version` on open and runs the
 migrations itself. An application that manages schema versions on its own
-calls `SqlDelightClientStorage.Schema.migrate(driver, oldVersion, 3)`.
-Existing identities, prekeys, sessions and pins are kept. Sessions from
+calls `SqlDelightClientStorage.Schema.migrate(driver, oldVersion, 4)`.
+Existing identities, prekeys, sessions, pins and retired initiations are kept. Sessions from
 version 1 have no pin, see
 [identity-trust.md](identity-trust.md#sessions-from-before-pinning). Session
 BLOBs written before milestone 6 use the older local state format and stay
@@ -209,8 +236,9 @@ readable (see [session-lifecycle.md](session-lifecycle.md#persistence-and-compat
 The tests run on JVM (file database) and Apple/native targets. They cover the
 contract, closing and reopening the database, on-disk rollback, a client
 restart that continues an existing session, remote trust across restarts,
-replay protection and simultaneous-initiation resolution across restarts, and
-migrating version 1 and version 2 databases.
+replay protection and simultaneous-initiation resolution across restarts, the
+signed prekey lifecycle (grace, expiry, pruning, clock set back) across
+restarts, and migrating version 1, 2 and 3 databases.
 JS/Wasm have no SQLDelight tests: the web worker driver needs a browser worker.
 The linuxX64 and mingwX64 test binaries link against the target's `libsqlite3`,
 so they are only linked and run on a Linux or Windows host.
@@ -221,6 +249,7 @@ so they are only linked and run on a Linux or Windows host.
   identity (TOFU itself is described in [identity-trust.md](identity-trust.md)).
 - Tracking locally what the server handed out (the server tombstones consumed
   one-time prekey IDs instead, see [prekey-publication.md](prekey-publication.md)).
-- Signed prekey retention and scheduled rotation, and pruning of retired
-  session initiations.
+- Pruning of retired session initiations that name no local signed prekey
+  (initiations this device started, entries from before milestone 7).
+- A secure or monotonic clock for the signed prekey lifecycle.
 - Encryption at rest.

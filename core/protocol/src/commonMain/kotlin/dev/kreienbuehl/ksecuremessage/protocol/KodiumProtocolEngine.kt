@@ -93,6 +93,7 @@ class KodiumProtocolEngine : ProtocolEngine {
             associatedData = associatedData,
             pending = pending,
             origin = SessionState.originOf(associatedData, pending),
+            acceptedSignedPreKeyId = null,
             ratchet = ratchet.exportToArray(),
         )
         return SecureSession(remoteBundle.address, state.encodeAndWipe())
@@ -136,7 +137,13 @@ class KodiumProtocolEngine : ProtocolEngine {
             val plaintext = ratchet.decrypt(ratchetMessage, associatedData)
                 .getOrElse { throw ProtocolException.DecryptionFailed("Could not decrypt the first message", it) }
             // Decryption authenticated the X3DH inputs, so origin is genuine.
-            val state = SessionState(associatedData, pending = null, origin = origin, ratchet = ratchet.exportToArray())
+            val state = SessionState(
+                associatedData,
+                pending = null,
+                origin = origin,
+                acceptedSignedPreKeyId = signedPreKey.id,
+                ratchet = ratchet.exportToArray(),
+            )
             return SessionAcceptanceResult(
                 session = SecureSession(remote, state.encodeAndWipe()),
                 plaintext = plaintext,
@@ -166,7 +173,7 @@ class KodiumProtocolEngine : ProtocolEngine {
                 message = ratchetMessage,
             )
         }
-        val updated = SessionState(state.associatedData, pending, state.origin, ratchet.exportToArray())
+        val updated = SessionState(state.associatedData, pending, state.origin, state.acceptedSignedPreKeyId, ratchet.exportToArray())
         state.ratchet.fill(0)
         return EncryptionResult(message, session.copy(state = updated.encodeAndWipe()))
     }
@@ -196,7 +203,13 @@ class KodiumProtocolEngine : ProtocolEngine {
 
         // An authenticated message from the remote side proves it has the
         // session, so the initiator can stop sending prekey messages.
-        val updated = SessionState(state.associatedData, pending = null, origin = state.origin, ratchet = ratchet.exportToArray())
+        val updated = SessionState(
+            state.associatedData,
+            pending = null,
+            origin = state.origin,
+            acceptedSignedPreKeyId = state.acceptedSignedPreKeyId,
+            ratchet = ratchet.exportToArray(),
+        )
         state.ratchet.fill(0)
         return DecryptionResult(plaintext, session.copy(state = updated.encodeAndWipe()))
     }
@@ -204,7 +217,11 @@ class KodiumProtocolEngine : ProtocolEngine {
     override fun sessionInfo(session: SecureSession): SessionInfo {
         val state = SessionState.decode(session.state)
         state.ratchet.fill(0)
-        return SessionInfo(initiationId = state.origin, awaitingReply = state.pending != null)
+        return SessionInfo(
+            initiationId = state.origin,
+            awaitingReply = state.pending != null,
+            acceptedSignedPreKeyId = state.acceptedSignedPreKeyId,
+        )
     }
 
     private fun SessionState.responderIdentityKey(): ByteArray {

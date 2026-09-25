@@ -25,6 +25,7 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Clock
 
 /**
  * Milestone 6 session lifecycle (docs/session-lifecycle.md): a peer with the
@@ -260,7 +261,7 @@ class SessionLifecycleTest {
             source.remoteIdentities.identityKey(remote.address)?.let { remoteIdentities.store(remote.address, it) }
             source.sessions.load(remote.address)?.let { sessions.store(it) }
             val highest = assertNotNull(source.preKeys.highestSignedPreKeyId()).value
-            for (id in 0..highest) source.preKeys.signedPreKey(SignedPreKeyId(id))?.let { preKeys.storeCurrentSignedPreKey(it) }
+            for (id in 0..highest) source.preKeys.signedPreKey(SignedPreKeyId(id))?.let { preKeys.storeCurrentSignedPreKey(it, Clock.System.now()) }
             preKeys.storeOneTimePreKeys(
                 source.preKeys.publicOneTimePreKeys().map { assertNotNull(source.preKeys.oneTimePreKey(it.id)) },
             )
@@ -420,12 +421,14 @@ class SessionLifecycleTest {
 
     /** Rewrites an established session in the version 1 state format, which has no origin. */
     private fun SecureSession.asLegacyEstablished(): SecureSession {
-        // v2 with pending absent: version | len+AD(128) | 0x00 | 0x01 id[32] | len+ratchet
+        // v3 with pending absent: version | len+AD(128) | 0x00 | 0x01 id[32] | accepted flag [id:u32] | len+ratchet
         val originFlag = 1 + 4 + 128 + 1
-        assertEquals(2, state[0].toInt())
+        assertEquals(3, state[0].toInt())
         assertEquals(0, state[originFlag - 1].toInt(), "established session")
         assertEquals(1, state[originFlag].toInt())
-        val legacy = state.copyOfRange(0, originFlag) + state.copyOfRange(originFlag + 33, state.size)
+        val acceptedFlag = originFlag + 33
+        val ratchetStart = acceptedFlag + if (state[acceptedFlag].toInt() == 1) 5 else 1
+        val legacy = state.copyOfRange(0, originFlag) + state.copyOfRange(ratchetStart, state.size)
         legacy[0] = 1
         return copy(state = legacy)
     }
@@ -488,7 +491,7 @@ class SessionLifecycleTest {
             identity.store(assertNotNull(bob.storage.identity.identity()))
             sessions.store(bob.sessionWith(alice))
             val signedPreKey = assertNotNull(bob.storage.preKeys.currentSignedPreKey())
-            preKeys.storeCurrentSignedPreKey(signedPreKey)
+            preKeys.storeCurrentSignedPreKey(signedPreKey, Clock.System.now())
             preKeys.storeOneTimePreKeys(bob.storage.preKeys.publicOneTimePreKeys().map { assertNotNull(bob.storage.preKeys.oneTimePreKey(it.id)) })
         }
         val legacyBob = Device(BOB, unpinned)

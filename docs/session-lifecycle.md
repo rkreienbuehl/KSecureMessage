@@ -72,7 +72,7 @@ ephemeral key bytes `80..bf`, signed prekey ID 7:
 ### Session origin
 
 Every session stores the ID of the initiation that created it (its *origin*)
-in its local state (`SecureSession.state`, format version 2). The initiator
+in its local state (`SecureSession.state`, format version 2 and later). The initiator
 computes it when it sets up the session, and the responder computes it after
 the first message decrypted. Both get the same value.
 `ProtocolEngine.sessionInfo(session)` returns the origin and whether the
@@ -96,9 +96,14 @@ ID of the incoming initiation.
 | 8 | Otherwise (established session, or own pending session with `x < c`) | accept `x` and replace the session, retire its origin |
 
 "Accept" runs `ProtocolEngine.acceptSession` with the local prekeys the
-message names. An unknown signed prekey, or a one-time prekey that is already
-consumed, fails with `ProtocolException.InvalidMessage`. A message that does
-not decrypt fails too. In both cases nothing is written.
+message names. A signed prekey whose grace period is over, or that was
+deleted, fails with `SecureMessageClientException.ExpiredSignedPreKey`
+(milestone 7, see [signed-prekey-lifecycle.md](signed-prekey-lifecycle.md)).
+A signed prekey ID that was never issued, or a one-time prekey that is
+already consumed, fails with `ProtocolException.InvalidMessage`. A message
+that does not decrypt fails too. In all cases nothing is written. Step 7
+authenticates the losing initiation the same way, so an expired signed prekey
+fails there too and nothing is retired.
 
 After a replacement, `encrypt` uses the new session. If the replaced session
 was the local device's own pending initiation, its prekey data is gone with
@@ -151,8 +156,10 @@ part of milestone 6.
 ## Replay and rollback protection
 
 A captured `PreKeyMessage` stays cryptographically valid for as long as the
-responder keeps the signed prekey, and signed prekeys are never deleted yet.
-Without protection, a replayed old initiation would replace a newer session.
+responder keeps the signed prekey it names. Since milestone 7 that is bounded
+by the signed prekey grace period
+([signed-prekey-lifecycle.md](signed-prekey-lifecycle.md)), but within it a
+replayed old initiation would replace a newer session without protection.
 
 The protection is a persistent set of **retired initiations** per remote
 `DeviceAddress` (`ClientStorage.sessionInitiations`). An initiation is retired:
@@ -173,10 +180,15 @@ cannot be accepted again.
 
 Retirement is not ordered by age: a random ID says nothing about age, so no
 high-water mark is used. The set grows by one entry per session replacement
-or lost collision. It does not grow with the number of messages. Entries are
-never removed yet. Pruning needs a rule for when an old initiation can no
-longer be accepted anyway, which becomes possible with signed prekey
-retirement (see limitations).
+or lost collision. It does not grow with the number of messages.
+
+Since milestone 7 each entry also records the local signed prekey that
+accepting the initiation needs, when known. Once that signed prekey is
+deleted after its grace period, the initiation can no longer be accepted
+and `initialize()` removes the entry. Entries without a local signed prekey
+(initiations this device started, entries from before milestone 7) are kept.
+The rule and why it is safe are in
+[signed-prekey-lifecycle.md](signed-prekey-lifecycle.md#pruning-retired-initiations).
 
 ## Atomicity
 
@@ -202,15 +214,21 @@ not be used by anyone else. It remains in the local inventory.
 
 ## Persistence and compatibility
 
-Local session state format version 2 appends the origin to version 1:
+Local session state format version 2 appends the origin to version 1.
+Version 3 (milestone 7) adds the local signed prekey a responder session was
+accepted with, used to prune retired initiations
+([signed-prekey-lifecycle.md](signed-prekey-lifecycle.md)):
 
 ```
+v3: version=0x03 | associatedData | pending | origin flag:u8 [| id[32]] | accepted flag:u8 [| signedPreKeyId:u32] | ratchet
 v2: version=0x02 | associatedData | pending | origin flag:u8 (0x00/0x01) [| id[32]] | ratchet
 v1: version=0x01 | associatedData | pending | ratchet
 ```
 
-Kodium's exported ratchet blob is carried unchanged. Version 1 states stay
-readable and are rewritten as version 2 on their next update:
+Kodium's exported ratchet blob is carried unchanged. Version 1 and 2 states
+stay readable and are rewritten as version 3 on their next update. A version
+2 state has no accepted signed prekey, so its origin is retired without one
+and never pruned. Version 1 states:
 
 | Stored before milestone 6 | Behavior |
 |---|---|
@@ -220,7 +238,8 @@ readable and are rewritten as version 2 on their next update:
 
 `storage:sqldelight` schema version 3 adds the `retired_session_initiation`
 table (`2.sqm`, add only). The migration keeps identities, prekeys, sessions
-and pins. `storage:inmemory` keeps the set in its transactional state.
+and pins. Schema version 4 (`3.sqm`) adds the nullable `signed_pre_key_id`
+column. `storage:inmemory` keeps the set in its transactional state.
 
 ## Limitations
 
@@ -234,7 +253,11 @@ and pins. `storage:inmemory` keeps the set in its transactional state.
   It becomes a confidentiality problem only if the attacker also holds that
   initiation's secrets. A wire v2 epoch would only partly help, because a
   peer that lost its session state has usually lost its counter too.
-  Recommended mitigation: signed prekey expiry (milestone 7).
+  Milestone 7 bounds the window: once the signed prekey the initiation names
+  is past its grace period, the initiation fails with `ExpiredSignedPreKey`
+  ([signed-prekey-lifecycle.md](signed-prekey-lifecycle.md)). Within the
+  window (by default up to about 37 days after the bundle was fetched) it is
+  still accepted. Wire v1 gives no authenticated freshness.
 - **Legacy established sessions.** Their origin is unknown, so it cannot be
   retired when they are replaced. A replay of their original initiation stays
   possible if it did not use a one-time prekey. Step 6 keeps a legacy session
@@ -251,7 +274,9 @@ and pins. `storage:inmemory` keeps the set in its transactional state.
 - **Lost collision messages** are not delivered and not resent (see above).
 - **Removing a session** with `SessionStore.remove` does not retire its
   initiation.
-- The retired set is not pruned, and collision losers' one-time prekeys stay
-  in the local inventory.
+- The retired set is pruned only for entries tied to a deleted local signed
+  prekey. Entries for initiations this device started, and entries from
+  before milestone 7, are kept. Collision losers' one-time prekeys stay in
+  the local inventory.
 - No identity change or reset flow, no safety numbers, no authenticated server
   API, no persistent mailbox, no sealed sender, no encryption at rest.

@@ -24,7 +24,13 @@ internal class PendingPreKey(
  * states have no stored origin: it is derived from [pending] where that still
  * exists, and is `null` for sessions that were already established.
  *
+ * [acceptedSignedPreKeyId] is the local signed prekey a responder session was
+ * accepted with (milestone 7, see docs/signed-prekey-lifecycle.md). It is
+ * `null` for initiator sessions and for states before version 3.
+ *
  * ```
+ * v3: version=0x03 | associatedData | pending | origin flag:u8 [| id[32]]
+ *     | accepted flag:u8 [| signedPreKeyId:u32] | ratchet
  * v2: version=0x02 | associatedData | pending | origin flag:u8 [| id[32]] | ratchet
  * v1: version=0x01 | associatedData | pending | ratchet
  * ```
@@ -33,6 +39,7 @@ internal class SessionState(
     val associatedData: ByteArray,
     val pending: PendingPreKey?,
     val origin: SessionInitiationId?,
+    val acceptedSignedPreKeyId: SignedPreKeyId?,
     val ratchet: ByteArray,
 ) {
     fun encode(): ByteArray {
@@ -59,18 +66,25 @@ internal class SessionState(
             out.byte(1)
             out.fixed(origin.bytes)
         }
+        if (acceptedSignedPreKeyId == null) {
+            out.byte(0)
+        } else {
+            out.byte(1)
+            out.int(acceptedSignedPreKeyId.value)
+        }
         out.bytes(ratchet)
         return out.toByteArray()
     }
 
     companion object {
-        private const val VERSION: Byte = 2
+        private const val VERSION: Byte = 3
+        private const val VERSION_2: Byte = 2
         private const val VERSION_1: Byte = 1
 
         fun decode(data: ByteArray): SessionState = try {
             val input = BinaryReader(data)
             val version = input.byte()
-            if (version != VERSION && version != VERSION_1) throw IllegalArgumentException("Unsupported session state version")
+            if (version != VERSION && version != VERSION_2 && version != VERSION_1) throw IllegalArgumentException("Unsupported session state version")
             val associatedData = input.bytes()
             val pending = when (input.byte()) {
                 0.toByte() -> null
@@ -86,18 +100,27 @@ internal class SessionState(
                 )
                 else -> throw IllegalArgumentException("Malformed session state")
             }
-            val origin = if (version == VERSION) {
+            val origin = if (version == VERSION_1) {
+                pending?.let { originOf(associatedData, it) }
+            } else {
                 when (input.byte()) {
                     0.toByte() -> null
                     1.toByte() -> SessionInitiationId(input.fixed(SessionInitiationId.SIZE))
                     else -> throw IllegalArgumentException("Malformed session state")
                 }
+            }
+            val acceptedSignedPreKeyId = if (version == VERSION) {
+                when (input.byte()) {
+                    0.toByte() -> null
+                    1.toByte() -> SignedPreKeyId(input.int())
+                    else -> throw IllegalArgumentException("Malformed session state")
+                }
             } else {
-                pending?.let { originOf(associatedData, it) }
+                null
             }
             val ratchet = input.bytes()
             input.requireEnd()
-            SessionState(associatedData, pending, origin, ratchet)
+            SessionState(associatedData, pending, origin, acceptedSignedPreKeyId, ratchet)
         } catch (e: IllegalArgumentException) {
             throw ProtocolException.InvalidSessionState("Malformed session state", e)
         } catch (e: ProtocolException.InvalidMessage) {

@@ -94,7 +94,7 @@ class SessionLifecycleEngineTest {
 
         // Still usable, and rewritten in the current format.
         val encrypted = engine.encrypt(legacy, "hi".encodeToByteArray())
-        assertEquals(2, encrypted.updatedSession.state[0].toInt())
+        assertEquals(3, encrypted.updatedSession.state[0].toInt())
         val accepted = engine.accept(bob, ALICE, assertIs<PreKeyMessage>(encrypted.message))
         assertEquals(info.initiationId, engine.sessionInfo(accepted.session).initiationId)
     }
@@ -121,12 +121,64 @@ class SessionLifecycleEngineTest {
         val alice = engine.party(ALICE)
         val bob = engine.party(BOB)
         val state = engine.initiateSession(alice.identity, bob.bundle()).state
-        // Version 2 layout: version | associatedData | pending | origin flag | ...
+        // Version 3 layout: version | associatedData | pending | origin flag | ...
         val flagOffset = 1 + 4 + 128 + 1 + (4 + 64) + (4 + 64) + 4 + 1 + 4
         assertEquals(1, state[flagOffset].toInt())
         val corrupted = state.copyOf().also { it[flagOffset] = 2 }
         assertFailsWith<ProtocolException.InvalidSessionState> { engine.sessionInfo(SecureSession(BOB, corrupted)) }
-        assertFailsWith<ProtocolException.InvalidSessionState> { engine.sessionInfo(SecureSession(BOB, byteArrayOf(3))) }
+        assertFailsWith<ProtocolException.InvalidSessionState> { engine.sessionInfo(SecureSession(BOB, byteArrayOf(4))) }
+    }
+
+    /** Re-encodes [session] in the version 2 state format (milestone 6, before milestone 7). */
+    private fun SecureSession.asVersion2(): SecureSession {
+        val state = SessionState.decode(state)
+        val current = state.encode()
+        // v3 without the accepted-prekey field is v2: drop it and fix the version byte.
+        val acceptedFieldSize = if (state.acceptedSignedPreKeyId == null) 1 else 5
+        val prefix = current.size - (4 + state.ratchet.size) - acceptedFieldSize
+        val v2 = current.copyOfRange(0, prefix) + current.copyOfRange(prefix + acceptedFieldSize, current.size)
+        v2[0] = 2
+        return copy(state = v2)
+    }
+
+    @Test
+    fun responderSessionRecordsTheAcceptedSignedPreKey() = runTest {
+        val alice = engine.party(ALICE)
+        val bob = engine.party(BOB)
+        val first = engine.encrypt(engine.initiateSession(alice.identity, bob.bundle()), "hi".encodeToByteArray())
+        assertNull(engine.sessionInfo(first.updatedSession).acceptedSignedPreKeyId, "the initiator used a remote key")
+
+        val accepted = engine.accept(bob, ALICE, assertIs<PreKeyMessage>(first.message))
+        assertEquals(bob.signedPreKey.id, engine.sessionInfo(accepted.session).acceptedSignedPreKeyId)
+
+        // Kept across ratchet steps and restarts.
+        val reply = engine.encrypt(accepted.session, "ack".encodeToByteArray())
+        val restored = reply.updatedSession.persistAndRestore()
+        assertEquals(bob.signedPreKey.id, engine.sessionInfo(restored).acceptedSignedPreKeyId)
+        val aliceDone = engine.decrypt(first.updatedSession, reply.message).updatedSession
+        assertNull(engine.sessionInfo(aliceDone).acceptedSignedPreKeyId)
+        val next = engine.encrypt(aliceDone, "again".encodeToByteArray())
+        val bobNext = engine.decrypt(restored, next.message).updatedSession
+        assertEquals(bob.signedPreKey.id, engine.sessionInfo(bobNext).acceptedSignedPreKeyId)
+    }
+
+    @Test
+    fun version2StateHasNoAcceptedSignedPreKey() = runTest {
+        val alice = engine.party(ALICE)
+        val bob = engine.party(BOB)
+        val first = engine.encrypt(engine.initiateSession(alice.identity, bob.bundle()), "hi".encodeToByteArray())
+        val accepted = engine.accept(bob, ALICE, assertIs<PreKeyMessage>(first.message))
+        val legacy = accepted.session.asVersion2()
+        assertEquals(2, legacy.state[0].toInt())
+
+        val info = engine.sessionInfo(legacy)
+        assertEquals(engine.sessionInfo(accepted.session).initiationId, info.initiationId, "the origin is kept")
+        assertNull(info.acceptedSignedPreKeyId, "never invented for an old state")
+
+        val reply = engine.encrypt(legacy, "ack".encodeToByteArray())
+        assertEquals(3, reply.updatedSession.state[0].toInt())
+        assertNull(engine.sessionInfo(reply.updatedSession).acceptedSignedPreKeyId)
+        assertEquals("ack", engine.decrypt(first.updatedSession, reply.message).plaintext.decodeToString())
     }
 
     @Test

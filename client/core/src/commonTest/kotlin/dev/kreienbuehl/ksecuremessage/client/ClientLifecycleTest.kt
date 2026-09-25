@@ -21,6 +21,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Clock
 
 private const val TARGET = 3
 
@@ -162,7 +163,7 @@ class ClientLifecycleTest {
         val storage = InMemoryClientStorage()
         val identity = engine.createIdentity()
         storage.identity.store(identity)
-        storage.preKeys.storeCurrentSignedPreKey(engine.createSignedPreKey(identity, SignedPreKeyId(0)))
+        storage.preKeys.storeCurrentSignedPreKey(engine.createSignedPreKey(identity, SignedPreKeyId(0)), Clock.System.now())
         storage.preKeys.storeOneTimePreKeys(engine.createOneTimePreKeys(OneTimePreKeyId(Int.MAX_VALUE - 1), 1))
 
         // Two more are needed but only Int.MAX_VALUE is left.
@@ -180,7 +181,7 @@ class ClientLifecycleTest {
         val storage = InMemoryClientStorage()
         val identity = engine.createIdentity()
         storage.identity.store(identity)
-        storage.preKeys.storeCurrentSignedPreKey(engine.createSignedPreKey(identity, SignedPreKeyId(Int.MAX_VALUE)))
+        storage.preKeys.storeCurrentSignedPreKey(engine.createSignedPreKey(identity, SignedPreKeyId(Int.MAX_VALUE)), Clock.System.now())
         val client = client(BOB, storage)
         client.initialize()
 
@@ -191,7 +192,7 @@ class ClientLifecycleTest {
     @Test
     fun prekeysWithoutIdentityAreRefused() = runTest {
         val storage = InMemoryClientStorage()
-        storage.preKeys.storeCurrentSignedPreKey(engine.createSignedPreKey(engine.createIdentity(), SignedPreKeyId(0)))
+        storage.preKeys.storeCurrentSignedPreKey(engine.createSignedPreKey(engine.createIdentity(), SignedPreKeyId(0)), Clock.System.now())
 
         assertFailsWith<SecureMessageClientException.InconsistentStorage> { client(BOB, storage).initialize() }
         assertNull(storage.identity.identity())

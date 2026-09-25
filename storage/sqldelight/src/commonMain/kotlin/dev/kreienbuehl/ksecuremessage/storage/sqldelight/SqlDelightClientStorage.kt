@@ -21,6 +21,7 @@ import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionInitiationStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
+import dev.kreienbuehl.ksecuremessage.storage.SignedPreKeyInfo
 import dev.kreienbuehl.ksecuremessage.storage.sqldelight.db.ClientStateQueries
 import dev.kreienbuehl.ksecuremessage.storage.sqldelight.db.KSecureMessageDatabase
 import kotlinx.coroutines.currentCoroutineContext
@@ -28,6 +29,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
+import kotlin.time.Instant
 
 /**
  * Persistent [ClientStorage] on SQLite through SQLDelight.
@@ -47,11 +49,13 @@ import kotlin.coroutines.CoroutineContext
  * not encrypt them: protect the database file with platform means.
  *
  * Schema version 2 added the `remote_identity` table (milestone 5), version 3
- * the `retired_session_initiation` table (milestone 6). A driver created with
+ * the `retired_session_initiation` table (milestone 6), version 4 nullable
+ * signed prekey lifecycle columns (milestone 7). A driver created with
  * [Schema] upgrades an older database on open; an application that manages
- * versions itself calls `Schema.migrate(driver, oldVersion, 3)`. Both
- * migrations only add a table. Session state written before milestone 6 stays
- * readable; its format is versioned inside the BLOB.
+ * versions itself calls `Schema.migrate(driver, oldVersion, 4)`. The
+ * migrations only add tables and nullable columns. Session state written
+ * before milestone 6 stays readable; its format is versioned inside the BLOB.
+ * Timestamps are stored as epoch milliseconds.
  */
 class SqlDelightClientStorage(driver: SqlDriver) : ClientStorage {
     private val database = KSecureMessageDatabase(driver)
@@ -78,15 +82,22 @@ class SqlDelightClientStorage(driver: SqlDriver) : ClientStorage {
     override val sessionInitiations: SessionInitiationStore = object : SessionInitiationStore {
         override suspend fun isRetired(remote: DeviceAddress, id: SessionInitiationId) =
             transaction { sessionInitiations.isRetired(remote, id) }
-        override suspend fun retire(remote: DeviceAddress, id: SessionInitiationId) =
-            transaction { sessionInitiations.retire(remote, id) }
+        override suspend fun retire(remote: DeviceAddress, id: SessionInitiationId, signedPreKeyId: SignedPreKeyId?) =
+            transaction { sessionInitiations.retire(remote, id, signedPreKeyId) }
+        override suspend fun retiredSignedPreKeyIds() = transaction { sessionInitiations.retiredSignedPreKeyIds() }
+        override suspend fun removeRetiredFor(signedPreKeyId: SignedPreKeyId) =
+            transaction { sessionInitiations.removeRetiredFor(signedPreKeyId) }
     }
 
     override val preKeys: PreKeyStore = object : PreKeyStore {
         override suspend fun signedPreKey(id: SignedPreKeyId) = transaction { preKeys.signedPreKey(id) }
         override suspend fun currentSignedPreKey() = transaction { preKeys.currentSignedPreKey() }
-        override suspend fun storeCurrentSignedPreKey(preKey: SignedPreKeyPair) =
-            transaction { preKeys.storeCurrentSignedPreKey(preKey) }
+        override suspend fun storeCurrentSignedPreKey(preKey: SignedPreKeyPair, createdAt: Instant) =
+            transaction { preKeys.storeCurrentSignedPreKey(preKey, createdAt) }
+        override suspend fun signedPreKeyInfo(id: SignedPreKeyId) = transaction { preKeys.signedPreKeyInfo(id) }
+        override suspend fun signedPreKeyInfos() = transaction { preKeys.signedPreKeyInfos() }
+        override suspend fun stampLegacySignedPreKeys(at: Instant) = transaction { preKeys.stampLegacySignedPreKeys(at) }
+        override suspend fun removeSignedPreKey(id: SignedPreKeyId) = transaction { preKeys.removeSignedPreKey(id) }
         override suspend fun highestSignedPreKeyId() = transaction { preKeys.highestSignedPreKeyId() }
         override suspend fun oneTimePreKey(id: OneTimePreKeyId) = transaction { preKeys.oneTimePreKey(id) }
         override suspend fun publicOneTimePreKeys() = transaction { preKeys.publicOneTimePreKeys() }
@@ -165,8 +176,20 @@ private class DatabaseView(private val queries: ClientStateQueries) : ClientStor
         override suspend fun isRetired(remote: DeviceAddress, id: SessionInitiationId): Boolean =
             queries.countRetiredSessionInitiation(remote.userId.value, remote.deviceId.value, id.bytes).awaitAsOne() > 0
 
-        override suspend fun retire(remote: DeviceAddress, id: SessionInitiationId) {
-            queries.insertRetiredSessionInitiation(remote.userId.value, remote.deviceId.value, id.bytes)
+        override suspend fun retire(remote: DeviceAddress, id: SessionInitiationId, signedPreKeyId: SignedPreKeyId?) {
+            queries.insertRetiredSessionInitiation(
+                remote.userId.value,
+                remote.deviceId.value,
+                id.bytes,
+                signedPreKeyId?.value?.toLong(),
+            )
+        }
+
+        override suspend fun retiredSignedPreKeyIds(): Set<SignedPreKeyId> =
+            queries.selectRetiredSignedPreKeyIds().awaitAsList().map { SignedPreKeyId(it.toInt()) }.toSet()
+
+        override suspend fun removeRetiredFor(signedPreKeyId: SignedPreKeyId) {
+            queries.deleteRetiredForSignedPreKey(signedPreKeyId.value.toLong())
         }
     }
 
@@ -177,11 +200,37 @@ private class DatabaseView(private val queries: ClientStateQueries) : ClientStor
         override suspend fun currentSignedPreKey(): SignedPreKeyPair? =
             state().current_signed_pre_key_id?.let { queries.selectSignedPreKey(it, ::signedPreKeyPair).awaitAsOne() }
 
-        override suspend fun storeCurrentSignedPreKey(preKey: SignedPreKeyPair) {
+        override suspend fun storeCurrentSignedPreKey(preKey: SignedPreKeyPair, createdAt: Instant) {
             require(preKey.id.value > (highestSignedPreKeyId()?.value ?: -1)) { "Signed prekey ID already used" }
             val id = preKey.id.value.toLong()
-            queries.insertSignedPreKey(id, preKey.publicKey, preKey.signature, preKey.privateKey)
+            val millis = createdAt.toEpochMilliseconds()
+            queries.insertSignedPreKey(id, preKey.publicKey, preKey.signature, preKey.privateKey, millis)
+            queries.markCurrentSignedPreKeyReplaced(millis)
             queries.makeSignedPreKeyCurrent(id)
+        }
+
+        override suspend fun signedPreKeyInfo(id: SignedPreKeyId): SignedPreKeyInfo? =
+            signedPreKeyInfos().firstOrNull { it.id == id }
+
+        override suspend fun signedPreKeyInfos(): List<SignedPreKeyInfo> =
+            queries.selectSignedPreKeyInfos { id, isCurrent, createdAt, replacedAt ->
+                SignedPreKeyInfo(
+                    id = SignedPreKeyId(id.toInt()),
+                    isCurrent = isCurrent,
+                    createdAt = createdAt?.let(Instant::fromEpochMilliseconds),
+                    replacedAt = replacedAt?.let(Instant::fromEpochMilliseconds),
+                )
+            }.awaitAsList()
+
+        override suspend fun stampLegacySignedPreKeys(at: Instant) {
+            val millis = at.toEpochMilliseconds()
+            queries.stampLegacySignedPreKeyCreation(millis)
+            queries.stampLegacySignedPreKeyReplacement(millis)
+        }
+
+        override suspend fun removeSignedPreKey(id: SignedPreKeyId) {
+            require(id.value.toLong() != state().current_signed_pre_key_id) { "The current signed prekey cannot be removed" }
+            queries.deleteSignedPreKey(id.value.toLong())
         }
 
         override suspend fun highestSignedPreKeyId(): SignedPreKeyId? =

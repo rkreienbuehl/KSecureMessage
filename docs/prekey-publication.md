@@ -38,7 +38,10 @@ client.publishPreKeys()    // make the new signed prekey current on the server
 ```
 
 `initialize()` and `rotateSignedPreKey()` never do network I/O. Publishing is
-always an explicit call.
+always an explicit call. Since milestone 7, `initialize()` may also rotate the
+signed prekey by age, so call `publishPreKeys()` after it. Replaced signed
+prekeys stay on the device for their grace period and are never uploaded
+([signed-prekey-lifecycle.md](signed-prekey-lifecycle.md)).
 
 `publishPreKeys()` reads the identity key, the current signed prekey and the
 public halves of all local one-time prekeys in one `ClientStorage.transaction`.

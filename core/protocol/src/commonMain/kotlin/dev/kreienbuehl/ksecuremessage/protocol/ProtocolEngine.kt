@@ -74,10 +74,15 @@ interface ProtocolEngine {
  * @property awaitingReply `true` while this device is the initiator and has
  *   not decrypted a message from the remote side yet (it still sends
  *   [PreKeyMessage]s).
+ * @property acceptedSignedPreKeyId the local signed prekey this device
+ *   accepted the session with as responder (docs/signed-prekey-lifecycle.md),
+ *   or `null` for sessions this device initiated and for sessions stored
+ *   before milestone 7.
  */
 class SessionInfo(
     val initiationId: SessionInitiationId?,
     val awaitingReply: Boolean,
+    val acceptedSignedPreKeyId: SignedPreKeyId? = null,
 )
 
 data class EncryptionResult(

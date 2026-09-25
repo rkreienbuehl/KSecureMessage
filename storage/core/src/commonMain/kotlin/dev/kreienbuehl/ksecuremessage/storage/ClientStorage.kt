@@ -9,6 +9,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
+import kotlin.time.Instant
 
 // Every store below except RemoteIdentityStore and SessionInitiationStore holds secret key material or
 // ratchet state as raw bytes.
@@ -59,22 +60,55 @@ interface RemoteIdentityStore {
  * was replaced, and initiations that lost a simultaneous-initiation collision.
  * Kept per remote [DeviceAddress]. IDs are public values.
  *
- * Entries are only ever added, never removed here. The client retires an ID
- * in the same transaction that replaces the session or rejects the
- * initiation, so the entry survives restarts together with that decision.
+ * The client retires an ID in the same transaction that replaces the session
+ * or rejects the initiation, so the entry survives restarts together with that
+ * decision. Each entry may name the local signed prekey that accepting the
+ * initiation needs. Entries are removed only through [removeRetiredFor], once
+ * that signed prekey is deleted for good and the initiation can no longer be
+ * accepted anyway (docs/signed-prekey-lifecycle.md). Entries without a signed
+ * prekey ID are kept forever.
  */
 interface SessionInitiationStore {
     suspend fun isRetired(remote: DeviceAddress, id: SessionInitiationId): Boolean
 
-    /** Retires [id] for [remote]. Retiring an ID twice does nothing. */
-    suspend fun retire(remote: DeviceAddress, id: SessionInitiationId)
+    /**
+     * Retires [id] for [remote]. [signedPreKeyId] is the local signed prekey
+     * the initiation was accepted with, or `null` if unknown or not a local
+     * key. Retiring an ID twice does nothing: the first entry is kept.
+     */
+    suspend fun retire(remote: DeviceAddress, id: SessionInitiationId, signedPreKeyId: SignedPreKeyId?)
+
+    /** The distinct signed prekey IDs that retired entries name, over all remote devices. */
+    suspend fun retiredSignedPreKeyIds(): Set<SignedPreKeyId>
+
+    /** Removes every retired entry, of any remote device, that names [signedPreKeyId]. */
+    suspend fun removeRetiredFor(signedPreKeyId: SignedPreKeyId)
 }
+
+/**
+ * Lifecycle metadata of one stored signed prekey. Holds no key material.
+ *
+ * @property isCurrent `true` for the signed prekey to publish.
+ * @property createdAt when the key was stored; `null` for a key stored before
+ *   milestone 7 that was not stamped yet (see [PreKeyStore.stampLegacySignedPreKeys]).
+ * @property replacedAt when a newer key became current and this one entered
+ *   its grace period; `null` for the current key and unstamped old keys.
+ */
+data class SignedPreKeyInfo(
+    val id: SignedPreKeyId,
+    val isCurrent: Boolean,
+    val createdAt: Instant?,
+    val replacedAt: Instant?,
+)
 
 /**
  * The local device's private prekeys.
  *
- * Signed prekeys are never deleted here: an incoming `PreKeyMessage` may
- * still name an older one after [storeCurrentSignedPreKey] replaced it.
+ * Signed prekeys follow a lifecycle (docs/signed-prekey-lifecycle.md): the
+ * current one is published; [storeCurrentSignedPreKey] moves it into a grace
+ * period in which an incoming `PreKeyMessage` may still name it; the client
+ * deletes it with [removeSignedPreKey] once the grace period is over. Storage
+ * only records the timestamps, the client makes the decisions.
  *
  * IDs are allocated upward from a persisted high-water mark (the highest ID
  * ever stored, see [highestSignedPreKeyId] and [highestOneTimePreKeyId]).
@@ -88,8 +122,33 @@ interface PreKeyStore {
     /** The signed prekey to publish, or `null` if none was stored yet. */
     suspend fun currentSignedPreKey(): SignedPreKeyPair?
 
-    /** Stores [preKey] and makes it current. The previous one stays available by ID. */
-    suspend fun storeCurrentSignedPreKey(preKey: SignedPreKeyPair)
+    /**
+     * Stores [preKey], created at [createdAt], and makes it current. The
+     * previous current key stays available by ID; its
+     * [SignedPreKeyInfo.replacedAt] becomes [createdAt].
+     */
+    suspend fun storeCurrentSignedPreKey(preKey: SignedPreKeyPair, createdAt: Instant)
+
+    /** Metadata of the stored signed prekey [id], or `null` if it is not stored. */
+    suspend fun signedPreKeyInfo(id: SignedPreKeyId): SignedPreKeyInfo?
+
+    /** Metadata of all stored signed prekeys, ordered by ID. */
+    suspend fun signedPreKeyInfos(): List<SignedPreKeyInfo>
+
+    /**
+     * Gives keys stored before milestone 7 their timestamps: a missing
+     * [SignedPreKeyInfo.createdAt] becomes [at], and so does a missing
+     * [SignedPreKeyInfo.replacedAt] of a key that is not current. Keys that
+     * have timestamps are not changed.
+     */
+    suspend fun stampLegacySignedPreKeys(at: Instant)
+
+    /**
+     * Deletes the signed prekey [id], private key included. Throws
+     * [IllegalArgumentException] for the current one. Deleting a key that is
+     * not stored does nothing. The high-water mark is kept.
+     */
+    suspend fun removeSignedPreKey(id: SignedPreKeyId)
 
     suspend fun highestSignedPreKeyId(): SignedPreKeyId?
 

@@ -23,11 +23,13 @@ import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.ServerStorage
 import dev.kreienbuehl.ksecuremessage.storage.SessionInitiationStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
+import dev.kreienbuehl.ksecuremessage.storage.SignedPreKeyInfo
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
+import kotlin.time.Instant
 
 /**
  * Non-persistent [ClientStorage] for tests and examples.
@@ -61,15 +63,22 @@ class InMemoryClientStorage : ClientStorage {
     override val sessionInitiations: SessionInitiationStore = object : SessionInitiationStore {
         override suspend fun isRetired(remote: DeviceAddress, id: SessionInitiationId) =
             transaction { sessionInitiations.isRetired(remote, id) }
-        override suspend fun retire(remote: DeviceAddress, id: SessionInitiationId) =
-            transaction { sessionInitiations.retire(remote, id) }
+        override suspend fun retire(remote: DeviceAddress, id: SessionInitiationId, signedPreKeyId: SignedPreKeyId?) =
+            transaction { sessionInitiations.retire(remote, id, signedPreKeyId) }
+        override suspend fun retiredSignedPreKeyIds() = transaction { sessionInitiations.retiredSignedPreKeyIds() }
+        override suspend fun removeRetiredFor(signedPreKeyId: SignedPreKeyId) =
+            transaction { sessionInitiations.removeRetiredFor(signedPreKeyId) }
     }
 
     override val preKeys: PreKeyStore = object : PreKeyStore {
         override suspend fun signedPreKey(id: SignedPreKeyId) = transaction { preKeys.signedPreKey(id) }
         override suspend fun currentSignedPreKey() = transaction { preKeys.currentSignedPreKey() }
-        override suspend fun storeCurrentSignedPreKey(preKey: SignedPreKeyPair) =
-            transaction { preKeys.storeCurrentSignedPreKey(preKey) }
+        override suspend fun storeCurrentSignedPreKey(preKey: SignedPreKeyPair, createdAt: Instant) =
+            transaction { preKeys.storeCurrentSignedPreKey(preKey, createdAt) }
+        override suspend fun signedPreKeyInfo(id: SignedPreKeyId) = transaction { preKeys.signedPreKeyInfo(id) }
+        override suspend fun signedPreKeyInfos() = transaction { preKeys.signedPreKeyInfos() }
+        override suspend fun stampLegacySignedPreKeys(at: Instant) = transaction { preKeys.stampLegacySignedPreKeys(at) }
+        override suspend fun removeSignedPreKey(id: SignedPreKeyId) = transaction { preKeys.removeSignedPreKey(id) }
         override suspend fun highestSignedPreKeyId() = transaction { preKeys.highestSignedPreKeyId() }
         override suspend fun oneTimePreKey(id: OneTimePreKeyId) = transaction { preKeys.oneTimePreKey(id) }
         override suspend fun publicOneTimePreKeys() = transaction { preKeys.publicOneTimePreKeys() }
@@ -107,13 +116,18 @@ private data class State(
     val identity: LocalIdentity? = null,
     val remoteIdentities: Map<DeviceAddress, ByteArray> = emptyMap(),
     val sessions: Map<DeviceAddress, SecureSession> = emptyMap(),
-    val retiredInitiations: Map<DeviceAddress, Set<SessionInitiationId>> = emptyMap(),
+    /** Retired initiation to the local signed prekey it needs, if known. */
+    val retiredInitiations: Map<DeviceAddress, Map<SessionInitiationId, SignedPreKeyId?>> = emptyMap(),
     val signedPreKeys: Map<SignedPreKeyId, SignedPreKeyPair> = emptyMap(),
+    val signedPreKeyTimes: Map<SignedPreKeyId, SignedPreKeyTimes> = emptyMap(),
     val currentSignedPreKeyId: SignedPreKeyId? = null,
     val highestSignedPreKeyId: SignedPreKeyId? = null,
     val oneTimePreKeys: Map<OneTimePreKeyId, OneTimePreKeyPair> = emptyMap(),
     val highestOneTimePreKeyId: OneTimePreKeyId? = null,
 )
+
+/** Lifecycle timestamps of a stored signed prekey; `null` until stamped (see PreKeyStore). */
+private data class SignedPreKeyTimes(val createdAt: Instant?, val replacedAt: Instant?)
 
 /** Uncommitted state of one transaction. */
 private class TransactionView(var state: State) : ClientStorage {
@@ -154,11 +168,23 @@ private class TransactionView(var state: State) : ClientStorage {
     // SessionInitiationId is immutable (it copies its bytes), so no copies needed.
     override val sessionInitiations: SessionInitiationStore = object : SessionInitiationStore {
         override suspend fun isRetired(remote: DeviceAddress, id: SessionInitiationId) =
-            state.retiredInitiations[remote]?.contains(id) == true
+            state.retiredInitiations[remote]?.containsKey(id) == true
 
-        override suspend fun retire(remote: DeviceAddress, id: SessionInitiationId) {
+        override suspend fun retire(remote: DeviceAddress, id: SessionInitiationId, signedPreKeyId: SignedPreKeyId?) {
             val retired = state.retiredInitiations[remote].orEmpty()
-            state = state.copy(retiredInitiations = state.retiredInitiations + (remote to retired + id))
+            if (id in retired) return
+            state = state.copy(retiredInitiations = state.retiredInitiations + (remote to retired + (id to signedPreKeyId)))
+        }
+
+        override suspend fun retiredSignedPreKeyIds(): Set<SignedPreKeyId> =
+            state.retiredInitiations.values.flatMap { it.values }.filterNotNull().toSet()
+
+        override suspend fun removeRetiredFor(signedPreKeyId: SignedPreKeyId) {
+            state = state.copy(
+                retiredInitiations = state.retiredInitiations
+                    .mapValues { (_, retired) -> retired.filterValues { it != signedPreKeyId } }
+                    .filterValues { it.isNotEmpty() },
+            )
         }
     }
 
@@ -167,12 +193,46 @@ private class TransactionView(var state: State) : ClientStorage {
 
         override suspend fun currentSignedPreKey() = state.currentSignedPreKeyId?.let { state.signedPreKeys[it]?.copy() }
 
-        override suspend fun storeCurrentSignedPreKey(preKey: SignedPreKeyPair) {
+        override suspend fun storeCurrentSignedPreKey(preKey: SignedPreKeyPair, createdAt: Instant) {
             require(preKey.id.value > (state.highestSignedPreKeyId?.value ?: -1)) { "Signed prekey ID already used" }
+            val previous = state.currentSignedPreKeyId
+            var times = state.signedPreKeyTimes + (preKey.id to SignedPreKeyTimes(createdAt, replacedAt = null))
+            if (previous != null) {
+                times = times + (previous to times.getValue(previous).copy(replacedAt = createdAt))
+            }
             state = state.copy(
                 signedPreKeys = state.signedPreKeys + (preKey.id to preKey.copy()),
+                signedPreKeyTimes = times,
                 currentSignedPreKeyId = preKey.id,
                 highestSignedPreKeyId = preKey.id,
+            )
+        }
+
+        override suspend fun signedPreKeyInfo(id: SignedPreKeyId): SignedPreKeyInfo? {
+            if (id !in state.signedPreKeys) return null
+            val times = state.signedPreKeyTimes[id] ?: SignedPreKeyTimes(null, null)
+            return SignedPreKeyInfo(id, id == state.currentSignedPreKeyId, times.createdAt, times.replacedAt)
+        }
+
+        override suspend fun signedPreKeyInfos(): List<SignedPreKeyInfo> =
+            state.signedPreKeys.keys.sortedBy { it.value }.mapNotNull { signedPreKeyInfo(it) }
+
+        override suspend fun stampLegacySignedPreKeys(at: Instant) {
+            val times = state.signedPreKeys.keys.associateWith { id ->
+                val old = state.signedPreKeyTimes[id] ?: SignedPreKeyTimes(null, null)
+                SignedPreKeyTimes(
+                    createdAt = old.createdAt ?: at,
+                    replacedAt = old.replacedAt ?: at.takeIf { id != state.currentSignedPreKeyId },
+                )
+            }
+            state = state.copy(signedPreKeyTimes = times)
+        }
+
+        override suspend fun removeSignedPreKey(id: SignedPreKeyId) {
+            require(id != state.currentSignedPreKeyId) { "The current signed prekey cannot be removed" }
+            state = state.copy(
+                signedPreKeys = state.signedPreKeys - id,
+                signedPreKeyTimes = state.signedPreKeyTimes - id,
             )
         }
 

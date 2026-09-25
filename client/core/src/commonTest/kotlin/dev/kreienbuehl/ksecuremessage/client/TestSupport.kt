@@ -6,9 +6,11 @@ import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
+import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
+import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
@@ -16,6 +18,9 @@ import dev.kreienbuehl.ksecuremessage.storage.SessionInitiationStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
 import dev.kreienbuehl.ksecuremessage.storage.inmemory.InMemoryServerStorage
 import kotlinx.coroutines.CompletableDeferred
+import kotlin.time.Clock
+import kotlin.time.Duration
+import kotlin.time.Instant
 
 internal val ALICE = DeviceAddress(UserId("alice"), DeviceId("phone"))
 internal val BOB = DeviceAddress(UserId("bob"), DeviceId("laptop"))
@@ -117,6 +122,15 @@ internal class TransactionTrackingStorage(private val delegate: ClientStorage) :
 internal fun EncryptedEnvelope.tampered() =
     copy(payload = payload.copyOf().also { it[it.lastIndex] = (it[it.lastIndex].toInt() xor 1).toByte() })
 
+/** A clock the test sets by hand. Starts at a fixed instant, never moves on its own. */
+internal class ManualClock(var now: Instant = Instant.parse("2026-01-01T00:00:00Z")) : Clock {
+    override fun now(): Instant = now
+
+    fun advanceBy(duration: Duration) {
+        now += duration
+    }
+}
+
 internal class StorageFailure : Exception("Injected storage failure")
 
 /** Delegates to [delegate], but can make writes inside a transaction fail. */
@@ -125,6 +139,10 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
     var failOneTimePreKeyRemoval = false
     var failRemoteIdentityStore = false
     var failRetire = false
+    var failRetiredPrune = false
+    var failSignedPreKeyStore = false
+    var failSignedPreKeyRemoval = false
+    var failLegacyStamp = false
 
     override val identity get() = delegate.identity
     override val remoteIdentities get() = delegate.remoteIdentities
@@ -153,9 +171,14 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
         }
 
         override val sessionInitiations: SessionInitiationStore = object : SessionInitiationStore by tx.sessionInitiations {
-            override suspend fun retire(remote: DeviceAddress, id: SessionInitiationId) {
+            override suspend fun retire(remote: DeviceAddress, id: SessionInitiationId, signedPreKeyId: SignedPreKeyId?) {
                 if (failRetire) throw StorageFailure()
-                tx.sessionInitiations.retire(remote, id)
+                tx.sessionInitiations.retire(remote, id, signedPreKeyId)
+            }
+
+            override suspend fun removeRetiredFor(signedPreKeyId: SignedPreKeyId) {
+                if (failRetiredPrune) throw StorageFailure()
+                tx.sessionInitiations.removeRetiredFor(signedPreKeyId)
             }
         }
 
@@ -163,6 +186,21 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
             override suspend fun removeOneTimePreKey(id: OneTimePreKeyId) {
                 if (failOneTimePreKeyRemoval) throw StorageFailure()
                 tx.preKeys.removeOneTimePreKey(id)
+            }
+
+            override suspend fun storeCurrentSignedPreKey(preKey: SignedPreKeyPair, createdAt: Instant) {
+                if (failSignedPreKeyStore) throw StorageFailure()
+                tx.preKeys.storeCurrentSignedPreKey(preKey, createdAt)
+            }
+
+            override suspend fun stampLegacySignedPreKeys(at: Instant) {
+                if (failLegacyStamp) throw StorageFailure()
+                tx.preKeys.stampLegacySignedPreKeys(at)
+            }
+
+            override suspend fun removeSignedPreKey(id: SignedPreKeyId) {
+                if (failSignedPreKeyRemoval) throw StorageFailure()
+                tx.preKeys.removeSignedPreKey(id)
             }
         }
 

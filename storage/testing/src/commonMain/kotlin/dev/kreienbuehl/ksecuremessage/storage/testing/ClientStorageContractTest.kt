@@ -11,6 +11,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
+import dev.kreienbuehl.ksecuremessage.storage.SignedPreKeyInfo
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -20,6 +21,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 /**
  * Behavior every [ClientStorage] implementation must have. Subclass it in an
@@ -97,9 +99,9 @@ abstract class ClientStorageContractTest {
         val bobPhone = DeviceAddress(UserId("bob"), DeviceId("phone"))
         assertFalse(storage.sessionInitiations.isRetired(bob, initiation(1)))
 
-        storage.sessionInitiations.retire(bob, initiation(1))
-        storage.sessionInitiations.retire(bob, initiation(1))
-        storage.sessionInitiations.retire(bob, initiation(2))
+        storage.sessionInitiations.retire(bob, initiation(1), null)
+        storage.sessionInitiations.retire(bob, initiation(1), null)
+        storage.sessionInitiations.retire(bob, initiation(2), SignedPreKeyId(3))
 
         assertTrue(storage.sessionInitiations.isRetired(bob, initiation(1)))
         assertTrue(storage.sessionInitiations.isRetired(bob, SessionInitiationId(bytes(1))), "compared by content")
@@ -114,7 +116,7 @@ abstract class ClientStorageContractTest {
         val storage = newStorage()
         assertFailsWith<Failure> {
             storage.transaction {
-                sessionInitiations.retire(alice, initiation(1))
+                sessionInitiations.retire(alice, initiation(1), SignedPreKeyId(1))
                 sessions.store(SecureSession(alice, bytes(1)))
                 assertTrue(sessionInitiations.isRetired(alice, initiation(1)))
                 throw Failure()
@@ -145,8 +147,8 @@ abstract class ClientStorageContractTest {
         assertNull(storage.preKeys.currentSignedPreKey())
         assertNull(storage.preKeys.highestSignedPreKeyId())
 
-        storage.preKeys.storeCurrentSignedPreKey(signedPreKey(0))
-        storage.preKeys.storeCurrentSignedPreKey(signedPreKey(1))
+        storage.preKeys.storeCurrentSignedPreKey(signedPreKey(0), at(0))
+        storage.preKeys.storeCurrentSignedPreKey(signedPreKey(1), at(1))
 
         val current = assertNotNull(storage.preKeys.currentSignedPreKey())
         assertEquals(SignedPreKeyId(1), current.id)
@@ -159,11 +161,112 @@ abstract class ClientStorageContractTest {
     @Test
     fun signedPreKeyIdsCannotBeReused() = runTest {
         val storage = newStorage()
-        storage.preKeys.storeCurrentSignedPreKey(signedPreKey(5))
+        storage.preKeys.storeCurrentSignedPreKey(signedPreKey(5), at(5))
 
-        assertFailsWith<IllegalArgumentException> { storage.preKeys.storeCurrentSignedPreKey(signedPreKey(5)) }
-        assertFailsWith<IllegalArgumentException> { storage.preKeys.storeCurrentSignedPreKey(signedPreKey(4)) }
+        assertFailsWith<IllegalArgumentException> { storage.preKeys.storeCurrentSignedPreKey(signedPreKey(5), at(5)) }
+        assertFailsWith<IllegalArgumentException> { storage.preKeys.storeCurrentSignedPreKey(signedPreKey(4), at(4)) }
         assertEquals(SignedPreKeyId(5), storage.preKeys.currentSignedPreKey()?.id)
+    }
+
+    @Test
+    fun signedPreKeyLifecycleTimestampsAreRecorded() = runTest {
+        val storage = newStorage()
+        assertEquals(emptyList(), storage.preKeys.signedPreKeyInfos())
+
+        storage.preKeys.storeCurrentSignedPreKey(signedPreKey(0), at(10))
+        assertEquals(listOf(SignedPreKeyInfo(SignedPreKeyId(0), true, at(10), null)), storage.preKeys.signedPreKeyInfos())
+
+        storage.preKeys.storeCurrentSignedPreKey(signedPreKey(1), at(20))
+        storage.preKeys.storeCurrentSignedPreKey(signedPreKey(2), at(30))
+        assertEquals(
+            listOf(
+                SignedPreKeyInfo(SignedPreKeyId(0), false, at(10), at(20)),
+                SignedPreKeyInfo(SignedPreKeyId(1), false, at(20), at(30)),
+                SignedPreKeyInfo(SignedPreKeyId(2), true, at(30), null),
+            ),
+            storage.preKeys.signedPreKeyInfos(),
+        )
+        assertEquals(SignedPreKeyInfo(SignedPreKeyId(1), false, at(20), at(30)), storage.preKeys.signedPreKeyInfo(SignedPreKeyId(1)))
+        assertNull(storage.preKeys.signedPreKeyInfo(SignedPreKeyId(3)))
+    }
+
+    @Test
+    fun stampingDoesNotChangeKeysThatHaveTimestamps() = runTest {
+        val storage = newStorage()
+        storage.preKeys.storeCurrentSignedPreKey(signedPreKey(0), at(10))
+        storage.preKeys.storeCurrentSignedPreKey(signedPreKey(1), at(20))
+        val before = storage.preKeys.signedPreKeyInfos()
+
+        storage.preKeys.stampLegacySignedPreKeys(at(99))
+        assertEquals(before, storage.preKeys.signedPreKeyInfos())
+    }
+
+    @Test
+    fun removedSignedPreKeyIsGoneButItsIdStaysUsed() = runTest {
+        val storage = newStorage()
+        storage.preKeys.storeCurrentSignedPreKey(signedPreKey(0), at(0))
+        storage.preKeys.storeCurrentSignedPreKey(signedPreKey(1), at(1))
+        storage.preKeys.storeCurrentSignedPreKey(signedPreKey(2), at(2))
+
+        assertFailsWith<IllegalArgumentException> { storage.preKeys.removeSignedPreKey(SignedPreKeyId(2)) }
+        assertNotNull(storage.preKeys.signedPreKey(SignedPreKeyId(2)))
+
+        storage.preKeys.removeSignedPreKey(SignedPreKeyId(0))
+        storage.preKeys.removeSignedPreKey(SignedPreKeyId(0))
+        storage.preKeys.removeSignedPreKey(SignedPreKeyId(7))
+        assertNull(storage.preKeys.signedPreKey(SignedPreKeyId(0)))
+        assertNull(storage.preKeys.signedPreKeyInfo(SignedPreKeyId(0)))
+        assertEquals(listOf(1, 2), storage.preKeys.signedPreKeyInfos().map { it.id.value })
+        assertNotNull(storage.preKeys.signedPreKey(SignedPreKeyId(1)))
+        assertEquals(SignedPreKeyId(2), storage.preKeys.highestSignedPreKeyId())
+        assertEquals(SignedPreKeyId(2), storage.preKeys.currentSignedPreKey()?.id)
+
+        assertFailsWith<IllegalArgumentException> { storage.preKeys.storeCurrentSignedPreKey(signedPreKey(0), at(3)) }
+        assertNull(storage.preKeys.signedPreKey(SignedPreKeyId(0)), "a deleted ID is never stored again")
+    }
+
+    @Test
+    fun retiredInitiationsArePrunedPerSignedPreKey() = runTest {
+        val storage = newStorage()
+        val bobPhone = DeviceAddress(UserId("bob"), DeviceId("phone"))
+        storage.sessionInitiations.retire(alice, initiation(1), SignedPreKeyId(1))
+        storage.sessionInitiations.retire(bob, initiation(2), SignedPreKeyId(1))
+        storage.sessionInitiations.retire(bobPhone, initiation(3), SignedPreKeyId(2))
+        storage.sessionInitiations.retire(bob, initiation(4), null)
+        // Retiring again keeps the first entry.
+        storage.sessionInitiations.retire(bob, initiation(4), SignedPreKeyId(1))
+        assertEquals(setOf(SignedPreKeyId(1), SignedPreKeyId(2)), storage.sessionInitiations.retiredSignedPreKeyIds())
+
+        storage.sessionInitiations.removeRetiredFor(SignedPreKeyId(1))
+
+        assertFalse(storage.sessionInitiations.isRetired(alice, initiation(1)))
+        assertFalse(storage.sessionInitiations.isRetired(bob, initiation(2)))
+        assertTrue(storage.sessionInitiations.isRetired(bobPhone, initiation(3)))
+        assertTrue(storage.sessionInitiations.isRetired(bob, initiation(4)), "entries without a signed prekey are kept")
+        assertEquals(setOf(SignedPreKeyId(2)), storage.sessionInitiations.retiredSignedPreKeyIds())
+    }
+
+    @Test
+    fun rolledBackTransactionKeepsSignedPreKeysAndRetiredInitiations() = runTest {
+        val storage = newStorage()
+        storage.preKeys.storeCurrentSignedPreKey(signedPreKey(0), at(0))
+        storage.preKeys.storeCurrentSignedPreKey(signedPreKey(1), at(1))
+        storage.sessionInitiations.retire(alice, initiation(1), SignedPreKeyId(0))
+        val before = storage.preKeys.signedPreKeyInfos()
+
+        assertFailsWith<Failure> {
+            storage.transaction {
+                preKeys.removeSignedPreKey(SignedPreKeyId(0))
+                sessionInitiations.removeRetiredFor(SignedPreKeyId(0))
+                preKeys.storeCurrentSignedPreKey(signedPreKey(2), at(2))
+                preKeys.stampLegacySignedPreKeys(at(3))
+                throw Failure()
+            }
+        }
+        assertEquals(before, storage.preKeys.signedPreKeyInfos())
+        assertNotNull(storage.preKeys.signedPreKey(SignedPreKeyId(0)))
+        assertEquals(SignedPreKeyId(1), storage.preKeys.highestSignedPreKeyId())
+        assertTrue(storage.sessionInitiations.isRetired(alice, initiation(1)))
     }
 
     @Test
@@ -205,7 +308,7 @@ abstract class ClientStorageContractTest {
     @Test
     fun maxIdIsAccepted() = runTest {
         val storage = newStorage()
-        storage.preKeys.storeCurrentSignedPreKey(signedPreKey(Int.MAX_VALUE))
+        storage.preKeys.storeCurrentSignedPreKey(signedPreKey(Int.MAX_VALUE), at(0))
         storage.preKeys.storeOneTimePreKeys(listOf(oneTimePreKey(Int.MAX_VALUE)))
 
         assertEquals(SignedPreKeyId(Int.MAX_VALUE), storage.preKeys.highestSignedPreKeyId())
@@ -218,7 +321,7 @@ abstract class ClientStorageContractTest {
         val result = storage.transaction {
             identity.store(identity(1))
             sessions.store(SecureSession(alice, bytes(1)))
-            preKeys.storeCurrentSignedPreKey(signedPreKey(0))
+            preKeys.storeCurrentSignedPreKey(signedPreKey(0), at(0))
             preKeys.storeOneTimePreKeys(listOf(oneTimePreKey(0)))
             "done"
         }
@@ -237,7 +340,7 @@ abstract class ClientStorageContractTest {
             storage.transaction {
                 identity.store(identity(1))
                 sessions.store(SecureSession(alice, bytes(1)))
-                preKeys.storeCurrentSignedPreKey(signedPreKey(0))
+                preKeys.storeCurrentSignedPreKey(signedPreKey(0), at(0))
                 preKeys.storeOneTimePreKeys(listOf(oneTimePreKey(0)))
                 throw Failure()
             }
@@ -259,7 +362,7 @@ abstract class ClientStorageContractTest {
             identity.store(identity(1))
             sessions.store(SecureSession(alice, bytes(1)))
             sessions.store(SecureSession(bob, bytes(2)))
-            preKeys.storeCurrentSignedPreKey(signedPreKey(0))
+            preKeys.storeCurrentSignedPreKey(signedPreKey(0), at(0))
             preKeys.storeOneTimePreKeys(listOf(oneTimePreKey(0), oneTimePreKey(1)))
         }
 
@@ -267,7 +370,7 @@ abstract class ClientStorageContractTest {
             storage.transaction {
                 sessions.store(SecureSession(alice, bytes(9)))
                 sessions.remove(bob)
-                preKeys.storeCurrentSignedPreKey(signedPreKey(1))
+                preKeys.storeCurrentSignedPreKey(signedPreKey(1), at(1))
                 preKeys.removeOneTimePreKey(OneTimePreKeyId(0))
                 preKeys.storeOneTimePreKeys(listOf(oneTimePreKey(2)))
                 throw Failure()
@@ -371,5 +474,8 @@ abstract class ClientStorageContractTest {
         fun oneTimePreKey(id: Int) = OneTimePreKeyPair(OneTimePreKeyId(id), bytes(id), bytes(-1))
 
         fun initiation(seed: Int) = SessionInitiationId(bytes(seed))
+
+        /** Whole milliseconds: adapters may store timestamps at that precision. */
+        fun at(seconds: Int): Instant = Instant.fromEpochMilliseconds(1_700_000_000_000L + seconds * 1_000L)
     }
 }

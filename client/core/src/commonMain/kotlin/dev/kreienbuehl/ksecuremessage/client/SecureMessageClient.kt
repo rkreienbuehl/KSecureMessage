@@ -17,10 +17,12 @@ import dev.kreienbuehl.ksecuremessage.protocol.ProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolException
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SessionAcceptanceResult
+import dev.kreienbuehl.ksecuremessage.protocol.SessionInfo
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 /**
@@ -42,6 +44,16 @@ import kotlin.uuid.Uuid
  *
  * [initialize] and [rotateSignedPreKey] change local state only. Call
  * [publishPreKeys] afterwards to upload the public material.
+ *
+ * Signed prekeys expire (docs/signed-prekey-lifecycle.md). A replaced signed
+ * prekey stays usable for new sessions for
+ * [PreKeyConfiguration.signedPreKeyGracePeriod]; after that, initiations that
+ * name it fail with [SecureMessageClientException.ExpiredSignedPreKey] and
+ * [initialize] deletes it. Established sessions are not affected. [initialize]
+ * also rotates the current signed prekey once it is
+ * [PreKeyConfiguration.signedPreKeyRotationAge] old, so long-running
+ * applications call [initialize] periodically, followed by [publishPreKeys].
+ * Time comes from [clock].
  *
  * Remote identity keys are trusted on first use (docs/identity-trust.md).
  * The first identity key that sets up a session with a remote device, as
@@ -76,17 +88,23 @@ class SecureMessageClient(
     private val protocol: ProtocolEngine,
     private val transport: SecureMessageTransport,
     preKeyConfiguration: PreKeyConfiguration = PreKeyConfiguration(),
+    clock: Clock = Clock.System,
 ) {
-    private val preKeyManager = PreKeyManager(protocol, preKeyConfiguration)
+    private val preKeyManager = PreKeyManager(protocol, preKeyConfiguration, clock)
 
     /** Keeps [send]'s hand-off to the transport in encryption order. */
     private val sendMutex = Mutex()
 
     /**
      * Makes sure the local identity, a current signed prekey and
-     * [PreKeyConfiguration.oneTimePreKeyTarget] one-time prekeys exist. Only
-     * missing state is created, in one transaction. An existing identity is
-     * never replaced. No network I/O: see [publishPreKeys].
+     * [PreKeyConfiguration.oneTimePreKeyTarget] one-time prekeys exist, and
+     * runs signed prekey maintenance: rotation of a current key that reached
+     * [PreKeyConfiguration.signedPreKeyRotationAge], deletion of replaced keys
+     * whose grace period is over, and removal of retired session initiations
+     * that only those keys could accept. All in one transaction. An existing
+     * identity is never replaced. Safe to call repeatedly. No network I/O: call
+     * [publishPreKeys] afterwards, a rotation changes the published signed
+     * prekey.
      */
     suspend fun initialize() {
         storage.transaction { with(preKeyManager) { ensureInitialized() } }
@@ -120,8 +138,10 @@ class SecureMessageClient(
 
     /**
      * Replaces the current signed prekey with a new one and returns its
-     * public half. The old private key stays stored, so first-contact
-     * messages that still use it can be decrypted.
+     * public half. The old private key stays stored for
+     * [PreKeyConfiguration.signedPreKeyGracePeriod], so first-contact messages
+     * that still use it can be decrypted. Local only: call [publishPreKeys]
+     * afterwards.
      */
     suspend fun rotateSignedPreKey(): PublicSignedPreKey =
         storage.transaction { with(preKeyManager) { rotateSignedPreKey() } }.toPublic()
@@ -293,7 +313,7 @@ class SecureMessageClient(
                 rejectLosingInitiation(identity, sender, message, initiation)
                 return Received.CollisionLost
             }
-            else -> acceptSession(identity, sender, message, replaced = currentInitiation)
+            else -> acceptSession(identity, sender, message, replaced = current)
         }
         // A session from before pinning gets its pin here: the engine checked
         // the key against the session and decrypted.
@@ -339,20 +359,23 @@ class SecureMessageClient(
 
     /**
      * Sets up the session [message] starts and makes it the current one,
-     * retiring the [replaced] initiation. Nothing is written unless the
-     * message decrypts.
+     * retiring the initiation of the [replaced] session. Nothing is written
+     * unless the message decrypts.
      */
     private suspend fun ClientStorage.acceptSession(
         identity: LocalIdentity,
         sender: DeviceAddress,
         message: PreKeyMessage,
-        replaced: SessionInitiationId?,
+        replaced: SessionInfo?,
     ): ByteArray {
         val result = acceptWithLocalPreKeys(identity, sender, message)
         // One transaction: the session, the retired initiation and the
-        // one-time prekey removal commit together or not at all.
+        // one-time prekey removal commit together or not at all. The retired
+        // entry names the local signed prekey the replaced session was accepted
+        // with (null if this device initiated it or it predates milestone 7),
+        // so it can be pruned once that key is deleted.
         sessions.store(result.session)
-        replaced?.let { sessionInitiations.retire(sender, it) }
+        replaced?.initiationId?.let { sessionInitiations.retire(sender, it, replaced.acceptedSignedPreKeyId) }
         result.consumedOneTimePreKeyId?.let { preKeys.removeOneTimePreKey(it) }
         return result.plaintext
     }
@@ -372,7 +395,9 @@ class SecureMessageClient(
         val result = acceptWithLocalPreKeys(identity, sender, message)
         result.plaintext.fill(0)
         result.session.state.fill(0)
-        sessionInitiations.retire(sender, initiation)
+        // Accepted with the signed prekey the message names, so the entry can
+        // be pruned once that key is deleted.
+        sessionInitiations.retire(sender, initiation, message.signedPreKeyId)
     }
 
     private suspend fun ClientStorage.acceptWithLocalPreKeys(
@@ -380,8 +405,7 @@ class SecureMessageClient(
         sender: DeviceAddress,
         message: PreKeyMessage,
     ): SessionAcceptanceResult {
-        val signedPreKey = preKeys.signedPreKey(message.signedPreKeyId)
-            ?: throw ProtocolException.InvalidMessage("Unknown signed prekey")
+        val signedPreKey = with(preKeyManager) { signedPreKeyForAcceptance(sender, message.signedPreKeyId) }
         val oneTimePreKey = message.oneTimePreKeyId?.let { id ->
             // Missing usually means it was already consumed by another session.
             preKeys.oneTimePreKey(id) ?: throw ProtocolException.InvalidMessage("Unknown one-time prekey")

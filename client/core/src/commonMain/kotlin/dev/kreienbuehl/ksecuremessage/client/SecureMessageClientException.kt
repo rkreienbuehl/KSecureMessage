@@ -1,6 +1,7 @@
 package dev.kreienbuehl.ksecuremessage.client
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 
 /** Lifecycle and local-state failures of [SecureMessageClient]. Messages never contain key material. */
 sealed class SecureMessageClientException(message: String) : Exception(message) {
@@ -43,4 +44,14 @@ sealed class SecureMessageClientException(message: String) : Exception(message) 
      */
     class SessionCollision(val address: DeviceAddress) :
         SecureMessageClientException("Session collision with $address, message not delivered")
+
+    /**
+     * [address] sent a new session initiation that names the local signed
+     * prekey [signedPreKeyId], whose grace period is over (see
+     * docs/signed-prekey-lifecycle.md). Its private key is deleted or about to
+     * be, so no new session can be accepted with it. Nothing was changed.
+     * Existing sessions are not affected.
+     */
+    class ExpiredSignedPreKey(val address: DeviceAddress, val signedPreKeyId: SignedPreKeyId) :
+        SecureMessageClientException("Session initiation from $address uses expired signed prekey ${signedPreKeyId.value}")
 }

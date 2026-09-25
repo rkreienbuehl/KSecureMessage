@@ -1,0 +1,11 @@
+-- Schema version 3 to 4 (milestone 7): signed prekey lifecycle metadata and
+-- the signed prekey a retired session initiation depends on.
+-- Adds nullable columns only; existing rows are kept. NULL timestamps mark
+-- signed prekeys stored before milestone 7: the client stamps them with the
+-- current time on its next initialize() (current key: created now; older
+-- keys: grace period starts now), so no key is deleted by the upgrade.
+-- Retired initiations from before milestone 7 keep a NULL signed prekey ID
+-- and are never pruned.
+ALTER TABLE signed_pre_key ADD COLUMN created_at INTEGER;
+ALTER TABLE signed_pre_key ADD COLUMN replaced_at INTEGER;
+ALTER TABLE retired_session_initiation ADD COLUMN signed_pre_key_id INTEGER;
