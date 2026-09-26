@@ -1,6 +1,7 @@
 package dev.kreienbuehl.ksecuremessage.client
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.DeviceAuthenticationRegistrationStatus
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
@@ -67,10 +68,11 @@ internal class FakeNetwork : SecureMessageTransport {
 
     val rotations = mutableListOf<DeviceAuthenticationRotationAuthorization>()
 
-    /** Returned by [authenticationEpoch] without checking authentication. */
-    var authenticationEpoch = 1L
+    /** Returned by [registrationStatus] without checking authentication. */
+    var registrationStatus = DeviceAuthenticationRegistrationStatus(1, Instant.parse("2026-01-01T00:00:00Z"))
 
-    override suspend fun authenticationEpoch(address: DeviceAddress, signer: ServerRequestSigner): Long = authenticationEpoch
+    override suspend fun registrationStatus(address: DeviceAddress, signer: ServerRequestSigner): DeviceAuthenticationRegistrationStatus =
+        registrationStatus
 
     /** Only records, without checking anything. */
     override suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization) {
@@ -130,16 +132,21 @@ internal class FakeNetwork : SecureMessageTransport {
  * [beforeNetworkCall] runs on every call.
  */
 internal class ServerBackedNetwork(
+    /** The server's clock: the key installation time of registrations, recoveries and rotations. */
+    private val clock: Clock = Clock.System,
     private val beforeNetworkCall: () -> Unit = {},
 ) : SecureMessageTransport {
     val server = InMemoryServerStorage()
+
+    /** The server's time, in milliseconds like server:core. */
+    private fun now() = Instant.fromEpochMilliseconds(clock.now().toEpochMilliseconds())
 
     override suspend fun registerDevice(registration: DeviceRegistration, signer: ServerRequestSigner) {
         beforeNetworkCall()
         val key = registration.publicKey
         authenticate(registration.address, "PUT", ServerApiPaths.REGISTRATION, key, signer) { key }
         try {
-            server.devices.register(registration)
+            server.devices.register(registration, now())
         } catch (e: DeviceRegistrationException.Conflict) {
             throw SecureMessageTransportException.DeviceRegistrationConflict()
         }
@@ -172,7 +179,7 @@ internal class ServerBackedNetwork(
         val result = server.devices.replaceForRecovery(
             RecoveryReplacement(
                 target, authorizer, request.replacementPublicKey, DeviceRecovery.recoveryId(request),
-                request.nonce, request.timestamp, Instant.DISTANT_PAST,
+                request.nonce, request.timestamp, Instant.DISTANT_PAST, now(),
             ),
         )
         when (result) {
@@ -185,10 +192,15 @@ internal class ServerBackedNetwork(
         afterRecovery()
     }
 
-    override suspend fun authenticationEpoch(address: DeviceAddress, signer: ServerRequestSigner): Long {
+    /** Registration status requests that reached the server. */
+    var registrationStatusRequests = 0
+
+    override suspend fun registrationStatus(address: DeviceAddress, signer: ServerRequestSigner): DeviceAuthenticationRegistrationStatus {
         beforeNetworkCall()
+        registrationStatusRequests++
         authenticate(address, "GET", ServerApiPaths.REGISTRATION, ByteArray(0), signer)
-        return checkNotNull(server.devices.registrationState(address)).authEpoch
+        val state = checkNotNull(server.devices.registrationState(address))
+        return DeviceAuthenticationRegistrationStatus(state.authEpoch, state.authKeyInstalledAt)
     }
 
     /** Rotation requests that reached the server, in order. */
@@ -199,6 +211,12 @@ internal class ServerBackedNetwork(
      * before the response: throwing here stands for a lost response.
      */
     var afterRotation: () -> Unit = {}
+
+    /**
+     * Runs after the server committed a rotation, before the response, and
+     * may suspend: another client can act while this one waits for it.
+     */
+    var whileRotationResponsePending: suspend () -> Unit = {}
 
     /**
      * The checks of server:core's routine rotation, without the time window:
@@ -233,7 +251,7 @@ internal class ServerBackedNetwork(
             reject(SecureMessageTransportException.RotationFailure.INVALID_PROOF)
         }
         val result = server.devices.replaceForRotation(
-            RotationReplacement(state, statement.replacementPublicKey, rotationId, statement.nonce, statement.timestamp, Instant.DISTANT_PAST),
+            RotationReplacement(state, statement.replacementPublicKey, rotationId, statement.nonce, statement.timestamp, Instant.DISTANT_PAST, now()),
         )
         when (result) {
             RotationReplacementResult.REPLACED, RotationReplacementResult.ALREADY_APPLIED -> Unit
@@ -243,6 +261,7 @@ internal class ServerBackedNetwork(
             RotationReplacementResult.EPOCH_EXHAUSTED -> reject(SecureMessageTransportException.RotationFailure.EPOCH_EXHAUSTED)
         }
         afterRotation()
+        whileRotationResponsePending()
     }
 
     override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) {

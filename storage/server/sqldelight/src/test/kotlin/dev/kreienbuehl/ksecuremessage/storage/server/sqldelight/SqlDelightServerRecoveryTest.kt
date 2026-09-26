@@ -69,11 +69,12 @@ class SqlDelightServerRecoveryTest {
         RequestNonce(ByteArray(16) { seed.toByte() }),
         t0,
         t0 - 5.minutes,
+        t0,
     )
 
     private suspend fun registered(): SqlDelightServerStorage = storage().apply {
-        devices.register(DeviceRegistration(laptop, key(1)))
-        devices.register(DeviceRegistration(phone, key(100)))
+        devices.register(DeviceRegistration(laptop, key(1)), t0)
+        devices.register(DeviceRegistration(phone, key(100)), t0)
     }
 
     private suspend fun SqlDelightServerStorage.assertKey(seed: Int, epoch: Long) {
@@ -91,7 +92,7 @@ class SqlDelightServerRecoveryTest {
         val restarted = restart()
         restarted.assertKey(2, epoch = 2)
         assertEquals(DeviceRecoveryId(ByteArray(32) { 2 }), restarted.devices.registrationState(laptop)?.recoveryId)
-        assertFailsWith<DeviceRegistrationException.Conflict> { restarted.devices.register(DeviceRegistration(laptop, key(1))) }
+        assertFailsWith<DeviceRegistrationException.Conflict> { restarted.devices.register(DeviceRegistration(laptop, key(1)), t0) }
         assertEquals(ALREADY_APPLIED, restarted.devices.replaceForRecovery(replacement), "a lost response can be retried after a restart")
         restart().assertKey(2, epoch = 2)
     }

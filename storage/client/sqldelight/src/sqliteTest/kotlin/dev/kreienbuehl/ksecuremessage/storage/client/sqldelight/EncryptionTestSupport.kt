@@ -6,6 +6,7 @@ import dev.kreienbuehl.ksecuremessage.client.SecureMessageClient
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransport
 import dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.DeviceAuthenticationRegistrationStatus
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
@@ -43,7 +44,7 @@ class TestRelay : SecureMessageTransport {
 
     override suspend fun recoverDevice(authorization: DeviceRecoveryAuthorization) = error("Tests set bundles directly")
 
-    override suspend fun authenticationEpoch(address: DeviceAddress, signer: ServerRequestSigner): Long = error("Tests set bundles directly")
+    override suspend fun registrationStatus(address: DeviceAddress, signer: ServerRequestSigner): DeviceAuthenticationRegistrationStatus = error("Tests set bundles directly")
 
     override suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization) =
         error("Tests set bundles directly")

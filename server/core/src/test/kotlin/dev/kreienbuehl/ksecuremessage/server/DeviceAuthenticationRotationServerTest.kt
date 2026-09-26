@@ -106,7 +106,7 @@ class DeviceAuthenticationRotationServerTest {
         receive(signed(address, key, ProtectedEndpoint.DRAIN_MAILBOX))
 
     private suspend fun SecureMessageServer.epoch(address: DeviceAddress, key: DeviceAuthenticationKeyPair): Long =
-        authenticationEpoch(signed(address, key, ProtectedEndpoint.READ_REGISTRATION))
+        registrationStatus(signed(address, key, ProtectedEndpoint.READ_REGISTRATION)).authEpoch
 
     private suspend fun ServerStorage.state(address: DeviceAddress = phone): DeviceRegistrationState = assertNotNull(devices.registrationState(address))
 

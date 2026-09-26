@@ -38,6 +38,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 
@@ -117,11 +118,24 @@ class DeviceAuthenticationRotationRoutesTest {
     }
 
     @Test
-    fun registrationStateIsSignedAndReturnsTheEpoch() = testServer(clock) { _, http ->
+    fun registrationStateIsSignedAndReturnsTheEpochAndInstallationTime() = testServer(clock) { _, http ->
+        val registeredAt = clock.now
         val (phoneDevice) = registered(http)
+        clock.now = registeredAt + 3.days
         val response = http.registrationState(phoneDevice.keyPair)
         assertEquals(HttpStatusCode.OK, response.status)
-        assertEquals("""{"authEpoch":1}""", response.bodyAsText())
+        // Exact shape: epoch and the server time of registration, in epoch milliseconds.
+        assertEquals("""{"authEpoch":1,"authKeyInstalledAt":${registeredAt.toEpochMilliseconds()}}""", response.bodyAsText())
+
+        // A rotation installs K2 at the server's time of the rotation.
+        val k2 = newKey()
+        clock.now = registeredAt + 30.days
+        assertEquals(HttpStatusCode.NoContent, http.rotate(rotation(phoneDevice.keyPair, k2)).status)
+        clock.now = registeredAt + 31.days
+        assertEquals(
+            """{"authEpoch":2,"authKeyInstalledAt":${(registeredAt + 30.days).toEpochMilliseconds()}}""",
+            http.registrationState(k2).bodyAsText(),
+        )
         http.raw(HttpMethod.Get, ServerApiPaths.device(phone, ServerApiPaths.REGISTRATION), null, null)
             .assertError(HttpStatusCode.Unauthorized, "missing_authentication")
         http.registrationState(newKey()).assertError(HttpStatusCode.Unauthorized, "invalid_authentication")
@@ -143,7 +157,7 @@ class DeviceAuthenticationRotationRoutesTest {
         http.registrationState(phoneDevice.keyPair).assertError(HttpStatusCode.Unauthorized, "invalid_authentication")
         http.signed(HttpMethod.Put, ServerApiPaths.PRE_KEYS, phoneDevice.keyPair).assertError(HttpStatusCode.Unauthorized, "invalid_authentication")
         assertEquals(HttpStatusCode.OK, http.drain(k2).status)
-        assertEquals("""{"authEpoch":2}""", http.registrationState(k2).bodyAsText())
+        assertEquals("""{"authEpoch":2,"authKeyInstalledAt":${clock.now.toEpochMilliseconds()}}""", http.registrationState(k2).bodyAsText())
         storage.assertUnchanged(laptopDevice)
     }
 
@@ -243,7 +257,9 @@ class DeviceAuthenticationRotationRoutesTest {
         assertContentEquals(k2.publicKey, storage.devices.registration(phone)?.publicKey)
         assertEquals(2, storage.devices.registrationState(phone)?.authEpoch)
         http.drain(k1).assertError(HttpStatusCode.Unauthorized, "invalid_authentication")
-        assertEquals(2, transport.authenticationEpoch(phone) { ServerRequestAuthentication.sign(k2, it, clock.now()) })
+        val status = transport.registrationStatus(phone) { ServerRequestAuthentication.sign(k2, it, clock.now()) }
+        assertEquals(2, status.authEpoch)
+        assertEquals(storage.devices.registrationState(phone)?.authKeyInstalledAt, status.authKeyInstalledAt)
 
         // Messaging identity, verification and sessions are unchanged; the new key signs everything.
         assertEquals(VerificationState.VERIFIED, phoneClient.remoteIdentityTrust(bob)?.verification)
@@ -268,7 +284,7 @@ class DeviceAuthenticationRotationRoutesTest {
         }
         assertEquals(RotationFailure.NOT_REGISTERED, unknown.reason)
         val oldKey = assertFailsWith<SecureMessageTransportException.AuthenticationFailed> {
-            transport.authenticationEpoch(phone) { ServerRequestAuthentication.sign(k1, it, clock.now()) }
+            transport.registrationStatus(phone) { ServerRequestAuthentication.sign(k1, it, clock.now()) }
         }
         assertEquals(AuthenticationFailure.INVALID, oldKey.failure)
     }
@@ -302,13 +318,18 @@ class DeviceAuthenticationRotationRoutesTest {
             val k1 = phoneDevice.keyPair
             val k2 = newKey()
             val first = rotation(k1, k2)
+            val rotatedAt = clock.now
             assertEquals(HttpStatusCode.NoContent, http.rotate(first).status)
 
             server.restart()
+            clock.now = rotatedAt + 2.minutes
             http.drain(k1).assertError(HttpStatusCode.Unauthorized, "invalid_authentication")
             assertEquals(HttpStatusCode.OK, http.drain(k2).status)
-            assertEquals("""{"authEpoch":2}""", http.registrationState(k2).bodyAsText())
+            val expected = """{"authEpoch":2,"authKeyInstalledAt":${rotatedAt.toEpochMilliseconds()}}"""
+            assertEquals(expected, http.registrationState(k2).bodyAsText())
             assertEquals(HttpStatusCode.NoContent, http.rotate(first).status, "lost-response retry after a restart")
+            server.restart()
+            assertEquals(expected, http.registrationState(k2).bodyAsText(), "the retry kept the installation time")
 
             val k3 = newKey()
             assertEquals(HttpStatusCode.NoContent, http.rotate(rotation(k2, k3, epoch = 2)).status)

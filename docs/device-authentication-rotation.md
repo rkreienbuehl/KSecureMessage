@@ -5,6 +5,10 @@ authentication key (docs/server-authentication.md) while it still holds the
 current one: the current key K1 authorizes the replacement K2, and K2 proves
 possession. No other device takes part.
 
+Milestone 17 adds the server-authoritative key installation time and an
+application-supplied rotation policy on top of that mechanism; see
+[Key age and rotation policy](#key-age-and-rotation-policy-milestone-17).
+
 Code:
 
 - Rotation statement, signatures, rotation ID:
@@ -17,10 +21,17 @@ Code:
 - Server logic: `server/core/.../server/DeviceAuthenticationRotationService.kt`
   (`DeviceAuthenticationRotationException`, `DeviceAuthenticationRotationOutcome`),
   `SecureMessageServer.rotateDeviceAuthenticationKey`,
-  `SecureMessageServer.authenticationEpoch`, `ProtectedEndpoint.READ_REGISTRATION`
+  `SecureMessageServer.registrationStatus`, `ProtectedEndpoint.READ_REGISTRATION`
 - HTTP: `server/ktor/.../KSecureMessageRoutes.kt`,
   `client/ktor/.../KtorSecureMessageTransport.rotateDeviceAuthenticationKey` /
-  `authenticationEpoch`
+  `registrationStatus`
+- Key age and policy (M17): `DeviceAuthenticationRegistrationStatus`
+  (`core:model`), `DeviceRegistrationState.authKeyInstalledAt`,
+  `client/core/.../client/DeviceAuthenticationRotationPolicy.kt`
+  (`DeviceAuthenticationRotationPolicy`, `DeviceAuthenticationRotationStatus`,
+  `DeviceAuthenticationRotationDecision`, `DeviceAuthenticationRotationResult`),
+  `SecureMessageClient.deviceAuthenticationRotationStatus`,
+  `evaluateDeviceAuthenticationRotation`, `rotateDeviceAuthenticationKeyIfNeeded`
 - Client: `SecureMessageClient.prepareDeviceAuthenticationRotation`,
   `completeDeviceAuthenticationRotation`, `rotateDeviceAuthenticationKey`,
   `resolveDeviceAuthenticationRotation`, `cancelDeviceAuthenticationRotation`;
@@ -57,12 +68,12 @@ K1 active
   ↓ prepareDeviceAuthenticationRotation (local, no network)
 persist pending K2 (sealed, record type 9)
   ↓ completeDeviceAuthenticationRotation
-GET  /v1/devices/{u}/{d}/registration   (ServerAuth v1, signed by K1) → {"authEpoch": N}
+GET  /v1/devices/{u}/{d}/registration   (ServerAuth v1, signed by K1) → {"authEpoch": N, "authKeyInstalledAt": T}
 PUT  /v1/devices/{u}/{d}/registration/rotation
      statement (K1, K2, epoch N, timestamp, nonce)
      + authorization signed by K1 + proof of possession signed by K2
   ↓
-server CAS (K1, epoch N) → (K2, epoch N+1), rotation ID recorded, nonce claimed
+server CAS (K1, epoch N) → (K2, epoch N+1, installed at server now), rotation ID recorded, nonce claimed
   ↓ 204
 client promotes K2 (one transaction), pending cleared
 ```
@@ -159,7 +170,8 @@ failure changes nothing:
    (`CONFLICT`) → epoch is `Long.MAX_VALUE` (`EPOCH_EXHAUSTED`,
    `409 device_auth_epoch_exhausted`) → prune + claim the nonce (`REPLAY`,
    `401 authentication_replay`) → K2, epoch + 1, `rotation_id` set,
-   `recovery_id` cleared (`REPLACED`, `204`).
+   `recovery_id` cleared, `auth_key_installed_at` = server time (`REPLACED`,
+   `204`).
 
 Unexpected failures are `500 {"error":"internal_error"}`; logs name the
 address and the failure category only, never keys, signatures or the body.
@@ -272,15 +284,20 @@ promotes K2 just because K1 disappeared.
   frozen fixture `Version10Schema`. `InMemoryClientStorage` has the same
   semantics without encryption.
 - Server: `device_registration.rotation_id`, server schema v3 via server
-  `2.sqm` (`server_storage.format = 3`), frozen fixture `ServerVersion2Schema`;
-  `open` refuses format 1 and 2 (migrate with `SqlDelightServerStorage.Schema`).
-  `InMemoryServerStorage` has the same semantics.
+  `2.sqm` (`server_storage.format = 3`), frozen fixture `ServerVersion2Schema`.
+  Milestone 17 adds `device_registration.auth_key_installed_at`, server
+  schema v4 via server `3.sqm` (`server_storage.format = 4`), frozen fixture
+  `ServerVersion3Schema`; `open` refuses formats 1, 2 and 3 (migrate with
+  `SqlDelightServerStorage.Schema`). `InMemoryServerStorage` has the same
+  semantics.
+- The client stores no epoch and no installation time (M17 needs no client
+  schema change).
 
 ## HTTP API
 
 ```text
 GET /v1/devices/{user}/{device}/registration            ServerAuth v1 (READ_REGISTRATION)
-200 {"authEpoch": 7}
+200 {"authEpoch":7,"authKeyInstalledAt":1767225600000}  (M17: installation time, epoch ms)
 401 missing_authentication | device_not_registered | expired_authentication
     | invalid_authentication | authentication_replay
 
@@ -311,6 +328,12 @@ client.completeDeviceAuthenticationRotation() // network; promotes K2
 // after a crash or lost response
 client.resolveDeviceAuthenticationRotation()  // true: K2 promoted
 client.cancelDeviceAuthenticationRotation()   // only if the rotation will not complete
+
+// M17: policy, when the application decides to check
+val policy = DeviceAuthenticationRotationPolicy(maxKeyAge = 30.days)
+client.deviceAuthenticationRotationStatus()          // epoch, installedAt, age, pending flags
+client.evaluateDeviceAuthenticationRotation(policy)  // NotNeeded / Due / RotationPending / RecoveryPending
+client.rotateDeviceAuthenticationKeyIfNeeded(policy) // NotNeeded / Rotated / ResumedPendingRotation / RecoveryInProgress
 ```
 
 ## Tests
@@ -327,6 +350,17 @@ client.cancelDeviceAuthenticationRotation()   // only if the rotation will not c
 - `server:core` `DeviceAuthenticationRotationServerTest`,
   `server:ktor` `DeviceAuthenticationRotationRoutesTest` (routes, adapter,
   client over HTTP, lost response, restarts, `internal_error`).
+- M17: `storage:testing` contracts (installation time on registration,
+  retries, recovery, rotation, conflicts, replays), `storage:server:sqldelight`
+  `SqlDelightServerPersistenceTest.keyInstallationTimeSurvivesEveryRestartExactly`,
+  `SqlDelightServerMigrationTest` (v3 → v4, legacy stamping once),
+  `SqlDelightServerStorageOpenTest`; `server:core`
+  `DeviceRegistrationStatusServerTest`; `server:ktor`
+  `DeviceAuthenticationRotationRoutesTest` (exact JSON, restarts);
+  `client:core` `DeviceAuthenticationRotationPolicyTest` (boundary, clamp,
+  infinite, validation) and `DeviceAuthenticationRotationPolicyClientTest`
+  (end to end, clocks, recovery, pending, lost responses, no implicit
+  calls, concurrency).
 - `client:core` `DeviceAuthenticationRotationTest`; `storage:client:sqldelight`
   `DeviceAuthenticationRotationStorageTest` (sealing, AD separation,
   corruption, storage key rotation, restarts, crash before promotion,
@@ -334,10 +368,167 @@ client.cancelDeviceAuthenticationRotation()   // only if the rotation will not c
   `StorageCipherTest.deviceAuthenticationRotationKeyVector` and
   `ClientRecordCipherTest`; `ClientStorageContractTest`.
 
+## Key age and rotation policy (milestone 17)
+
+M16 is the mechanism. M17 adds what an application needs to decide when to
+use it:
+
+```text
+M16          rotateDeviceAuthenticationKey()            the mechanism
+M17          status / evaluate / rotate-if-needed       is rotation due?
+application  decides when to call M17                   no library scheduler
+```
+
+### Authoritative installation time
+
+The server records, with every registration, the server time its current
+key was installed at: `DeviceRegistrationState.authKeyInstalledAt`
+(`device_registration.auth_key_installed_at`, epoch milliseconds). It moves
+together with the key and the epoch, in the same atomic step, and only
+there:
+
+| Event | `authEpoch` | `authKeyInstalledAt` |
+| --- | --- | --- |
+| first registration | 1 | server now |
+| registration retry of the same key (lost response, M14/M16 probe) | unchanged | unchanged |
+| device recovery (M14) | + 1 | server now |
+| routine rotation (M16) | + 1 | server now |
+| exact retry (`ALREADY_APPLIED`), `CONFLICT`, `REPLAY`, `EXPIRED`, rejected registration | unchanged | unchanged |
+
+"Server now" is the injected server `Clock` (`SecureMessageServer(storage,
+clock)`), truncated to milliseconds like every auth timestamp. It is never
+the client-supplied request, recovery or rotation timestamp, never a local
+key creation time and never first use. `server:core` passes it into the
+repository (`register(registration, installedAt)`,
+`RecoveryReplacement.installedAt`, `RotationReplacement.installedAt`);
+repositories read no clock (except the one-time legacy stamping below).
+
+The server owns this metadata because it already owns the key, the epoch
+and the transitions: the age survives client reinstalls, lost responses,
+restarts, recovery on another device and client clock changes. The client
+persists none of it.
+
+Legacy registrations (server schema v3 and older) have no installation
+time: `3.sqm` adds the column as `NULL` (SQL has no trusted server clock),
+and `SqlDelightServerStorage.open(driver, dispatcher, clock)` stamps every
+`NULL` row with `clock`'s time in one transaction. That happens once: a
+stamped time is never rewritten by a later open, and a row with a time is
+never touched (docs/server-storage.md). The legacy key's age therefore
+starts at the upgrade, not at its (unknown) historical registration. A
+`NULL` read afterwards fails closed (`IllegalStateException`, `500`).
+
+### Registration status
+
+The existing signed `GET /v1/devices/{user}/{device}/registration` (ServerAuth
+v1, `READ_REGISTRATION`, signed by the active key) returns the metadata:
+
+```json
+{"authEpoch":7,"authKeyInstalledAt":1767225600000}
+```
+
+`authKeyInstalledAt` is epoch milliseconds; the Kotlin model is
+`DeviceAuthenticationRegistrationStatus(authEpoch: Long, authKeyInstalledAt: Instant)`
+(`core:model`), returned by `SecureMessageServer.registrationStatus` and
+`SecureMessageTransport.registrationStatus` (which replaced M16's
+`authenticationEpoch`). No path changed and there is no new endpoint; the
+status is never public. ServerAuth authenticates the request, not the
+response: the client trusts the server (over HTTPS) as the authority for its
+registration metadata, and M17 adds no signed responses. The server never
+answers "rotate now": it exposes metadata, not policy.
+
+### Policy, status, decision
+
+```kotlin
+class DeviceAuthenticationRotationPolicy(val maxKeyAge: Duration)   // > 0; INFINITE = never due
+
+data class DeviceAuthenticationRotationStatus(
+    val authEpoch: Long,
+    val authKeyInstalledAt: Instant,   // server time
+    val evaluatedAt: Instant,          // client clock
+    val pendingRotation: Boolean,
+    val pendingRecovery: Boolean,
+) { val age: Duration }                // max(0, evaluatedAt - authKeyInstalledAt)
+
+sealed interface DeviceAuthenticationRotationDecision {
+    NotNeeded(status), Due(status), RotationPending, RecoveryPending
+}
+sealed interface DeviceAuthenticationRotationResult {
+    NotNeeded(status), Rotated(previous), ResumedPendingRotation, RecoveryInProgress
+}
+```
+
+- Due exactly when `age >= maxKeyAge` (the boundary is due).
+- `maxKeyAge` must be positive; zero and negative throw
+  `IllegalArgumentException`. `Duration.INFINITE` disables age-based
+  rotation. There is no default policy and nothing applies one implicitly.
+- No key material in any of these types.
+
+Client API (`SecureMessageClient`):
+
+- `deviceAuthenticationRotationStatus()`: reads the status from the server
+  (signed by the active key; never cached) and the local pending flags.
+  Throws `NotInitialized` without an active key and `AuthenticationFailed`
+  if the active key is not registered.
+- `evaluateDeviceAuthenticationRotation(policy)`: a pending recovery gives
+  `RecoveryPending`, a pending rotation `RotationPending`, both decided
+  locally without a request; otherwise `Due` or `NotNeeded` with the status.
+  Never rotates, never creates a key.
+- `rotateDeviceAuthenticationKeyIfNeeded(policy)`:
+  1. pending recovery → `RecoveryInProgress`, nothing started or sent;
+  2. pending rotation → completes it with its existing key, including the
+     M16 lost-response resolution (K1 rejected for the epoch read → K2
+     registration probe) → `ResumedPendingRotation`, whatever the policy
+     says; never a second pending key;
+  3. otherwise fetches the status; not due → `NotNeeded(status)`; due →
+     the M16 rotation (`prepare` + `complete`) → `Rotated(previous)`.
+  Errors are the M16 ones; M17 adds no exception type.
+
+None of these is called by `initialize`, `registerDevice`, `send`,
+`receive`, `decrypt`, `publishPreKeys`, recovery or anything else in the
+library. There is no timer, worker, coroutine loop, WorkManager/BGTask job
+or server cron: the application decides when to evaluate.
+
+### Clocks
+
+The age is the client's clock (`SecureMessageClient`'s injected `Clock`)
+minus the server's installation time:
+
+- Client clock behind the installation time (skew or rollback): the age is
+  clamped to zero; a key never becomes due because a clock moved backwards.
+- Client clock jumping forward: the key may become due early. Accepted:
+  routine rotation is safe and explicit.
+- This is a wall-clock policy, not a secure monotonic timer: whoever
+  controls the device clock can make a rotation happen earlier or later.
+
+### Interaction with recovery and retries
+
+- A recovery installs the recovered key at the recovery's server time: a
+  key recovered after its predecessor was 100 days old has age 0.
+- A rotation resets the age: an immediate re-evaluation is `NotNeeded`.
+- Registration probes (M14 `resolveDeviceAuthenticationRecovery`, M16
+  `resolveDeviceAuthenticationRotation`) and exact retries never refresh the
+  time; a key whose rotation response was lost keeps its commit time.
+
+### Concurrency
+
+- One instance: the rotation steps (`prepare`, `complete`, `resolve`,
+  `cancel`, `rotateDeviceAuthenticationKey`, `…IfNeeded`) share a mutex.
+  Concurrent `rotateDeviceAuthenticationKeyIfNeeded` calls run one after
+  the other; the later ones see the new key's age and return `NotNeeded`.
+- Several instances on one storage: the storage keeps at most one pending
+  rotation key (and never together with a recovery key), the server's
+  compare-and-set applies at most one rotation per epoch. An instance
+  that finds its accepted key already promoted by another instance treats
+  that as done; otherwise the M16 errors apply.
+
 ## Limitations
 
-- Rotation is explicit; there is no scheduling or age-based policy, and the
-  server never triggers it.
+- Rotation is explicit; the M17 policy is evaluated only when the
+  application asks, and the server never triggers it. There is no
+  scheduler.
+- The age policy relies on wall-clock time; there is no secure monotonic
+  clock. Only age-based policy: no request-, message- or usage-count
+  policy, and no server-side policy.
 - The active key K1 is required; a device that lost it uses recovery.
 - No last-device recovery, account recovery or recovery codes.
 - No messaging identity rotation or recovery; no sealed sender.

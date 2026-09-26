@@ -9,6 +9,7 @@ import dev.kreienbuehl.ksecuremessage.client.SecureMessageClientException
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransport
 import dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.DeviceAuthenticationRegistrationStatus
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
@@ -653,7 +654,7 @@ class SqlDelightPersistenceTest {
 
         override suspend fun recoverDevice(authorization: DeviceRecoveryAuthorization) = error("These tests set bundles directly, see publish")
 
-        override suspend fun authenticationEpoch(address: DeviceAddress, signer: ServerRequestSigner): Long =
+        override suspend fun registrationStatus(address: DeviceAddress, signer: ServerRequestSigner): DeviceAuthenticationRegistrationStatus =
             error("These tests set bundles directly, see publish")
 
         override suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization) =

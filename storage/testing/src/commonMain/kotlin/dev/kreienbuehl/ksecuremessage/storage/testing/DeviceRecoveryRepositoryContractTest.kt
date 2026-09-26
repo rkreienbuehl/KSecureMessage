@@ -33,6 +33,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
@@ -61,8 +62,8 @@ abstract class DeviceRecoveryRepositoryContractTest {
 
     /** laptop (target) with key 1 and phone (authorizer) with key 100, both at epoch 1. */
     private suspend fun registered(): ServerStorage = newStorage().apply {
-        assertTrue(devices.register(DeviceRegistration(laptop, key(1))))
-        assertTrue(devices.register(DeviceRegistration(phone, key(100))))
+        assertTrue(devices.register(DeviceRegistration(laptop, key(1)), now))
+        assertTrue(devices.register(DeviceRegistration(phone, key(100)), now))
     }
 
     private suspend fun ServerStorage.state(address: DeviceAddress): DeviceRegistrationState = assertNotNull(devices.registrationState(address))
@@ -73,6 +74,7 @@ abstract class DeviceRecoveryRepositoryContractTest {
         nonce: Int = replacementKey,
         target: DeviceRegistrationState? = null,
         authorizer: DeviceRegistrationState? = null,
+        installedAt: Instant = now,
     ) = RecoveryReplacement(
         expectedTarget = target ?: state(laptop),
         expectedAuthorizer = authorizer ?: state(phone),
@@ -81,6 +83,7 @@ abstract class DeviceRecoveryRepositoryContractTest {
         nonce = nonce(nonce),
         timestamp = now,
         pruneBefore = now - 5.minutes,
+        installedAt = installedAt,
     )
 
     private suspend fun ServerStorage.assertKey(expected: Int, epoch: Long, recovery: Int?) {
@@ -104,10 +107,31 @@ abstract class DeviceRecoveryRepositoryContractTest {
         assertEquals(REPLACED, storage.devices.replaceForRecovery(storage.replacement(2)))
         storage.assertKey(2, epoch = 2, recovery = 2)
         // The old key is gone: registration of it conflicts, of the new one is idempotent.
-        assertFalse(storage.devices.register(DeviceRegistration(laptop, key(2))))
+        assertFalse(storage.devices.register(DeviceRegistration(laptop, key(2)), now))
         // The authorizer is not changed.
         assertContentEquals(key(100), storage.state(phone).registration.publicKey)
         assertEquals(1, storage.state(phone).authEpoch)
+    }
+
+    @Test
+    fun recoveryInstallsItsServerTimeAndNothingElseChangesIt() = runTest {
+        val storage = registered()
+        assertEquals(now, storage.state(laptop).authKeyInstalledAt)
+        val t3 = now + 100.days
+        val replacement = storage.replacement(2, installedAt = t3)
+        assertEquals(REPLACED, storage.devices.replaceForRecovery(replacement))
+        // The recovered key's age starts at the recovery, not at the lost key's registration.
+        assertEquals(t3, storage.state(laptop).authKeyInstalledAt)
+        assertEquals(now, storage.state(phone).authKeyInstalledAt, "the authorizer is not changed")
+
+        // Retries, conflicts, replays and registration probes keep the committed time.
+        assertEquals(ALREADY_APPLIED, storage.devices.replaceForRecovery(storage.replacement(2, installedAt = t3 + 1.days)))
+        assertEquals(CONFLICT, storage.devices.replaceForRecovery(storage.replacement(2, recovery = 7, nonce = 7, installedAt = t3 + 2.days)))
+        assertTrue(storage.authenticationNonces.claim(laptop, nonce(8).bytes, now, now))
+        assertEquals(REPLAY, storage.devices.replaceForRecovery(storage.replacement(3, recovery = 8, nonce = 8, installedAt = t3 + 3.days)))
+        assertFalse(storage.devices.register(DeviceRegistration(laptop, key(2)), t3 + 4.days))
+        assertEquals(t3, storage.state(laptop).authKeyInstalledAt)
+        storage.assertKey(2, epoch = 2, recovery = 2)
     }
 
     @Test
@@ -123,9 +147,9 @@ abstract class DeviceRecoveryRepositoryContractTest {
     @Test
     fun unexpectedTargetStateConflictsAndChangesNothing() = runTest {
         val storage = registered()
-        val stale = DeviceRegistrationState(DeviceRegistration(laptop, key(9)), 1, null)
+        val stale = DeviceRegistrationState(DeviceRegistration(laptop, key(9)), 1, now, null)
         assertEquals(CONFLICT, storage.devices.replaceForRecovery(storage.replacement(2, target = stale)), "other key")
-        val oldEpoch = DeviceRegistrationState(DeviceRegistration(laptop, key(1)), 2, null)
+        val oldEpoch = DeviceRegistrationState(DeviceRegistration(laptop, key(1)), 2, now, null)
         assertEquals(CONFLICT, storage.devices.replaceForRecovery(storage.replacement(2, target = oldEpoch)), "other epoch")
         storage.assertKey(1, epoch = 1, recovery = null)
         // No nonce was claimed.
@@ -135,11 +159,11 @@ abstract class DeviceRecoveryRepositoryContractTest {
     @Test
     fun unexpectedAuthorizerStateConflictsAndChangesNothing() = runTest {
         val storage = registered()
-        val otherKey = DeviceRegistrationState(DeviceRegistration(phone, key(101)), 1, null)
+        val otherKey = DeviceRegistrationState(DeviceRegistration(phone, key(101)), 1, now, null)
         assertEquals(CONFLICT, storage.devices.replaceForRecovery(storage.replacement(2, authorizer = otherKey)))
-        val otherEpoch = DeviceRegistrationState(DeviceRegistration(phone, key(100)), 2, null)
+        val otherEpoch = DeviceRegistrationState(DeviceRegistration(phone, key(100)), 2, now, null)
         assertEquals(CONFLICT, storage.devices.replaceForRecovery(storage.replacement(2, authorizer = otherEpoch)))
-        val unregistered = DeviceRegistrationState(DeviceRegistration(tablet, key(100)), 1, null)
+        val unregistered = DeviceRegistrationState(DeviceRegistration(tablet, key(100)), 1, now, null)
         assertEquals(CONFLICT, storage.devices.replaceForRecovery(storage.replacement(2, authorizer = unregistered)))
         storage.assertKey(1, epoch = 1, recovery = null)
         assertTrue(storage.authenticationNonces.claim(laptop, nonce(2).bytes, now, now))
@@ -148,8 +172,8 @@ abstract class DeviceRecoveryRepositoryContractTest {
     @Test
     fun missingTargetIsReported() = runTest {
         val storage = newStorage()
-        storage.devices.register(DeviceRegistration(phone, key(100)))
-        val target = DeviceRegistrationState(DeviceRegistration(laptop, key(1)), 1, null)
+        storage.devices.register(DeviceRegistration(phone, key(100)), now)
+        val target = DeviceRegistrationState(DeviceRegistration(laptop, key(1)), 1, now, null)
         assertEquals(TARGET_NOT_REGISTERED, storage.devices.replaceForRecovery(storage.replacement(2, target = target)))
         assertNull(storage.devices.registration(laptop), "recovery never registers")
     }
@@ -268,7 +292,7 @@ abstract class DeviceRecoveryRepositoryContractTest {
         val storage = registered()
         val replacementKey = key(2)
         val replacement = RecoveryReplacement(
-            storage.state(laptop), storage.state(phone), replacementKey, id(2), nonce(2), now, now,
+            storage.state(laptop), storage.state(phone), replacementKey, id(2), nonce(2), now, now, now,
         )
         replacementKey.fill(0)
         assertEquals(REPLACED, storage.devices.replaceForRecovery(replacement))

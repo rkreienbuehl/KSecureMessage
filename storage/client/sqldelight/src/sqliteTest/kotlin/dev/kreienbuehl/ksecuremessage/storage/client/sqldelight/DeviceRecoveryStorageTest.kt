@@ -8,6 +8,7 @@ import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransport
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException
 import dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.DeviceAuthenticationRegistrationStatus
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
@@ -269,7 +270,7 @@ class DeviceRecoveryStorageTest {
             return emptyList()
         }
 
-        override suspend fun authenticationEpoch(address: DeviceAddress, signer: ServerRequestSigner): Long = error("not used")
+        override suspend fun registrationStatus(address: DeviceAddress, signer: ServerRequestSigner): DeviceAuthenticationRegistrationStatus = error("not used")
 
         override suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization) = error("not used")
 

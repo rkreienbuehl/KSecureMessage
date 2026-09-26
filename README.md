@@ -216,9 +216,21 @@ client.rotateDeviceAuthenticationKey()       // prepare + complete; safe to call
 client.resolveDeviceAuthenticationRotation() // after a crash or lost response: promotes K2 if the server has it
 ```
 
+Milestone 17 done: device authentication rotation policy and key-age metadata. The server records, with every registration, the server time its current device authentication key was installed at (`authKeyInstalledAt`, injected server clock, epoch milliseconds): set by first registration, device recovery and routine rotation, together with the key and the epoch in the same atomic step, and never changed by a retry, a registration probe or a rejected transition. The signed `GET …/registration` now returns `{"authEpoch":N,"authKeyInstalledAt":T}`. The client stores none of it: `deviceAuthenticationRotationStatus()` reads it on demand and computes the key's age with its own clock (clamped at zero); `evaluateDeviceAuthenticationRotation(policy)` returns `Due` once the age reaches `DeviceAuthenticationRotationPolicy.maxKeyAge` (inclusive) and never rotates; `rotateDeviceAuthenticationKeyIfNeeded(policy)` runs the M16 rotation when due, resumes a pending rotation instead of starting another, and starts nothing while a recovery is pending. Nothing calls these implicitly and there is no default policy, scheduler or server-side policy. Server schema version 4 (`3.sqm`); legacy registrations are stamped once with the server clock on the first `open` after the upgrade. No client schema change; wire, protocol and cryptographic formats are unchanged. See [docs/device-authentication-rotation.md](docs/device-authentication-rotation.md#key-age-and-rotation-policy-milestone-17).
+
+```kotlin
+val policy = DeviceAuthenticationRotationPolicy(maxKeyAge = 30.days)
+when (client.rotateDeviceAuthenticationKeyIfNeeded(policy)) { // only when the application calls it
+    is DeviceAuthenticationRotationResult.NotNeeded -> Unit
+    is DeviceAuthenticationRotationResult.Rotated -> Unit
+    DeviceAuthenticationRotationResult.ResumedPendingRotation -> Unit
+    DeviceAuthenticationRotationResult.RecoveryInProgress -> Unit
+}
+```
+
 ## Next implementation steps
 
-1. A device authentication key rotation policy (for example rotate after a configurable age, triggered explicitly by the application) on top of the M16 mechanism; account-level recovery for the last device (recovery key or code); a PostgreSQL server adapter if multi-node deployment is needed.
+1. Account-level recovery for the last device (recovery key or code); a PostgreSQL server adapter if multi-node deployment is needed.
 2. An application commit boundary for received messages and bounded dedup retention.
 3. Sealed sender.
 

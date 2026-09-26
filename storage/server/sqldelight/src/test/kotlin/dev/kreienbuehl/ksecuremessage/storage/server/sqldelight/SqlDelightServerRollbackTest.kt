@@ -56,11 +56,11 @@ class SqlDelightServerRollbackTest {
     fun failedRegistrationStoresNothing() = runTest {
         val storage = storage()
         driver.failAfter("INSERT OR IGNORE INTO device_registration")
-        assertFailsWith<InjectedFailure> { storage.devices.register(DeviceRegistration(alice, key(1))) }
+        assertFailsWith<InjectedFailure> { storage.devices.register(DeviceRegistration(alice, key(1)), t0) }
 
         assertNull(storage.devices.registration(alice))
         assertEquals(0, driver.count("SELECT count(*) FROM device_registration"))
-        assertTrue(storage.devices.register(DeviceRegistration(alice, key(2))), "the address is still free")
+        assertTrue(storage.devices.register(DeviceRegistration(alice, key(2)), t0), "the address is still free")
     }
 
     @Test

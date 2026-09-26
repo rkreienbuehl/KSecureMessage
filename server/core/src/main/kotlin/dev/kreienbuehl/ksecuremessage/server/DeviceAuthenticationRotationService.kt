@@ -122,6 +122,8 @@ internal class DeviceAuthenticationRotationService(
                 nonce = statement.nonce,
                 timestamp = statement.timestamp,
                 pruneBefore = now - window,
+                // The server's time, never the statement's: the new key's age starts here.
+                installedAt = now,
             ),
         )
         return when (result) {

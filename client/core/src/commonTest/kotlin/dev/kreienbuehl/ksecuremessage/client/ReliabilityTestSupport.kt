@@ -3,6 +3,7 @@ package dev.kreienbuehl.ksecuremessage.client
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.DeviceAuthenticationRegistrationStatus
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
@@ -56,9 +57,9 @@ internal class FlakyNetwork(val fake: FakeNetwork = FakeNetwork()) : SecureMessa
         fake.recoverDevice(authorization)
     }
 
-    override suspend fun authenticationEpoch(address: DeviceAddress, signer: ServerRequestSigner): Long {
+    override suspend fun registrationStatus(address: DeviceAddress, signer: ServerRequestSigner): DeviceAuthenticationRegistrationStatus {
         checkNoTransaction()
-        return fake.authenticationEpoch(address, signer)
+        return fake.registrationStatus(address, signer)
     }
 
     override suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization) {

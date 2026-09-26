@@ -78,9 +78,13 @@ internal class DeviceAuthenticationRotationRequestDto(
     val proofOfPossession: String,
 )
 
-/** Body of the `200` response of `GET /v1/devices/{user}/{device}/registration`. */
+/**
+ * Body of the `200` response of `GET /v1/devices/{user}/{device}/registration`:
+ * the authentication epoch and the server time the registered key was
+ * installed at, in epoch milliseconds.
+ */
 @Serializable
-internal class DeviceRegistrationStateResponse(val authEpoch: Long)
+internal class DeviceRegistrationStateResponse(val authEpoch: Long, val authKeyInstalledAt: Long)
 
 /** Body of 4xx responses. */
 @Serializable

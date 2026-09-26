@@ -105,11 +105,21 @@ interface MailboxRepository {
  * Every registration has an authentication epoch: 1 for the first
  * registration, one more for each recovery or rotation. Epochs only grow and
  * never wrap: at [Long.MAX_VALUE] no further replacement is possible.
+ *
+ * Every registration also has the server time its current key was installed
+ * at ([DeviceRegistrationState.authKeyInstalledAt]): set by [register] for a
+ * new registration and by a successful replacement, together with the key
+ * and the epoch. The caller supplies that time (the server's clock, never a
+ * client-supplied timestamp); retries that change nothing keep it
+ * (docs/device-authentication-rotation.md).
  */
 interface DeviceRegistrationRepository {
     suspend fun registration(address: DeviceAddress): DeviceRegistration?
 
-    /** The registration of [address] with its epoch and the transition that installed its key, or `null`. */
+    /**
+     * The registration of [address] with its epoch, its key's installation
+     * time and the transition that installed its key, or `null`.
+     */
     suspend fun registrationState(address: DeviceAddress): DeviceRegistrationState?
 
     /**
@@ -129,8 +139,9 @@ interface DeviceRegistrationRepository {
      * 5. prunes nonces older than [RecoveryReplacement.pruneBefore] and
      *    claims the nonce; already claimed: [RecoveryReplacementResult.REPLAY]
      *    (the prune may commit);
-     * 6. stores the replacement key, epoch + 1 and the recovery ID, and
-     *    clears the rotation ID: [RecoveryReplacementResult.REPLACED].
+     * 6. stores the replacement key, epoch + 1, the recovery ID and
+     *    [RecoveryReplacement.installedAt] as installation time, and clears
+     *    the rotation ID: [RecoveryReplacementResult.REPLACED].
      *
      * Nothing else changes: prekeys, mailboxes and other nonces stay.
      * Concurrent calls behave as if they ran one after the other.
@@ -155,8 +166,9 @@ interface DeviceRegistrationRepository {
      * 5. prunes nonces older than [RotationReplacement.pruneBefore] and
      *    claims the nonce; already claimed: [RotationReplacementResult.REPLAY]
      *    (the prune may commit);
-     * 6. stores the replacement key, epoch + 1 and the rotation ID, and
-     *    clears the recovery ID: [RotationReplacementResult.REPLACED].
+     * 6. stores the replacement key, epoch + 1, the rotation ID and
+     *    [RotationReplacement.installedAt] as installation time, and clears
+     *    the recovery ID: [RotationReplacementResult.REPLACED].
      *
      * The same compare-and-set as [replaceForRecovery]: of a recovery and a
      * rotation from the same state, exactly one replaces the key. Nothing
@@ -170,20 +182,23 @@ interface DeviceRegistrationRepository {
      * [DeviceRegistrationException.Conflict] and changes nothing if another
      * key is registered. Concurrent calls behave as if they ran one after the
      * other: of several different keys for one address, exactly one wins. A
-     * new registration has epoch 1.
+     * new registration has epoch 1 and [installedAt] as installation time;
+     * registering the registered key again changes neither.
      */
-    suspend fun register(registration: DeviceRegistration): Boolean
+    suspend fun register(registration: DeviceRegistration, installedAt: Instant): Boolean
 }
 
 /**
- * A stored registration: [registration] with its [authEpoch] and the
- * transition that installed the key: [recoveryId] for a device recovery,
- * [rotationId] for a routine rotation, neither for a key from first
- * registration. At most one of them is set.
+ * A stored registration: [registration] with its [authEpoch], the server time
+ * [authKeyInstalledAt] its key was installed at, and the transition that
+ * installed the key: [recoveryId] for a device recovery, [rotationId] for a
+ * routine rotation, neither for a key from first registration. At most one
+ * of them is set.
  */
 class DeviceRegistrationState(
     val registration: DeviceRegistration,
     val authEpoch: Long,
+    val authKeyInstalledAt: Instant,
     val recoveryId: DeviceRecoveryId?,
     val rotationId: DeviceAuthenticationRotationId? = null,
 ) {
@@ -194,7 +209,8 @@ class DeviceRegistrationState(
 
     val address: DeviceAddress get() = registration.address
 
-    override fun toString(): String = "DeviceRegistrationState(address=$address, authEpoch=$authEpoch)"
+    override fun toString(): String =
+        "DeviceRegistrationState(address=$address, authEpoch=$authEpoch, authKeyInstalledAt=$authKeyInstalledAt)"
 }
 
 /**
@@ -202,6 +218,8 @@ class DeviceRegistrationState(
  * replace [expectedTarget]'s key with [replacementPublicKey], authorized by
  * [expectedAuthorizer]. Both expected states are what the signatures were
  * verified against; the replacement only happens if they are still current.
+ * [timestamp] is the request's (client-supplied) time, used for the nonce;
+ * [installedAt] is the server time stored as the new key's installation time.
  */
 class RecoveryReplacement(
     val expectedTarget: DeviceRegistrationState,
@@ -211,6 +229,7 @@ class RecoveryReplacement(
     val nonce: RequestNonce,
     val timestamp: Instant,
     val pruneBefore: Instant,
+    val installedAt: Instant,
 ) {
     private val key: ByteArray = replacementPublicKey.copyOf()
 
@@ -247,7 +266,9 @@ enum class RecoveryReplacementResult {
  * A verified routine rotation for [DeviceRegistrationRepository.replaceForRotation]:
  * replace the key of [expected] with [replacementPublicKey]. [expected] is
  * the state the signatures were verified against; the replacement only
- * happens if it is still current.
+ * happens if it is still current. [timestamp] is the statement's
+ * (client-supplied) time, used for the nonce; [installedAt] is the server
+ * time stored as the new key's installation time.
  */
 class RotationReplacement(
     val expected: DeviceRegistrationState,
@@ -256,6 +277,7 @@ class RotationReplacement(
     val nonce: RequestNonce,
     val timestamp: Instant,
     val pruneBefore: Instant,
+    val installedAt: Instant,
 ) {
     private val key: ByteArray = replacementPublicKey.copyOf()
 

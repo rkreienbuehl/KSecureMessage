@@ -108,7 +108,9 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
         }
     }
 
-    // The device's own registration state, for building a rotation statement.
+    // The device's own registration state: the epoch for building a rotation
+    // statement and the key installation time for the application's rotation
+    // policy (docs/device-authentication-rotation.md).
     get("/v1/devices/{user}/{device}/registration") {
         val address = call.deviceAddress()
         val body = call.receive<ByteArray>()
@@ -119,12 +121,12 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
         } catch (e: Exception) {
             return@get call.respondInternalError(e)
         }
-        val epoch = try {
-            server.authenticationEpoch(device)
+        val status = try {
+            server.registrationStatus(device)
         } catch (e: Exception) {
             return@get call.respondInternalError(e)
         }
-        call.respond(DeviceRegistrationStateResponse(epoch))
+        call.respond(DeviceRegistrationStateResponse(status.authEpoch, status.authKeyInstalledAt.toEpochMilliseconds()))
     }
 
     // Routine device authentication key rotation

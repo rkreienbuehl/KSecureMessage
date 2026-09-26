@@ -38,6 +38,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Clock
 import kotlin.time.Instant
 
 /**
@@ -88,16 +89,24 @@ class SqlDelightServerStorage private constructor(
         }
     }
 
+    /** Gives migrated registrations without a key installation time [clock]'s time, in one transaction. */
+    private suspend fun stampMissingInstallationTimes(clock: Clock) {
+        transaction { stampMissingInstalledAt(clock.now().toEpochMilliseconds()) }
+    }
+
     private inner class SqlDelightDeviceRegistrationRepository : DeviceRegistrationRepository {
         override suspend fun registration(address: DeviceAddress): DeviceRegistration? = transaction {
             selectRegistration(address.user, address.device).executeAsOneOrNull()?.let { DeviceRegistration(address, it) }
         }
 
-        // INSERT OR IGNORE never overwrites: the primary key decides which key is stored.
-        override suspend fun register(registration: DeviceRegistration): Boolean = transaction {
+        // INSERT OR IGNORE never overwrites: the primary key decides which key
+        // is stored, and a retry keeps the stored installation time.
+        override suspend fun register(registration: DeviceRegistration, installedAt: Instant): Boolean = transaction {
             val address = registration.address
             val publicKey = registration.publicKey
-            if (insertRegistration(address.user, address.device, publicKey).value == 1L) return@transaction true
+            if (insertRegistration(address.user, address.device, publicKey, installedAt.toEpochMilliseconds()).value == 1L) {
+                return@transaction true
+            }
             val existing = selectRegistration(address.user, address.device).executeAsOne()
             if (!existing.contentEquals(publicKey)) throw DeviceRegistrationException.Conflict()
             false
@@ -127,7 +136,7 @@ class SqlDelightServerStorage private constructor(
                 when (
                     replaceKey(
                         current, newKey, replacement.nonce, replacement.timestamp, replacement.pruneBefore,
-                        recoveryId = replacement.recoveryId, rotationId = null,
+                        replacement.installedAt, recoveryId = replacement.recoveryId, rotationId = null,
                     )
                 ) {
                     KeyReplacement.REPLACED -> RecoveryReplacementResult.REPLACED
@@ -148,7 +157,7 @@ class SqlDelightServerStorage private constructor(
                 when (
                     replaceKey(
                         current, newKey, replacement.nonce, replacement.timestamp, replacement.pruneBefore,
-                        recoveryId = null, rotationId = replacement.rotationId,
+                        replacement.installedAt, recoveryId = null, rotationId = replacement.rotationId,
                     )
                 ) {
                     KeyReplacement.REPLACED -> RotationReplacementResult.REPLACED
@@ -162,7 +171,7 @@ class SqlDelightServerStorage private constructor(
          * The compare-and-set shared by recovery and rotation, inside their
          * transaction after their own idempotency and expected-state checks:
          * epoch exhaustion, nonce prune + claim under the device, then the
-         * guarded UPDATE with exactly one transition ID.
+         * guarded UPDATE with exactly one transition ID and [installedAt].
          */
         private fun ServerStateQueries.replaceKey(
             current: DeviceRegistrationState,
@@ -170,6 +179,7 @@ class SqlDelightServerStorage private constructor(
             nonce: RequestNonce,
             timestamp: Instant,
             pruneBefore: Instant,
+            installedAt: Instant,
             recoveryId: DeviceRecoveryId?,
             rotationId: DeviceAuthenticationRotationId?,
         ): KeyReplacement {
@@ -184,6 +194,7 @@ class SqlDelightServerStorage private constructor(
                 replacement = newKey,
                 recovery_id = recoveryId?.bytes,
                 rotation_id = rotationId?.bytes,
+                installed_at = installedAt.toEpochMilliseconds(),
                 user_id = address.user,
                 device_id = address.device,
                 expected_key = current.registration.publicKey,
@@ -196,9 +207,12 @@ class SqlDelightServerStorage private constructor(
 
         private fun ServerStateQueries.loadState(address: DeviceAddress): DeviceRegistrationState? =
             selectRegistrationState(address.user, address.device).executeAsOneOrNull()?.let {
+                // open() stamped every migrated registration; a missing time is damage, never "now".
+                val installedAt = checkNotNull(it.auth_key_installed_at) { "Registration has no key installation time" }
                 DeviceRegistrationState(
                     DeviceRegistration(address, it.auth_public_key),
                     it.auth_epoch,
+                    Instant.fromEpochMilliseconds(installedAt),
                     it.recovery_id?.let(::DeviceRecoveryId),
                     it.rotation_id?.let(::DeviceAuthenticationRotationId),
                 )
@@ -342,9 +356,10 @@ class SqlDelightServerStorage private constructor(
 
     companion object {
         /**
-         * Server database schema, version 3. Independent of the client
-         * schema. `Schema.migrate(driver, 1, 3)` migrates a milestone 13
-         * database, `Schema.migrate(driver, 2, 3)` a milestone 14/15 one
+         * Server database schema, version 4. Independent of the client
+         * schema. `Schema.migrate(driver, 1, 4)` migrates a milestone 13
+         * database, `Schema.migrate(driver, 2, 4)` a milestone 14/15 one and
+         * `Schema.migrate(driver, 3, 4)` a milestone 16 one
          * (docs/server-storage.md).
          */
         val Schema: SqlSchema<QueryResult.Value<Unit>> get() = ServerDatabase.Schema
@@ -352,16 +367,26 @@ class SqlDelightServerStorage private constructor(
         private const val FORMAT_V1 = 1L
         private const val FORMAT_V2 = 2L
         private const val FORMAT_V3 = 3L
+        private const val FORMAT_V4 = 4L
 
         /**
          * Opens the server storage on [driver], whose database must already
-         * have the current schema ([Schema]). Creates and migrates nothing
+         * have the current schema ([Schema]). Creates and migrates no schema
          * and never closes [driver]: the caller keeps owning it. Throws
          * [IllegalStateException] if the database was not created with this
-         * schema, or is still at schema version 1 or 2 (migrate it with
+         * schema, or is still at schema version 1, 2 or 3 (migrate it with
          * [Schema] first). Blocking database calls run on [dispatcher].
+         *
+         * Registrations that a migration from schema version 3 or older left
+         * without a key installation time get [clock]'s current time, in one
+         * transaction (docs/server-storage.md). That happens once: a stamped
+         * time is never rewritten by a later open. Pass the server's clock.
          */
-        suspend fun open(driver: SqlDriver, dispatcher: CoroutineDispatcher = Dispatchers.IO): SqlDelightServerStorage {
+        suspend fun open(
+            driver: SqlDriver,
+            dispatcher: CoroutineDispatcher = Dispatchers.IO,
+            clock: Clock = Clock.System,
+        ): SqlDelightServerStorage {
             val format = withContext(dispatcher) {
                 try {
                     ServerDatabase(driver).serverStateQueries.selectFormat().executeAsOneOrNull()
@@ -374,8 +399,9 @@ class SqlDelightServerStorage private constructor(
             }
             check(format != FORMAT_V1) { "Database has server storage schema version 1; migrate it with SqlDelightServerStorage.Schema" }
             check(format != FORMAT_V2) { "Database has server storage schema version 2; migrate it with SqlDelightServerStorage.Schema" }
-            check(format == FORMAT_V3) { "Database has no supported server storage schema" }
-            return SqlDelightServerStorage(driver, dispatcher)
+            check(format != FORMAT_V3) { "Database has server storage schema version 3; migrate it with SqlDelightServerStorage.Schema" }
+            check(format == FORMAT_V4) { "Database has no supported server storage schema" }
+            return SqlDelightServerStorage(driver, dispatcher).also { it.stampMissingInstallationTimes(clock) }
         }
     }
 }

@@ -1,0 +1,11 @@
+-- Server schema version 3 to 4 (milestone 17): device authentication key age
+-- (docs/device-authentication-rotation.md). Adds the server time, in epoch
+-- milliseconds, at which each registration's current key was installed.
+-- SQL has no trusted server clock, so existing registrations get NULL here;
+-- SqlDelightServerStorage.open stamps them once with its clock's time
+-- (docs/server-storage.md). No table is rebuilt: keys, epochs, recovery and
+-- rotation IDs, nonces, prekeys, one-time prekey tombstones, mailbox rows and
+-- the mailbox sequence stay as they are.
+ALTER TABLE device_registration ADD COLUMN auth_key_installed_at INTEGER;
+
+UPDATE server_storage SET format = 4;

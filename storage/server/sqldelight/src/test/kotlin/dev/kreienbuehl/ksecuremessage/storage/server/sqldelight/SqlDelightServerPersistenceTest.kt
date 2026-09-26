@@ -11,7 +11,14 @@ import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.model.UserId
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationId
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryId
+import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacement
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacementResult
+import dev.kreienbuehl.ksecuremessage.storage.RotationReplacement
+import dev.kreienbuehl.ksecuremessage.storage.RotationReplacementResult
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyPublicationException
 import app.cash.sqldelight.db.SqlDriver
 import kotlinx.coroutines.test.runTest
@@ -23,6 +30,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
@@ -42,7 +50,8 @@ class SqlDelightServerPersistenceTest {
 
     private fun key(seed: Int) = ByteArray(32) { (seed * 7 + it).toByte() }
 
-    private suspend fun storage() = SqlDelightServerStorage.open(driver)
+    /** A clock far from every stored time: a restart must never stamp an existing registration. */
+    private suspend fun storage() = SqlDelightServerStorage.open(driver, clock = fixedClock(t0 + 3650.days))
 
     /** Closes the driver and opens the database file again with a new one. */
     private suspend fun restart(): SqlDelightServerStorage {
@@ -70,13 +79,49 @@ class SqlDelightServerPersistenceTest {
     )
 
     @Test
+    fun keyInstallationTimeSurvivesEveryRestartExactly() = runTest {
+        val laptop = DeviceAddress(UserId("alice"), DeviceId("laptop"))
+        val t1 = t0 + 1.milliseconds
+        storage().apply {
+            assertTrue(devices.register(DeviceRegistration(alice, key(1)), t1))
+            assertTrue(devices.register(DeviceRegistration(laptop, key(50)), t0))
+        }
+        assertEquals(t1, restart().devices.registrationState(alice)?.authKeyInstalledAt)
+
+        val t2 = t1 + 30.days + 7.milliseconds
+        val rotation = RotationReplacement(
+            assertNotNull(storage().devices.registrationState(alice)), key(2), DeviceAuthenticationRotationId(ByteArray(32) { 1 }),
+            RequestNonce(ByteArray(16) { 1 }), t0, t0 - 5.minutes, t2,
+        )
+        assertEquals(RotationReplacementResult.REPLACED, storage().devices.replaceForRotation(rotation))
+        val afterRotation = restart()
+        assertEquals(t2, afterRotation.devices.registrationState(alice)?.authKeyInstalledAt)
+        assertEquals(2, afterRotation.devices.registrationState(alice)?.authEpoch)
+        // The exact retry after the restart keeps the committed time.
+        assertEquals(RotationReplacementResult.ALREADY_APPLIED, afterRotation.devices.replaceForRotation(rotation))
+
+        val t3 = t2 + 100.days + 3.milliseconds
+        val recovery = RecoveryReplacement(
+            assertNotNull(afterRotation.devices.registrationState(alice)), assertNotNull(afterRotation.devices.registrationState(laptop)),
+            key(3), DeviceRecoveryId(ByteArray(32) { 2 }), RequestNonce(ByteArray(16) { 2 }), t0, t0 - 5.minutes, t3,
+        )
+        assertEquals(RecoveryReplacementResult.REPLACED, afterRotation.devices.replaceForRecovery(recovery))
+        val afterRecovery = restart()
+        assertEquals(t3, afterRecovery.devices.registrationState(alice)?.authKeyInstalledAt)
+        assertEquals(3, afterRecovery.devices.registrationState(alice)?.authEpoch)
+        assertEquals(t0, afterRecovery.devices.registrationState(laptop)?.authKeyInstalledAt)
+        assertFalse(afterRecovery.devices.register(DeviceRegistration(alice, key(3)), t3 + 1.days), "probe")
+        assertEquals(t3, restart().devices.registrationState(alice)?.authKeyInstalledAt)
+    }
+
+    @Test
     fun registrationSurvivesRestartAndIsNeverReplaced() = runTest {
-        assertTrue(storage().devices.register(DeviceRegistration(alice, key(1))))
+        assertTrue(storage().devices.register(DeviceRegistration(alice, key(1)), t0))
 
         val restarted = restart()
         assertContentEquals(key(1), restarted.devices.registration(alice)?.publicKey)
-        assertFalse(restarted.devices.register(DeviceRegistration(alice, key(1))), "identical retry after restart")
-        assertFailsWith<DeviceRegistrationException.Conflict> { restarted.devices.register(DeviceRegistration(alice, key(2))) }
+        assertFalse(restarted.devices.register(DeviceRegistration(alice, key(1)), t0), "identical retry after restart")
+        assertFailsWith<DeviceRegistrationException.Conflict> { restarted.devices.register(DeviceRegistration(alice, key(2)), t0) }
         assertContentEquals(key(1), restart().devices.registration(alice)?.publicKey)
     }
 

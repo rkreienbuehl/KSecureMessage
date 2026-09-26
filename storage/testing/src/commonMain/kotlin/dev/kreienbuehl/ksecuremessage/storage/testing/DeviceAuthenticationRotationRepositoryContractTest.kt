@@ -37,6 +37,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
@@ -70,8 +71,8 @@ abstract class DeviceAuthenticationRotationRepositoryContractTest {
 
     /** phone with key 1 and laptop (a possible recovery authorizer) with key 100, both at epoch 1. */
     private suspend fun registered(): ServerStorage = newStorage().apply {
-        assertTrue(devices.register(DeviceRegistration(phone, key(1))))
-        assertTrue(devices.register(DeviceRegistration(laptop, key(100))))
+        assertTrue(devices.register(DeviceRegistration(phone, key(1)), now))
+        assertTrue(devices.register(DeviceRegistration(laptop, key(100)), now))
     }
 
     private suspend fun ServerStorage.state(address: DeviceAddress = phone): DeviceRegistrationState =
@@ -82,6 +83,7 @@ abstract class DeviceAuthenticationRotationRepositoryContractTest {
         id: Int = replacementKey,
         nonce: Int = replacementKey,
         expected: DeviceRegistrationState? = null,
+        installedAt: Instant = now,
     ) = RotationReplacement(
         expected = expected ?: state(),
         replacementPublicKey = key(replacementKey),
@@ -89,9 +91,15 @@ abstract class DeviceAuthenticationRotationRepositoryContractTest {
         nonce = nonce(nonce),
         timestamp = now,
         pruneBefore = now - 5.minutes,
+        installedAt = installedAt,
     )
 
-    private suspend fun ServerStorage.recovery(replacementKey: Int, id: Int = replacementKey, target: DeviceRegistrationState? = null) =
+    private suspend fun ServerStorage.recovery(
+        replacementKey: Int,
+        id: Int = replacementKey,
+        target: DeviceRegistrationState? = null,
+        installedAt: Instant = now,
+    ) =
         RecoveryReplacement(
             expectedTarget = target ?: state(),
             expectedAuthorizer = state(laptop),
@@ -100,6 +108,7 @@ abstract class DeviceAuthenticationRotationRepositoryContractTest {
             nonce = nonce(1000 + id),
             timestamp = now,
             pruneBefore = now - 5.minutes,
+            installedAt = installedAt,
         )
 
     private suspend fun ServerStorage.assertKey(expected: Int, epoch: Long, rotation: Int? = null, recovery: Int? = null) {
@@ -109,6 +118,38 @@ abstract class DeviceAuthenticationRotationRepositoryContractTest {
         assertEquals(epoch, state.authEpoch)
         assertEquals(rotation?.let(::rotationId), state.rotationId)
         assertEquals(recovery?.let(::recoveryId), state.recoveryId)
+    }
+
+    @Test
+    fun installationTimeFollowsEveryTransitionAndNoRetry() = runTest {
+        val storage = registered()
+        val t1 = now
+        assertEquals(t1, storage.state().authKeyInstalledAt)
+
+        val t2 = t1 + 30.days
+        val rotation = storage.rotation(2, installedAt = t2)
+        assertEquals(REPLACED, storage.devices.replaceForRotation(rotation))
+        assertEquals(t2, storage.state().authKeyInstalledAt)
+
+        val t3 = t2 + 100.days
+        assertEquals(RecoveryReplacementResult.REPLACED, storage.devices.replaceForRecovery(storage.recovery(3, installedAt = t3)))
+        assertEquals(t3, storage.state().authKeyInstalledAt)
+
+        val t4 = t3 + 1.days
+        val second = storage.rotation(4, installedAt = t4)
+        assertEquals(REPLACED, storage.devices.replaceForRotation(second))
+        assertEquals(t4, storage.state().authKeyInstalledAt)
+
+        // Exact retry, stale rotation, replay and registration probe of the current key: time stays t4.
+        val t5 = t4 + 1.days
+        assertEquals(ALREADY_APPLIED, storage.devices.replaceForRotation(storage.rotation(4, installedAt = t5)))
+        assertEquals(CONFLICT, storage.devices.replaceForRotation(rotation))
+        assertTrue(storage.authenticationNonces.claim(phone, nonce(9).bytes, now, now))
+        assertEquals(REPLAY, storage.devices.replaceForRotation(storage.rotation(5, id = 9, nonce = 9, installedAt = t5)))
+        assertFalse(storage.devices.register(DeviceRegistration(phone, key(4)), t5))
+        assertEquals(t4, storage.state().authKeyInstalledAt)
+        storage.assertKey(4, epoch = 4, rotation = 4)
+        assertEquals(t1, storage.state(laptop).authKeyInstalledAt, "other devices keep theirs")
     }
 
     @Test
@@ -123,7 +164,7 @@ abstract class DeviceAuthenticationRotationRepositoryContractTest {
         assertEquals(REPLACED, storage.devices.replaceForRotation(storage.rotation(2)))
         storage.assertKey(2, epoch = 2, rotation = 2)
         // Registration of the new key is idempotent; the laptop is not changed.
-        assertFalse(storage.devices.register(DeviceRegistration(phone, key(2))))
+        assertFalse(storage.devices.register(DeviceRegistration(phone, key(2)), now))
         assertContentEquals(key(100), storage.state(laptop).registration.publicKey)
         assertEquals(1, storage.state(laptop).authEpoch)
     }
@@ -141,9 +182,9 @@ abstract class DeviceAuthenticationRotationRepositoryContractTest {
     @Test
     fun unexpectedStateConflictsAndChangesNothing() = runTest {
         val storage = registered()
-        val otherKey = DeviceRegistrationState(DeviceRegistration(phone, key(9)), 1, null)
+        val otherKey = DeviceRegistrationState(DeviceRegistration(phone, key(9)), 1, now, null)
         assertEquals(CONFLICT, storage.devices.replaceForRotation(storage.rotation(2, expected = otherKey)), "other key")
-        val otherEpoch = DeviceRegistrationState(DeviceRegistration(phone, key(1)), 2, null)
+        val otherEpoch = DeviceRegistrationState(DeviceRegistration(phone, key(1)), 2, now, null)
         assertEquals(CONFLICT, storage.devices.replaceForRotation(storage.rotation(2, expected = otherEpoch)), "other epoch")
         storage.assertKey(1, epoch = 1)
         assertTrue(storage.authenticationNonces.claim(phone, nonce(2).bytes, now, now), "no nonce was claimed")
@@ -152,7 +193,7 @@ abstract class DeviceAuthenticationRotationRepositoryContractTest {
     @Test
     fun missingDeviceIsReported() = runTest {
         val storage = newStorage()
-        val expected = DeviceRegistrationState(DeviceRegistration(phone, key(1)), 1, null)
+        val expected = DeviceRegistrationState(DeviceRegistration(phone, key(1)), 1, now, null)
         assertEquals(NOT_REGISTERED, storage.devices.replaceForRotation(storage.rotation(2, expected = expected)))
         assertNull(storage.devices.registration(phone), "rotation never registers")
     }
@@ -203,10 +244,10 @@ abstract class DeviceAuthenticationRotationRepositoryContractTest {
         storage.assertKey(4, epoch = 4, rotation = 4)
 
         // Neither kind of ID ever matches the other: an older rotation or recovery is not "already applied".
-        assertEquals(CONFLICT, storage.devices.replaceForRotation(storage.rotation(2, expected = DeviceRegistrationState(DeviceRegistration(phone, key(1)), 1, null))))
+        assertEquals(CONFLICT, storage.devices.replaceForRotation(storage.rotation(2, expected = DeviceRegistrationState(DeviceRegistration(phone, key(1)), 1, now, null))))
         assertEquals(
             RecoveryReplacementResult.CONFLICT,
-            storage.devices.replaceForRecovery(storage.recovery(3, target = DeviceRegistrationState(DeviceRegistration(phone, key(2)), 2, null, rotationId(2)))),
+            storage.devices.replaceForRecovery(storage.recovery(3, target = DeviceRegistrationState(DeviceRegistration(phone, key(2)), 2, now, null, rotationId(2)))),
         )
         storage.assertKey(4, epoch = 4, rotation = 4)
     }
@@ -266,7 +307,7 @@ abstract class DeviceAuthenticationRotationRepositoryContractTest {
                 }
                 val recoveries = (40..55).map { seed ->
                     async {
-                        val recovery = RecoveryReplacement(expected, laptopState, key(seed), recoveryId(seed), nonce(seed), now, now - 5.minutes)
+                        val recovery = RecoveryReplacement(expected, laptopState, key(seed), recoveryId(seed), nonce(seed), now, now - 5.minutes, now)
                         storage.devices.replaceForRecovery(recovery) == RecoveryReplacementResult.REPLACED
                     }
                 }
@@ -309,7 +350,7 @@ abstract class DeviceAuthenticationRotationRepositoryContractTest {
     fun keysAreCopied() = runTest {
         val storage = registered()
         val replacementKey = key(2)
-        val rotation = RotationReplacement(storage.state(), replacementKey, rotationId(2), nonce(2), now, now)
+        val rotation = RotationReplacement(storage.state(), replacementKey, rotationId(2), nonce(2), now, now, now)
         replacementKey.fill(0)
         assertEquals(REPLACED, storage.devices.replaceForRotation(rotation))
         storage.state().registration.publicKey.fill(0)

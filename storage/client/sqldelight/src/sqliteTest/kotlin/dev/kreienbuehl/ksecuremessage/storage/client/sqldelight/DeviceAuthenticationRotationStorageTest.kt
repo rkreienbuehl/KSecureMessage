@@ -8,6 +8,7 @@ import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransport
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException
 import dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.DeviceAuthenticationRegistrationStatus
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
@@ -363,9 +364,9 @@ class DeviceAuthenticationRotationStorageTest {
             if (!existing.contentEquals(registration.publicKey)) throw SecureMessageTransportException.DeviceRegistrationConflict()
         }
 
-        override suspend fun authenticationEpoch(address: DeviceAddress, signer: ServerRequestSigner): Long {
+        override suspend fun registrationStatus(address: DeviceAddress, signer: ServerRequestSigner): DeviceAuthenticationRegistrationStatus {
             verify(address, ServerApiPaths.REGISTRATION, "GET", keys[address], signer)
-            return epochs.getValue(address)
+            return DeviceAuthenticationRegistrationStatus(epochs.getValue(address), Instant.fromEpochMilliseconds(0))
         }
 
         override suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization) {

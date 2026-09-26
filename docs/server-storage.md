@@ -30,7 +30,7 @@ The host application creates, configures and owns the `SqlDriver`:
 ```text
 host creates the driver (location, driver type, connection settings)
 host creates the schema (SqlDelightServerStorage.Schema)
-host opens the storage:   SqlDelightServerStorage.open(driver)
+host opens the storage:   SqlDelightServerStorage.open(driver, clock = serverClock)
 host closes the driver on shutdown
 ```
 
@@ -57,13 +57,16 @@ database, tracks its version in `PRAGMA user_version` and migrates an older
 database on open. A host that manages the schema itself calls
 `SqlDelightServerStorage.Schema.create(driver)` once for a new database and
 `Schema.migrate(driver, oldVersion, Schema.version)` for an existing one.
-`open` creates and migrates nothing: it reads the single-row
+`open` creates and migrates no schema: it reads the single-row
 `server_storage` marker and throws `IllegalStateException` (without SQL
-details) if the database has no server schema, is still at schema version 1
-or 2 (format 1 or 2: migrate it first), or has an unknown format.
+details) if the database has no server schema, is still at schema version
+1, 2 or 3 (format 1, 2 or 3: migrate it first), or has an unknown format.
 
-`open(driver, dispatcher)` takes an optional `CoroutineDispatcher`
-(default `Dispatchers.IO`) for the blocking driver calls.
+`open(driver, dispatcher, clock)` takes an optional `CoroutineDispatcher`
+(default `Dispatchers.IO`) for the blocking driver calls and an optional
+`kotlin.time.Clock` (default `Clock.System`; pass the server's clock) for
+the one-time stamping of legacy key installation times (below). That
+stamping is the only write `open` does.
 
 There is no pooling abstraction. The JDBC SQLite driver opens one connection
 per thread on a file database; a production host may choose another driver or
@@ -90,18 +93,18 @@ storage/server/
 or `sqldelight-sqlite` / `sqldelight-postgresql` if SQLDelight dialect
 separation proves useful. None of this exists yet.
 
-## Schema (server schema version 3)
+## Schema (server schema version 4)
 
 Defined in `ServerState.sq`, independent of the client schema (client
 versions do not apply here). Migrations are `.sqm` files with server-own
 numbering: `1.sqm` migrates version 1 (M13) to 2 (M14), `2.sqm` version 2 to
-3 (M16, below). Timestamps are epoch
+3 (M16), `3.sqm` version 3 to 4 (M17, below). Timestamps are epoch
 milliseconds. Uniqueness is enforced by the database, not only by Kotlin:
 
 | Table | Key / constraint | Columns |
 |---|---|---|
-| `server_storage` | `id = 0` (single row) | `format` = 3 (1, 2 = schema versions 1, 2) |
-| `device_registration` | PK `(user_id, device_id)` | `auth_public_key`, `auth_epoch` (≥ 1, default 1, never wraps), `recovery_id` (32-byte `DeviceRecoveryId` or `NULL`), `rotation_id` (32-byte `DeviceAuthenticationRotationId` or `NULL`); at most one of the two IDs is set: the transition that installed the current key |
+| `server_storage` | `id = 0` (single row) | `format` = 4 (1, 2, 3 = schema versions 1, 2, 3) |
+| `device_registration` | PK `(user_id, device_id)` | `auth_public_key`, `auth_epoch` (≥ 1, default 1, never wraps), `recovery_id` (32-byte `DeviceRecoveryId` or `NULL`), `rotation_id` (32-byte `DeviceAuthenticationRotationId` or `NULL`); at most one of the two IDs is set: the transition that installed the current key; `auth_key_installed_at` (server time the current key was installed at, epoch ms; nullable only for migrated rows until `open` stamps them) |
 | `authentication_nonce` | PK `(user_id, device_id, nonce)`, index on `request_timestamp` | `request_timestamp` |
 | `device_prekey_state` | PK `(user_id, device_id)` | `identity_key`, `signed_pre_key_id`, `signed_pre_key`, `signed_pre_key_signature` |
 | `available_one_time_prekey` | PK `(user_id, device_id, pre_key_id)` | `public_key` |
@@ -134,6 +137,32 @@ sequence are untouched. A version 1 database migrates through both files.
 frozen fixtures `ServerVersion1Schema` and `ServerVersion2Schema`, that a
 version 1 database migrated to 2 has the fixture's shape, and that the
 migrated schema equals a new one.
+
+### Migration from schema version 3 (M16)
+
+`3.sqm` (milestone 17, docs/device-authentication-rotation.md) adds
+`device_registration.auth_key_installed_at INTEGER` with `ALTER TABLE … ADD
+COLUMN` and sets `server_storage.format = 4`. SQL has no trusted server
+clock and the historical installation time is unknown, so existing
+registrations get `NULL`; no time is invented in SQL and SQLite's local
+time is never used. Keys, epochs, recovery and rotation IDs, nonces, prekey
+state, available one-time prekeys, tombstones, mailbox rows and the mailbox
+sequence are untouched. Older databases migrate through all files.
+
+Legacy stamping: `SqlDelightServerStorage.open(driver, dispatcher, clock)`
+runs `UPDATE device_registration SET auth_key_installed_at = <clock now>
+WHERE auth_key_installed_at IS NULL` in one transaction. Exactly once per
+row, idempotent, atomic, restart-safe: a later open with any clock finds no
+`NULL` and changes nothing; keys and epochs are never touched. A legacy
+key's age therefore starts at the first open after the upgrade. New rows
+always get a time from `register` (first registration) or a key
+replacement (recovery, rotation, both with the server clock's time passed
+by `server:core`). A `NULL` read after `open` fails closed with
+`IllegalStateException`. `SqlDelightServerMigrationTest` checks v3 → v4
+against the frozen fixture `ServerVersion3Schema` (and that a version 2
+database migrated to 3 has its shape), the one-time stamping with an
+injected clock, that a restart with another clock keeps it, that all other
+data is unchanged, and that the migrated schema equals a new one.
 
 ## Transaction semantics
 
@@ -261,11 +290,13 @@ is not encrypted; that is out of scope, like backups.
 
 - `SqlDelight*RepositoryTest` / `FileBacked*RepositoryTest`: the four shared
   contracts on in-memory and on file-backed SQLite.
-- `SqlDelightServerPersistenceTest`: restart persistence.
+- `SqlDelightServerPersistenceTest`: restart persistence, including the exact
+  key installation time after registration, rotation and recovery.
 - `SqlDelightServerRollbackTest`: failure injection through a delegating
   driver (`TestDriver`), one test per operation.
-- `SqlDelightServerStorageOpenTest`: driver injection, schema marker, driver
-  ownership, database-level uniqueness.
+- `SqlDelightServerStorageOpenTest`: driver injection, schema marker (refuses
+  formats 1–3), driver ownership, database-level uniqueness, open never
+  rewrites a stored installation time, a missing one fails closed.
 - `SqlDelight*DeviceRecoveryRepositoryTest` / `FileBackedDeviceRecoveryRepositoryTest`:
   the recovery contract (`DeviceRecoveryRepositoryContractTest`).
 - `SqlDelightServerRecoveryTest`: recovery across restarts, stale recovery
@@ -277,7 +308,8 @@ is not encrypted; that is out of scope, like backups.
 - `SqlDelightServerRotationTest`: rotation across restarts, stale K1 → K2
   after K2 → K3 across restarts, preserved prekeys/tombstones/mailbox,
   rollback before and after the nonce claim and the compare-and-set.
-- `SqlDelightServerMigrationTest`: schema version 1 → 3 and 2 → 3.
+- `SqlDelightServerMigrationTest`: schema version 1 → 4, 2 → 4 and 3 → 4,
+  one-time legacy stamping of key installation times.
 
 ## Limitations
 

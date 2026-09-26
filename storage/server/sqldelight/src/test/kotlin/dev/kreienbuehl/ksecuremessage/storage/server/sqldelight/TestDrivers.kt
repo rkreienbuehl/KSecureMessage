@@ -127,3 +127,8 @@ internal fun SqlDriver.setAuthEpoch(address: dev.kreienbuehl.ksecuremessage.mode
         bindString(2, address.deviceId.value)
     }
 }
+
+/** A clock that always returns [instant]. */
+internal fun fixedClock(instant: kotlin.time.Instant): kotlin.time.Clock = object : kotlin.time.Clock {
+    override fun now() = instant
+}

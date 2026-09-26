@@ -1,6 +1,7 @@
 package dev.kreienbuehl.ksecuremessage.client
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.DeviceAuthenticationRegistrationStatus
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
@@ -42,14 +43,16 @@ interface SecureMessageTransport {
     suspend fun recoverDevice(authorization: DeviceRecoveryAuthorization)
 
     /**
-     * The current authentication epoch of [address]'s registration:
+     * The registration metadata of [address]: its current authentication
+     * epoch, needed to build a routine rotation statement, and the server
+     * time its registered key was installed at, for the rotation policy
+     * (docs/device-authentication-rotation.md).
      * `GET /v1/devices/{user}/{device}/registration`, signed with the
-     * registered key. Needed to build a routine rotation statement
-     * (docs/device-authentication-rotation.md). Throws
+     * registered key. Throws
      * [SecureMessageTransportException.AuthenticationFailed] if the key is
      * not the registered one.
      */
-    suspend fun authenticationEpoch(address: DeviceAddress, signer: ServerRequestSigner): Long
+    suspend fun registrationStatus(address: DeviceAddress, signer: ServerRequestSigner): DeviceAuthenticationRegistrationStatus
 
     /**
      * Submits a routine device authentication key rotation

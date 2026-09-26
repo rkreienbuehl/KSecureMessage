@@ -107,6 +107,8 @@ internal class DeviceRecoveryService(
                 nonce = request.nonce,
                 timestamp = request.timestamp,
                 pruneBefore = now - window,
+                // The server's time, never the request's: the recovered key's age starts here.
+                installedAt = now,
             ),
         )
         return when (result) {

@@ -1,6 +1,7 @@
 package dev.kreienbuehl.ksecuremessage.server
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.DeviceAuthenticationRegistrationStatus
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
@@ -14,6 +15,7 @@ import dev.kreienbuehl.ksecuremessage.storage.MailboxRepository
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyPublicationException
 import dev.kreienbuehl.ksecuremessage.storage.ServerStorage
 import kotlin.time.Clock
+import kotlin.time.Instant
 
 /**
  * Blind relay: stores public prekeys and queues opaque envelopes. Never
@@ -24,11 +26,12 @@ import kotlin.time.Clock
  * once ([registerDevice]); publishing prekeys and draining the mailbox then
  * take an [AuthenticatedDevice] from [authenticate]. Fetching a prekey bundle
  * and relaying an envelope stay open to anyone. [clock] is the server time
- * that request timestamps are checked against.
+ * that request timestamps are checked against and that is recorded as the
+ * installation time of registered device authentication keys.
  */
 class SecureMessageServer(
     private val storage: ServerStorage,
-    clock: Clock = Clock.System,
+    private val clock: Clock = Clock.System,
 ) {
     private val preKeys = PreKeyService(storage.preKeys)
     private val authenticator = DeviceAuthenticator(storage.devices, storage.authenticationNonces, clock)
@@ -40,6 +43,9 @@ class SecureMessageServer(
      * [body] is the exact HTTP body the request carried and [authentication]
      * must be signed with the key being registered. Returns `true` for a
      * first registration, `false` if exactly this key was registered before.
+     *
+     * A first registration records [clock]'s time as the key's installation
+     * time; a repeated registration of the same key keeps the recorded one.
      *
      * Throws [DeviceRegistrationException.InvalidRegistration] for a key of
      * the wrong size, [DeviceAuthenticationException] if the request is not
@@ -61,7 +67,7 @@ class SecureMessageServer(
             throw DeviceRegistrationException.InvalidRegistration("Device authentication key has an invalid size")
         }
         authenticator.authenticateRegistration(registration.address, registration.publicKey, body, authentication)
-        return storage.devices.register(registration)
+        return storage.devices.register(registration, installedAt = Instant.fromEpochMilliseconds(clock.now().toEpochMilliseconds()))
     }
 
     /**
@@ -99,13 +105,17 @@ class SecureMessageServer(
     ): DeviceAuthenticationRotationOutcome = rotation.rotate(address, authorization)
 
     /**
-     * The authenticated [device]'s current authentication epoch, which a
-     * routine rotation statement has to name.
+     * The authenticated [device]'s registration metadata: its current
+     * authentication epoch, which a routine rotation statement has to name,
+     * and the server time its registered key was installed at. Metadata only:
+     * whether a rotation is due is the application's policy
+     * (docs/device-authentication-rotation.md), never the server's.
      */
-    suspend fun authenticationEpoch(device: AuthenticatedDevice): Long {
+    suspend fun registrationStatus(device: AuthenticatedDevice): DeviceAuthenticationRegistrationStatus {
         require(device.endpoint == ProtectedEndpoint.READ_REGISTRATION) { "Not authenticated for the registration" }
         // The device authenticated with its registered key, so the registration exists.
-        return checkNotNull(storage.devices.registrationState(device.address)) { "Registration disappeared" }.authEpoch
+        val state = checkNotNull(storage.devices.registrationState(device.address)) { "Registration disappeared" }
+        return DeviceAuthenticationRegistrationStatus(state.authEpoch, state.authKeyInstalledAt)
     }
 
     /** See [DeviceAuthenticator.authenticate]. */

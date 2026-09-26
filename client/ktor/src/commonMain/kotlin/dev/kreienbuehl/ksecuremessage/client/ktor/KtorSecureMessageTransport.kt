@@ -8,6 +8,7 @@ import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.Rec
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RotationFailure
 import dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.DeviceAuthenticationRegistrationStatus
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
@@ -34,6 +35,7 @@ import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import kotlin.io.encoding.Base64
+import kotlin.time.Instant
 
 /**
  * [SecureMessageTransport] over the KSecureMessage HTTP API v1. [client] must
@@ -88,16 +90,16 @@ class KtorSecureMessageTransport(
         throw SecureMessageTransportException.DeviceRecoveryRejected(failure)
     }
 
-    override suspend fun authenticationEpoch(address: DeviceAddress, signer: ServerRequestSigner): Long {
+    override suspend fun registrationStatus(address: DeviceAddress, signer: ServerRequestSigner): DeviceAuthenticationRegistrationStatus {
         val response = authenticated(HttpMethod.Get, address, ServerApiPaths.REGISTRATION, body = null, signer)
         if (response.status != HttpStatusCode.OK) throw response.unexpected()
-        val epoch = try {
-            response.body<DeviceRegistrationStateResponse>().authEpoch
+        val body = try {
+            response.body<DeviceRegistrationStateResponse>()
         } catch (e: IllegalArgumentException) {
             throw SecureMessageTransportException.UnexpectedResponse(response.status.value)
         }
-        if (epoch < 1) throw SecureMessageTransportException.UnexpectedResponse(response.status.value)
-        return epoch
+        if (body.authEpoch < 1) throw SecureMessageTransportException.UnexpectedResponse(response.status.value)
+        return DeviceAuthenticationRegistrationStatus(body.authEpoch, Instant.fromEpochMilliseconds(body.authKeyInstalledAt))
     }
 
     override suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization) {

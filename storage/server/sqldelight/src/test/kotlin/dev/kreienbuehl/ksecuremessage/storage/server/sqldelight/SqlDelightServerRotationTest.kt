@@ -68,10 +68,11 @@ class SqlDelightServerRotationTest {
         RequestNonce(ByteArray(16) { seed.toByte() }),
         t0,
         t0 - 5.minutes,
+        t0,
     )
 
     private suspend fun registered(): SqlDelightServerStorage = storage().apply {
-        devices.register(DeviceRegistration(phone, key(1)))
+        devices.register(DeviceRegistration(phone, key(1)), t0)
     }
 
     private suspend fun SqlDelightServerStorage.assertKey(seed: Int, epoch: Long) {
@@ -91,8 +92,8 @@ class SqlDelightServerRotationTest {
         assertEquals(DeviceAuthenticationRotationId(ByteArray(32) { 2 }), restarted.devices.registrationState(phone)?.rotationId)
         assertNull(restarted.devices.registrationState(phone)?.recoveryId)
         // K1 is gone: registering it conflicts; K2 is the registered key.
-        assertFailsWith<DeviceRegistrationException.Conflict> { restarted.devices.register(DeviceRegistration(phone, key(1))) }
-        assertFalse(restarted.devices.register(DeviceRegistration(phone, key(2))))
+        assertFailsWith<DeviceRegistrationException.Conflict> { restarted.devices.register(DeviceRegistration(phone, key(1)), t0) }
+        assertFalse(restarted.devices.register(DeviceRegistration(phone, key(2)), t0))
         assertEquals(ALREADY_APPLIED, restarted.devices.replaceForRotation(rotation), "a lost response can be retried after a restart")
         restart().assertKey(2, epoch = 2)
     }

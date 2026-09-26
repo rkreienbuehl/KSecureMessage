@@ -55,18 +55,19 @@ class InMemoryServerStorage : ServerStorage {
     internal suspend fun setAuthEpochForTesting(address: DeviceAddress, authEpoch: Long) = authentication.mutex.withLock {
         val registration = checkNotNull(authentication.registrations[address]) { "Device is not registered" }
         authentication.registrations = authentication.registrations +
-            (address to Registration(registration.publicKey, authEpoch, registration.recoveryId, registration.rotationId))
+            (address to Registration(registration.publicKey, authEpoch, registration.installedAt, registration.recoveryId, registration.rotationId))
     }
 }
 
 /**
- * One stored registration with the transition that installed its key (at
- * most one of [recoveryId] and [rotationId]). The key is copied on the way in
- * and out.
+ * One stored registration with the server time its key was installed at and
+ * the transition that installed it (at most one of [recoveryId] and
+ * [rotationId]). The key is copied on the way in and out.
  */
 private class Registration(
     val publicKey: ByteArray,
     val authEpoch: Long,
+    val installedAt: Instant,
     val recoveryId: DeviceRecoveryId?,
     val rotationId: DeviceAuthenticationRotationId?,
 )
@@ -88,7 +89,7 @@ private class AuthenticationState {
      * The compare-and-set shared by recovery and rotation, after their own
      * idempotency and expected-state checks passed. Caller holds [mutex].
      * Checks epoch exhaustion, claims the nonce, then installs [newKey] with
-     * epoch + 1 and exactly one of [recoveryId] and [rotationId].
+     * epoch + 1, [installedAt] and exactly one of [recoveryId] and [rotationId].
      */
     fun replaceKey(
         address: DeviceAddress,
@@ -97,12 +98,13 @@ private class AuthenticationState {
         nonce: RequestNonce,
         timestamp: Instant,
         pruneBefore: Instant,
+        installedAt: Instant,
         recoveryId: DeviceRecoveryId?,
         rotationId: DeviceAuthenticationRotationId?,
     ): KeyReplacement {
         if (current.authEpoch == Long.MAX_VALUE) return KeyReplacement.EPOCH_EXHAUSTED
         if (!claim(address, nonce.bytes, timestamp, pruneBefore)) return KeyReplacement.REPLAY
-        registrations = registrations + (address to Registration(newKey, current.authEpoch + 1, recoveryId, rotationId))
+        registrations = registrations + (address to Registration(newKey, current.authEpoch + 1, installedAt, recoveryId, rotationId))
         return KeyReplacement.REPLACED
     }
 
@@ -131,14 +133,17 @@ private class InMemoryDeviceRegistrationRepository(private val state: Authentica
         state.mutex.withLock { state.registrations[address]?.let { DeviceRegistration(address, it.publicKey) } }
 
     override suspend fun registrationState(address: DeviceAddress): DeviceRegistrationState? = state.mutex.withLock {
-        state.registrations[address]?.let { DeviceRegistrationState(DeviceRegistration(address, it.publicKey), it.authEpoch, it.recoveryId, it.rotationId) }
+        state.registrations[address]?.let {
+            DeviceRegistrationState(DeviceRegistration(address, it.publicKey), it.authEpoch, it.installedAt, it.recoveryId, it.rotationId)
+        }
     }
 
-    override suspend fun register(registration: DeviceRegistration): Boolean = state.mutex.withLock {
+    // A retry of the registered key changes nothing, also not the installation time.
+    override suspend fun register(registration: DeviceRegistration, installedAt: Instant): Boolean = state.mutex.withLock {
         val existing = state.registrations[registration.address]
         when {
             existing == null -> {
-                state.registrations = state.registrations + (registration.address to Registration(registration.publicKey, 1, null, null))
+                state.registrations = state.registrations + (registration.address to Registration(registration.publicKey, 1, installedAt, null, null))
                 true
             }
             existing.publicKey.contentEquals(registration.publicKey) -> false
@@ -159,7 +164,7 @@ private class InMemoryDeviceRegistrationRepository(private val state: Authentica
         }
         val result = state.replaceKey(
             replacement.target, target, newKey, replacement.nonce, replacement.timestamp, replacement.pruneBefore,
-            recoveryId = replacement.recoveryId, rotationId = null,
+            replacement.installedAt, recoveryId = replacement.recoveryId, rotationId = null,
         )
         when (result) {
             AuthenticationState.KeyReplacement.REPLACED -> RecoveryReplacementResult.REPLACED
@@ -177,7 +182,7 @@ private class InMemoryDeviceRegistrationRepository(private val state: Authentica
         }
         val result = state.replaceKey(
             replacement.address, current, newKey, replacement.nonce, replacement.timestamp, replacement.pruneBefore,
-            recoveryId = null, rotationId = replacement.rotationId,
+            replacement.installedAt, recoveryId = null, rotationId = replacement.rotationId,
         )
         when (result) {
             AuthenticationState.KeyReplacement.REPLACED -> RotationReplacementResult.REPLACED

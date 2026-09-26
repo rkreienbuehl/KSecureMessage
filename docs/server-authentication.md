@@ -279,7 +279,7 @@ request that fails steps 1–4 consumes nothing.
 | `POST /v1/messages` | public | `202` | – |
 | `GET /v1/devices/{u}/{d}/messages` | registered device | `200` | `401` |
 | `PUT /v1/devices/{u}/{d}/registration/recovery` (M14) | authorizer signature + proof of possession in the body (docs/device-recovery.md) | `204` | `400 invalid_recovery`, `401`, `403`, `404`, `409 recovery_conflict`, `409 device_auth_epoch_exhausted` |
-| `GET /v1/devices/{u}/{d}/registration` (M16) | registered device (`ProtectedEndpoint.READ_REGISTRATION`, empty body) | `200 {"authEpoch": N}` | `401` |
+| `GET /v1/devices/{u}/{d}/registration` (M16, extended M17) | registered device (`ProtectedEndpoint.READ_REGISTRATION`, empty body) | `200 {"authEpoch":N,"authKeyInstalledAt":T}` (T: server time the registered key was installed at, epoch ms; docs/device-authentication-rotation.md) | `401` |
 | `PUT /v1/devices/{u}/{d}/registration/rotation` (M16) | current-key authorization + proof of possession in the body, no headers (docs/device-authentication-rotation.md) | `204` | `400 invalid_device_auth_rotation`, `401`, `404`, `409 device_auth_rotation_conflict`, `409 device_auth_epoch_exhausted` |
 
 `401` bodies: `missing_authentication`, `invalid_authentication`,
@@ -289,6 +289,14 @@ Every exception is mapped explicitly; none falls through to `500`.
 `SecureMessageTransportException.AuthenticationFailed(failure)` (`MISSING`,
 `INVALID`, `EXPIRED`, `REPLAY`, `NOT_REGISTERED`),
 `DeviceRegistrationConflict` and `RegistrationRejected`.
+
+The registration status response (M17) is trusted because the request is
+ServerAuth-signed with the registered key and the server is the authority
+for its registration metadata. ServerAuth authenticates requests, not
+responses; there are no signed responses. The server records a key's
+installation time with its own clock at first registration, recovery and
+rotation; a repeated registration of the registered key (idempotent, `204`)
+never changes it.
 
 ### Compatibility boundary
 
