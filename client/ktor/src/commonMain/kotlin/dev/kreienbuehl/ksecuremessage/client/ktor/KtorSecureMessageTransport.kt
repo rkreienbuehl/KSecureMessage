@@ -7,12 +7,14 @@ import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.Las
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.Reason
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RecoveryFailure
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RecoveryKeyFailure
+import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RecoveryKeyTransitionFailure
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RotationFailure
 import dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceAuthenticationRegistrationStatus
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
+import dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
@@ -20,6 +22,8 @@ import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
 import io.ktor.client.HttpClient
@@ -137,13 +141,61 @@ class KtorSecureMessageTransport(
         val response = authenticated(HttpMethod.Put, address, ServerApiPaths.LAST_DEVICE_RECOVERY_KEY, body, signer)
         when {
             response.status.isSuccess() -> Unit
-            response.status == HttpStatusCode.Conflict ->
-                throw SecureMessageTransportException.LastDeviceRecoveryKeyRejected(RecoveryKeyFailure.CONFLICT)
+            response.status == HttpStatusCode.Conflict -> throw SecureMessageTransportException.LastDeviceRecoveryKeyRejected(
+                if (runCatching { response.body<ErrorResponse>().error }.getOrNull() == "recovery_key_epoch_exhausted") {
+                    RecoveryKeyFailure.EPOCH_EXHAUSTED
+                } else {
+                    RecoveryKeyFailure.CONFLICT
+                },
+            )
             response.status == HttpStatusCode.BadRequest ->
                 throw SecureMessageTransportException.LastDeviceRecoveryKeyRejected(RecoveryKeyFailure.INVALID)
             else -> throw response.unexpected()
         }
     }
+
+    override suspend fun lastDeviceRecoveryKeyStatus(address: DeviceAddress, signer: ServerRequestSigner): LastDeviceRecoveryKeyStatus {
+        val response = authenticated(HttpMethod.Get, address, ServerApiPaths.LAST_DEVICE_RECOVERY_KEY, body = null, signer)
+        if (response.status != HttpStatusCode.OK) throw response.unexpected()
+        return try {
+            response.body<LastDeviceRecoveryKeyStatusResponse>().toStatus()
+        } catch (e: IllegalArgumentException) {
+            throw SecureMessageTransportException.UnexpectedResponse(response.status.value)
+        }
+    }
+
+    override suspend fun rotateLastDeviceRecoveryKey(authorization: RecoveryKeyRotationAuthorization, signer: ServerRequestSigner) {
+        val body = Json.encodeToString(authorization.toRequest()).encodeToByteArray()
+        val response = authenticated(
+            HttpMethod.Put, authorization.statement.authorizer, ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_ROTATION, body, signer,
+        )
+        if (response.status.isSuccess()) return
+        val failure = response.recoveryKeyTransitionFailure("rotation") ?: throw response.unexpected()
+        throw SecureMessageTransportException.RecoveryKeyRotationRejected(failure)
+    }
+
+    override suspend fun revokeLastDeviceRecoveryKey(authorization: RecoveryKeyRevocationAuthorization, signer: ServerRequestSigner) {
+        val body = Json.encodeToString(authorization.toRequest()).encodeToByteArray()
+        val response = authenticated(
+            HttpMethod.Put, authorization.statement.authorizer, ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_REVOCATION, body, signer,
+        )
+        if (response.status.isSuccess()) return
+        val failure = response.recoveryKeyTransitionFailure("revocation") ?: throw response.unexpected()
+        throw SecureMessageTransportException.RecoveryKeyRevocationRejected(failure)
+    }
+
+    /** The recovery key [kind] (`rotation`, `revocation`) failure, or `null` for anything else (ServerAuth failures included). */
+    private suspend fun HttpResponse.recoveryKeyTransitionFailure(kind: String): RecoveryKeyTransitionFailure? =
+        when (runCatching { body<ErrorResponse>().error }.getOrNull()) {
+            "invalid_recovery_key_$kind" -> RecoveryKeyTransitionFailure.INVALID_REQUEST
+            "recovery_key_not_configured" -> RecoveryKeyTransitionFailure.NOT_CONFIGURED
+            "recovery_key_${kind}_expired" -> RecoveryKeyTransitionFailure.EXPIRED
+            "recovery_key_${kind}_invalid_proof" -> RecoveryKeyTransitionFailure.INVALID_PROOF
+            "recovery_key_${kind}_replay" -> RecoveryKeyTransitionFailure.REPLAY
+            "recovery_key_${kind}_conflict" -> RecoveryKeyTransitionFailure.CONFLICT
+            "recovery_key_epoch_exhausted" -> RecoveryKeyTransitionFailure.EPOCH_EXHAUSTED
+            else -> null
+        }
 
     override suspend fun lastDeviceRecoveryChallenge(target: DeviceAddress): LastDeviceRecoveryChallenge {
         val response = client.request(baseUrl + ServerApiPaths.device(target, ServerApiPaths.LAST_DEVICE_RECOVERY_CHALLENGE)) {

@@ -161,4 +161,20 @@ sealed class SecureMessageClientException(message: String, cause: Throwable? = n
      * submitted. Nothing was promoted.
      */
     class InvalidLastDeviceRecovery(message: String) : SecureMessageClientException(message)
+
+    /**
+     * The user has no active offline recovery key (never registered, or
+     * revoked; docs/recovery-key-lifecycle.md). Register one with
+     * [SecureMessageClient.registerLastDeviceRecoveryKey]. Nothing was sent.
+     */
+    class LastDeviceRecoveryKeyNotConfigured : SecureMessageClientException("No active last-device recovery key")
+
+    /**
+     * The given recovery key is not the user's active recovery key
+     * (docs/recovery-key-lifecycle.md): another key was rotated in, or the
+     * wrong backup was used. Nothing was sent. A lost active key cannot be
+     * replaced by a device alone.
+     */
+    class LastDeviceRecoveryKeyMismatch :
+        SecureMessageClientException("The recovery key is not the active last-device recovery key")
 }

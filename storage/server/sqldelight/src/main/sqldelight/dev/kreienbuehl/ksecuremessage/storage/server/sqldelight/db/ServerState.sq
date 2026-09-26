@@ -1,4 +1,4 @@
--- Server state, schema version 5 (docs/server-storage.md). Independent of the
+-- Server state, schema version 6 (docs/server-storage.md). Independent of the
 -- client schema. Holds only public keys, opaque encrypted envelopes, routing
 -- metadata and replay metadata: never client private keys, session secrets
 -- or application plaintext. Timestamps are epoch milliseconds.
@@ -7,15 +7,15 @@
 -- Rows are never written with INSERT OR REPLACE: a conflict must never
 -- overwrite what is stored.
 
--- Single row that marks a database created with this schema. format 5 is
--- schema version 5 (migration 4.sqm); open() refuses a database without it
--- and a database still at format 1, 2, 3 or 4 (not migrated).
+-- Single row that marks a database created with this schema. format 6 is
+-- schema version 6 (migration 5.sqm); open() refuses a database without it
+-- and a database still at format 1, 2, 3, 4 or 5 (not migrated).
 CREATE TABLE server_storage (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
     format INTEGER NOT NULL
 );
 
-INSERT INTO server_storage (id, format) VALUES (0, 5);
+INSERT INTO server_storage (id, format) VALUES (0, 6);
 
 -- Device authentication public key per device. Added by registration,
 -- replaced only by a device recovery (docs/device-recovery.md), a routine
@@ -53,19 +53,35 @@ CREATE TABLE authentication_nonce (
 
 CREATE INDEX authentication_nonce_timestamp ON authentication_nonce (request_timestamp);
 
--- Last-device recovery public key per user (Ed25519, 32 bytes; never the
--- private key). Registered once by an authenticated device of the user,
--- never replaced or removed in schema version 5.
-CREATE TABLE last_device_recovery_key (
+-- Last-device recovery key state per user (docs/recovery-key-lifecycle.md).
+-- state 1 = ACTIVE (public_key and installed_at set), 2 = REVOKED (both
+-- NULL); a user without a row never registered a key. public_key is the
+-- Ed25519 public key (32 bytes; never the private key). epoch is 1 for a
+-- first registration and grows by one with every rotation, revocation and
+-- registration after a revocation; it never wraps and is never reset.
+-- transitioned_at is the server time of the last transition (for REVOKED the
+-- revocation time). rotation_id / revocation_id identify the rotation or
+-- revocation that produced the state: at most one is set, both are NULL
+-- after a registration.
+CREATE TABLE last_device_recovery_key_state (
     user_id TEXT NOT NULL PRIMARY KEY,
-    public_key BLOB NOT NULL,
-    registered_at INTEGER NOT NULL
+    state INTEGER NOT NULL CHECK (state IN (1, 2)),
+    epoch INTEGER NOT NULL CHECK (epoch >= 1),
+    public_key BLOB,
+    installed_at INTEGER,
+    transitioned_at INTEGER NOT NULL,
+    rotation_id BLOB,
+    revocation_id BLOB,
+    CHECK ((state = 1 AND public_key IS NOT NULL AND installed_at IS NOT NULL AND revocation_id IS NULL) OR
+           (state = 2 AND public_key IS NULL AND installed_at IS NULL AND rotation_id IS NULL))
 );
 
 -- At most one outstanding last-device recovery challenge per device, with
--- the registered key and epoch it was issued for. Deleted when a recovery
--- consumes it, replaced when the registration changed, pruned after
--- expires_at (epoch milliseconds).
+-- the registered key and epoch and the recovery key epoch it was issued for.
+-- Deleted when a recovery consumes it, replaced when the registration or the
+-- recovery key changed, deleted for the whole user by a recovery key rotation
+-- or revocation, pruned after expires_at (epoch milliseconds). The columns
+-- are declared as migrations 4.sqm and 5.sqm add them.
 CREATE TABLE last_device_recovery_challenge (
     user_id TEXT NOT NULL,
     device_id TEXT NOT NULL,
@@ -75,6 +91,7 @@ CREATE TABLE last_device_recovery_challenge (
     auth_public_key BLOB NOT NULL,
     issued_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL,
+    recovery_key_epoch INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY (user_id, device_id)
 );
 
@@ -158,23 +175,39 @@ DELETE FROM authentication_nonce WHERE request_timestamp < ?;
 insertNonce:
 INSERT OR IGNORE INTO authentication_nonce (user_id, device_id, nonce, request_timestamp) VALUES (?, ?, ?, ?);
 
-selectRecoveryKey:
-SELECT public_key FROM last_device_recovery_key WHERE user_id = ?;
+selectRecoveryKeyState:
+SELECT state, epoch, public_key, installed_at, transitioned_at, rotation_id, revocation_id
+FROM last_device_recovery_key_state WHERE user_id = ?;
 
-insertRecoveryKey:
-INSERT INTO last_device_recovery_key (user_id, public_key, registered_at) VALUES (?, ?, ?);
+insertRecoveryKeyState:
+INSERT INTO last_device_recovery_key_state (user_id, state, epoch, public_key, installed_at, transitioned_at)
+VALUES (?, 1, 1, ?, ?, ?);
+
+-- Compare-and-set shared by every recovery key transition after the first
+-- registration (registration after a revocation, rotation, revocation):
+-- changes the row only while it still has the expected state, epoch and key
+-- (IS: NULL for a revoked key). Always epoch + 1.
+transitionRecoveryKeyState:
+UPDATE last_device_recovery_key_state
+SET state = :new_state, epoch = epoch + 1, public_key = :new_key, installed_at = :installed_at,
+    transitioned_at = :transitioned_at, rotation_id = :rotation_id, revocation_id = :revocation_id
+WHERE user_id = :user_id AND state = :expected_state AND epoch = :expected_epoch AND public_key IS :expected_key;
 
 selectChallenge:
-SELECT challenge_id, challenge_nonce, auth_epoch, auth_public_key, expires_at
+SELECT challenge_id, challenge_nonce, auth_epoch, auth_public_key, expires_at, recovery_key_epoch
 FROM last_device_recovery_challenge WHERE user_id = ? AND device_id = ?;
 
 insertChallenge:
 INSERT INTO last_device_recovery_challenge
-    (user_id, device_id, challenge_id, challenge_nonce, auth_epoch, auth_public_key, issued_at, expires_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+    (user_id, device_id, challenge_id, challenge_nonce, auth_epoch, auth_public_key, issued_at, expires_at, recovery_key_epoch)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteChallenge:
 DELETE FROM last_device_recovery_challenge WHERE user_id = ? AND device_id = ?;
+
+-- Invalidates every outstanding challenge of a user (recovery key rotation or revocation).
+deleteChallengesOfUser:
+DELETE FROM last_device_recovery_challenge WHERE user_id = ?;
 
 -- Removes challenges that expired before the given time (epoch milliseconds).
 pruneChallenges:

@@ -1,5 +1,15 @@
 package dev.kreienbuehl.ksecuremessage.client
 
+import dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocation
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotation
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyRevocationResult
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyRevocationTransition
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyRotationResult
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyRotationTransition
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyStatus
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceAuthenticationRegistrationStatus
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
@@ -99,6 +109,21 @@ internal class FakeNetwork : SecureMessageTransport {
     override suspend fun lastDeviceRecoveryChallenge(target: DeviceAddress): LastDeviceRecoveryChallenge = error("Not used with FakeNetwork")
 
     override suspend fun recoverLastDevice(authorization: LastDeviceRecoveryAuthorization) = error("Not used with FakeNetwork")
+
+    override suspend fun lastDeviceRecoveryKeyStatus(
+        address: DeviceAddress,
+        signer: ServerRequestSigner,
+    ): LastDeviceRecoveryKeyStatus = error("Not used with FakeNetwork")
+
+    override suspend fun rotateLastDeviceRecoveryKey(
+        authorization: RecoveryKeyRotationAuthorization,
+        signer: ServerRequestSigner,
+    ) = error("Not used with FakeNetwork")
+
+    override suspend fun revokeLastDeviceRecoveryKey(
+        authorization: RecoveryKeyRevocationAuthorization,
+        signer: ServerRequestSigner,
+    ) = error("Not used with FakeNetwork")
 
     /** Only records: these tests set [bundles] by hand, see [publish]. */
     override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) {
@@ -296,11 +321,122 @@ internal class ServerBackedNetwork(
         if (registration.userId != address.userId || !LastDeviceRecovery.verifyKeyRegistration(registration)) {
             throw SecureMessageTransportException.LastDeviceRecoveryKeyRejected(SecureMessageTransportException.RecoveryKeyFailure.INVALID)
         }
+        registerRecoveryKey(registration)
+    }
+
+    /** Recovery key registration after a revocation at the maximum epoch fails closed. */
+    private suspend fun registerRecoveryKey(registration: LastDeviceRecoveryKeyRegistration) {
         try {
             server.lastDeviceRecovery.registerRecoveryKey(registration.userId, registration.publicKey, now())
         } catch (e: LastDeviceRecoveryKeyException.Conflict) {
             throw SecureMessageTransportException.LastDeviceRecoveryKeyRejected(SecureMessageTransportException.RecoveryKeyFailure.CONFLICT)
+        } catch (e: LastDeviceRecoveryKeyException.EpochExhausted) {
+            throw SecureMessageTransportException.LastDeviceRecoveryKeyRejected(SecureMessageTransportException.RecoveryKeyFailure.EPOCH_EXHAUSTED)
         }
+    }
+
+    /** Status requests that reached the server. */
+    var recoveryKeyStatusRequests = 0
+
+    override suspend fun lastDeviceRecoveryKeyStatus(address: DeviceAddress, signer: ServerRequestSigner): LastDeviceRecoveryKeyStatus {
+        beforeNetworkCall()
+        recoveryKeyStatusRequests++
+        authenticate(address, "GET", ServerApiPaths.LAST_DEVICE_RECOVERY_KEY, ByteArray(0), signer)
+        val state = server.lastDeviceRecovery.recoveryKeyState(address.userId) ?: return LastDeviceRecoveryKeyStatus.Unconfigured
+        return when (state.status) {
+            RecoveryKeyStatus.ACTIVE -> LastDeviceRecoveryKeyStatus.Active(state.epoch, checkNotNull(state.installedAt), checkNotNull(state.publicKey))
+            RecoveryKeyStatus.REVOKED -> LastDeviceRecoveryKeyStatus.Revoked(state.epoch, state.transitionedAt)
+        }
+    }
+
+    /** Recovery key rotations and revocations that reached the server, in order. */
+    val recoveryKeyTransitionAttempts = mutableListOf<Any>()
+
+    /** Runs after the server committed a recovery key rotation or revocation, before the response: throwing stands for a lost response. */
+    var afterRecoveryKeyTransition: () -> Unit = {}
+
+    /** Runs when a recovery key rotation or revocation arrives, before the server reads any state: another transition can win meanwhile. */
+    var beforeRecoveryKeyTransition: suspend () -> Unit = {}
+
+    /** The checks of server:core's recovery key rotation (without a time window), then the atomic storage transition. */
+    override suspend fun rotateLastDeviceRecoveryKey(authorization: RecoveryKeyRotationAuthorization, signer: ServerRequestSigner) {
+        beforeNetworkCall()
+        val statement = authorization.statement
+        authenticate(statement.authorizer, "PUT", ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_ROTATION, ByteArray(0), signer)
+        beforeRecoveryKeyTransition()
+        recoveryKeyTransitionAttempts += authorization
+        fun reject(failure: SecureMessageTransportException.RecoveryKeyTransitionFailure): Nothing =
+            throw SecureMessageTransportException.RecoveryKeyRotationRejected(failure)
+        val authorizer = checkNotNull(server.devices.registrationState(statement.authorizer))
+        val state = server.lastDeviceRecovery.recoveryKeyState(statement.userId)
+            ?: reject(SecureMessageTransportException.RecoveryKeyTransitionFailure.NOT_CONFIGURED)
+        val id = RecoveryKeyRotation.rotationId(statement)
+        val proofs = RecoveryKeyRotation.verifyCurrentKeySignature(statement.currentPublicKey, authorization) &&
+            RecoveryKeyRotation.verifyNewKeyProofOfPossession(authorization)
+        if (state.rotationId == id && state.publicKey.contentEquals(statement.newPublicKey)) {
+            if (!proofs) reject(SecureMessageTransportException.RecoveryKeyTransitionFailure.INVALID_PROOF)
+            afterRecoveryKeyTransition()
+            return
+        }
+        if (state.status != RecoveryKeyStatus.ACTIVE) reject(SecureMessageTransportException.RecoveryKeyTransitionFailure.NOT_CONFIGURED)
+        if (state.epoch != statement.expectedEpoch || !state.publicKey.contentEquals(statement.currentPublicKey)) {
+            reject(SecureMessageTransportException.RecoveryKeyTransitionFailure.CONFLICT)
+        }
+        if (!proofs) reject(SecureMessageTransportException.RecoveryKeyTransitionFailure.INVALID_PROOF)
+        val result = server.lastDeviceRecovery.rotateRecoveryKey(
+            RecoveryKeyRotationTransition(
+                statement.userId, statement.currentPublicKey, statement.expectedEpoch, statement.newPublicKey, authorizer, id,
+                statement.nonce, statement.timestamp, Instant.DISTANT_PAST, now(),
+            ),
+        )
+        when (result) {
+            RecoveryKeyRotationResult.ROTATED, RecoveryKeyRotationResult.ALREADY_APPLIED -> Unit
+            RecoveryKeyRotationResult.NOT_CONFIGURED -> reject(SecureMessageTransportException.RecoveryKeyTransitionFailure.NOT_CONFIGURED)
+            RecoveryKeyRotationResult.CONFLICT -> reject(SecureMessageTransportException.RecoveryKeyTransitionFailure.CONFLICT)
+            RecoveryKeyRotationResult.REPLAY -> reject(SecureMessageTransportException.RecoveryKeyTransitionFailure.REPLAY)
+            RecoveryKeyRotationResult.EPOCH_EXHAUSTED -> reject(SecureMessageTransportException.RecoveryKeyTransitionFailure.EPOCH_EXHAUSTED)
+        }
+        afterRecoveryKeyTransition()
+    }
+
+    /** The checks of server:core's recovery key revocation (without a time window), then the atomic storage transition. */
+    override suspend fun revokeLastDeviceRecoveryKey(authorization: RecoveryKeyRevocationAuthorization, signer: ServerRequestSigner) {
+        beforeNetworkCall()
+        val statement = authorization.statement
+        authenticate(statement.authorizer, "PUT", ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_REVOCATION, ByteArray(0), signer)
+        beforeRecoveryKeyTransition()
+        recoveryKeyTransitionAttempts += authorization
+        fun reject(failure: SecureMessageTransportException.RecoveryKeyTransitionFailure): Nothing =
+            throw SecureMessageTransportException.RecoveryKeyRevocationRejected(failure)
+        val authorizer = checkNotNull(server.devices.registrationState(statement.authorizer))
+        val state = server.lastDeviceRecovery.recoveryKeyState(statement.userId)
+            ?: reject(SecureMessageTransportException.RecoveryKeyTransitionFailure.NOT_CONFIGURED)
+        val id = RecoveryKeyRevocation.revocationId(statement)
+        val proof = RecoveryKeyRevocation.verifySignature(statement.currentPublicKey, authorization)
+        if (state.status == RecoveryKeyStatus.REVOKED && state.revocationId == id) {
+            if (!proof) reject(SecureMessageTransportException.RecoveryKeyTransitionFailure.INVALID_PROOF)
+            afterRecoveryKeyTransition()
+            return
+        }
+        if (state.status != RecoveryKeyStatus.ACTIVE) reject(SecureMessageTransportException.RecoveryKeyTransitionFailure.NOT_CONFIGURED)
+        if (state.epoch != statement.expectedEpoch || !state.publicKey.contentEquals(statement.currentPublicKey)) {
+            reject(SecureMessageTransportException.RecoveryKeyTransitionFailure.CONFLICT)
+        }
+        if (!proof) reject(SecureMessageTransportException.RecoveryKeyTransitionFailure.INVALID_PROOF)
+        val result = server.lastDeviceRecovery.revokeRecoveryKey(
+            RecoveryKeyRevocationTransition(
+                statement.userId, statement.currentPublicKey, statement.expectedEpoch, authorizer, id,
+                statement.nonce, statement.timestamp, Instant.DISTANT_PAST, now(),
+            ),
+        )
+        when (result) {
+            RecoveryKeyRevocationResult.REVOKED, RecoveryKeyRevocationResult.ALREADY_APPLIED -> Unit
+            RecoveryKeyRevocationResult.NOT_CONFIGURED -> reject(SecureMessageTransportException.RecoveryKeyTransitionFailure.NOT_CONFIGURED)
+            RecoveryKeyRevocationResult.CONFLICT -> reject(SecureMessageTransportException.RecoveryKeyTransitionFailure.CONFLICT)
+            RecoveryKeyRevocationResult.REPLAY -> reject(SecureMessageTransportException.RecoveryKeyTransitionFailure.REPLAY)
+            RecoveryKeyRevocationResult.EPOCH_EXHAUSTED -> reject(SecureMessageTransportException.RecoveryKeyTransitionFailure.EPOCH_EXHAUSTED)
+        }
+        afterRecoveryKeyTransition()
     }
 
     /** Runs after a challenge was issued, before the response: another transition or the clock can move meanwhile. */

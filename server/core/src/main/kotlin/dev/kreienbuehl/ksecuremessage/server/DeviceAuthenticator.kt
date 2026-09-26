@@ -7,6 +7,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
 import dev.kreienbuehl.ksecuremessage.storage.AuthenticationNonceRepository
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationRepository
+import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationState
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
@@ -28,16 +29,29 @@ enum class ProtectedEndpoint(val method: String, val endpoint: String) {
 
     /** `PUT /v1/devices/{user}/{device}/last-device-recovery/key`: registers the user's last-device recovery key. */
     REGISTER_LAST_DEVICE_RECOVERY_KEY("PUT", ServerApiPaths.LAST_DEVICE_RECOVERY_KEY),
+
+    /** `GET /v1/devices/{user}/{device}/last-device-recovery/key`: the user's recovery key state (docs/recovery-key-lifecycle.md). */
+    READ_LAST_DEVICE_RECOVERY_KEY("GET", ServerApiPaths.LAST_DEVICE_RECOVERY_KEY),
+
+    /** `PUT /v1/devices/{user}/{device}/last-device-recovery/key/rotation`: rotates the user's recovery key. */
+    ROTATE_LAST_DEVICE_RECOVERY_KEY("PUT", ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_ROTATION),
+
+    /** `PUT /v1/devices/{user}/{device}/last-device-recovery/key/revocation`: revokes the user's recovery key. */
+    REVOKE_LAST_DEVICE_RECOVERY_KEY("PUT", ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_REVOCATION),
 }
 
 /**
  * Proof that a request for [endpoint] on behalf of [address] passed
  * authentication and claimed its nonce. Only [DeviceAuthenticator] creates
- * one, so a protected operation cannot run without it.
+ * one, so a protected operation cannot run without it. [registrationState]
+ * is the registration whose key verified the request: an operation that
+ * must still hold when it commits (a recovery key rotation or revocation)
+ * compares against it.
  */
 class AuthenticatedDevice internal constructor(
     val address: DeviceAddress,
     val endpoint: ProtectedEndpoint,
+    internal val registrationState: DeviceRegistrationState,
 )
 
 /** A request that failed authentication. Nothing was changed except, for none of these, a nonce. */
@@ -91,10 +105,10 @@ class DeviceAuthenticator(
     ): AuthenticatedDevice {
         authentication ?: throw DeviceAuthenticationException.MissingAuthentication()
         // Always the registered key; never one the request supplies.
-        val registration = devices.registration(address) ?: throw DeviceAuthenticationException.DeviceNotRegistered()
+        val state = devices.registrationState(address) ?: throw DeviceAuthenticationException.DeviceNotRegistered()
         val request = ServerRequest(address, endpoint.method, ServerApiPaths.device(address, endpoint.endpoint), body)
-        verify(registration.publicKey, request, authentication)
-        return AuthenticatedDevice(address, endpoint)
+        verify(state.registration.publicKey, request, authentication)
+        return AuthenticatedDevice(address, endpoint, state)
     }
 
     /**

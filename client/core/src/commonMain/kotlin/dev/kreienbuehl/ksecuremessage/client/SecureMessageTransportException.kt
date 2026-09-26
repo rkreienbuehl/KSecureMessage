@@ -46,6 +46,14 @@ sealed class SecureMessageTransportException(message: String) : Exception(messag
     class LastDeviceRecoveryRejected(val reason: LastDeviceRecoveryFailure) :
         SecureMessageTransportException("Last-device recovery rejected: $reason")
 
+    /** The server refused a recovery key rotation (docs/recovery-key-lifecycle.md); nothing was changed. */
+    class RecoveryKeyRotationRejected(val reason: RecoveryKeyTransitionFailure) :
+        SecureMessageTransportException("Recovery key rotation rejected: $reason")
+
+    /** The server refused a recovery key revocation (docs/recovery-key-lifecycle.md); nothing was changed. */
+    class RecoveryKeyRevocationRejected(val reason: RecoveryKeyTransitionFailure) :
+        SecureMessageTransportException("Recovery key revocation rejected: $reason")
+
     /** Any other unexpected server response. */
     class UnexpectedResponse(val status: Int) :
         SecureMessageTransportException("Unexpected server response $status")
@@ -143,8 +151,39 @@ sealed class SecureMessageTransportException(message: String) : Exception(messag
         /** The registration was malformed, or its proof of possession does not verify. */
         INVALID,
 
-        /** The user has a different recovery key. It is never replaced. */
+        /** The user has a different active recovery key. Only a rotation replaces it (docs/recovery-key-lifecycle.md). */
         CONFLICT,
+
+        /** The recovery key epoch cannot grow any more (after a revocation at the maximum epoch). */
+        EPOCH_EXHAUSTED,
+    }
+
+    /** Why the server refused a recovery key rotation or revocation (docs/recovery-key-lifecycle.md). */
+    enum class RecoveryKeyTransitionFailure {
+        /** The request was malformed, named another authorizing device, or rotated to the same key. */
+        INVALID_REQUEST,
+
+        /** The user has no active recovery key (never registered, or revoked). */
+        NOT_CONFIGURED,
+
+        /** The statement time is outside the server's validity window. */
+        EXPIRED,
+
+        /** The current recovery key's signature or the new key's proof of possession does not verify. */
+        INVALID_PROOF,
+
+        /** The statement's nonce was used before. */
+        REPLAY,
+
+        /**
+         * The active recovery key or epoch is not the one the statement names
+         * (another transition won, or a stale statement), or this device's
+         * registration changed meanwhile.
+         */
+        CONFLICT,
+
+        /** The recovery key epoch cannot grow any more. */
+        EPOCH_EXHAUSTED,
     }
 
     enum class LastDeviceRecoveryFailure {

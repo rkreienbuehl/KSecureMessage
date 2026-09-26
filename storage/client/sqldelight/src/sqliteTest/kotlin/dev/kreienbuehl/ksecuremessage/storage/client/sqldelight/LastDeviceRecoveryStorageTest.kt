@@ -422,6 +422,21 @@ class LastDeviceRecoveryStorageTest {
             return challenge
         }
 
+        override suspend fun lastDeviceRecoveryKeyStatus(
+            address: dev.kreienbuehl.ksecuremessage.model.DeviceAddress,
+            signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
+        ): dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus = error("not used")
+
+        override suspend fun rotateLastDeviceRecoveryKey(
+            authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization,
+            signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
+        ) = error("not used")
+
+        override suspend fun revokeLastDeviceRecoveryKey(
+            authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization,
+            signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
+        ) = error("not used")
+
         override suspend fun recoverLastDevice(authorization: LastDeviceRecoveryAuthorization) {
             attempts++
             val statement = authorization.statement

@@ -3,6 +3,7 @@ package dev.kreienbuehl.ksecuremessage.server.ktor
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
+import dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
@@ -19,6 +20,10 @@ import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallengeId
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryStatement
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationStatement
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationStatement
 import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
@@ -138,6 +143,54 @@ internal class LastDeviceRecoveryRequestDto(
     val proofOfPossession: String,
 )
 
+/**
+ * Body of the `200` response of `GET /v1/devices/{user}/{device}/last-device-recovery/key`
+ * (docs/recovery-key-lifecycle.md). [state] is `unconfigured`, `active` or
+ * `revoked`; times are epoch milliseconds (server clock). [installedAt] and
+ * [activePublicKey] are set only while `active`, [revokedAt] only when
+ * `revoked`, [recoveryKeyEpoch] unless `unconfigured`. Every field is always
+ * present (`null` when not set).
+ */
+@Serializable
+internal class LastDeviceRecoveryKeyStatusResponse(
+    val state: String,
+    val recoveryKeyEpoch: Long?,
+    val installedAt: Long?,
+    val revokedAt: Long?,
+    val activePublicKey: String?,
+)
+
+/**
+ * Body of `PUT /v1/devices/{user}/{device}/last-device-recovery/key/rotation`
+ * (docs/recovery-key-lifecycle.md). The user and the authorizing device are
+ * the path's. [timestamp] is epoch milliseconds; the signatures cover the
+ * binary rotation statement, never this JSON.
+ */
+@Serializable
+internal class RecoveryKeyRotationRequestDto(
+    val currentPublicKey: String,
+    val newPublicKey: String,
+    val recoveryKeyEpoch: Long,
+    val timestamp: Long,
+    val nonce: String,
+    val currentKeySignature: String,
+    val newKeyProofOfPossession: String,
+)
+
+/**
+ * Body of `PUT /v1/devices/{user}/{device}/last-device-recovery/key/revocation`
+ * (docs/recovery-key-lifecycle.md). The user and the authorizing device are
+ * the path's. The signature covers the binary revocation statement.
+ */
+@Serializable
+internal class RecoveryKeyRevocationRequestDto(
+    val publicKey: String,
+    val recoveryKeyEpoch: Long,
+    val timestamp: Long,
+    val nonce: String,
+    val signature: String,
+)
+
 /** Body of 4xx responses. */
 @Serializable
 internal class ErrorResponse(val error: String)
@@ -226,6 +279,44 @@ internal fun LastDeviceRecoveryRequestDto.toAuthorization(target: DeviceAddress)
     ),
     decodeCanonicalBase64(recoverySignature),
     decodeCanonicalBase64(proofOfPossession),
+)
+
+internal fun LastDeviceRecoveryKeyStatus.toResponse() = when (this) {
+    LastDeviceRecoveryKeyStatus.Unconfigured -> LastDeviceRecoveryKeyStatusResponse("unconfigured", null, null, null, null)
+    is LastDeviceRecoveryKeyStatus.Active ->
+        LastDeviceRecoveryKeyStatusResponse("active", epoch, installedAt.toEpochMilliseconds(), null, Base64.encode(publicKey))
+    is LastDeviceRecoveryKeyStatus.Revoked -> LastDeviceRecoveryKeyStatusResponse("revoked", epoch, null, revokedAt.toEpochMilliseconds(), null)
+}
+
+/**
+ * Throws [IllegalArgumentException] for non-canonical Base64, wrong sizes, a
+ * non-positive epoch, a negative timestamp, or the same key twice.
+ */
+internal fun RecoveryKeyRotationRequestDto.toAuthorization(authorizer: DeviceAddress) = RecoveryKeyRotationAuthorization(
+    RecoveryKeyRotationStatement(
+        userId = authorizer.userId,
+        authorizer = authorizer,
+        currentPublicKey = decodeCanonicalBase64(currentPublicKey),
+        newPublicKey = decodeCanonicalBase64(newPublicKey),
+        expectedEpoch = recoveryKeyEpoch,
+        timestamp = Instant.fromEpochMilliseconds(timestamp),
+        nonce = RequestNonce(decodeCanonicalBase64(nonce)),
+    ),
+    decodeCanonicalBase64(currentKeySignature),
+    decodeCanonicalBase64(newKeyProofOfPossession),
+)
+
+/** Throws [IllegalArgumentException] for non-canonical Base64, wrong sizes, a non-positive epoch or a negative timestamp. */
+internal fun RecoveryKeyRevocationRequestDto.toAuthorization(authorizer: DeviceAddress) = RecoveryKeyRevocationAuthorization(
+    RecoveryKeyRevocationStatement(
+        userId = authorizer.userId,
+        authorizer = authorizer,
+        currentPublicKey = decodeCanonicalBase64(publicKey),
+        expectedEpoch = recoveryKeyEpoch,
+        timestamp = Instant.fromEpochMilliseconds(timestamp),
+        nonce = RequestNonce(decodeCanonicalBase64(nonce)),
+    ),
+    decodeCanonicalBase64(signature),
 )
 
 /** Standard Base64 with padding, canonical only. */

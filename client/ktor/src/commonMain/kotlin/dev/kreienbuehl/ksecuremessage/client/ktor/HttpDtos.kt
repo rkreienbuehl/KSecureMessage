@@ -1,6 +1,7 @@
 package dev.kreienbuehl.ksecuremessage.client.ktor
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
@@ -13,6 +14,8 @@ import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallengeId
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
 
@@ -121,6 +124,41 @@ internal class LastDeviceRecoveryRequestDto(
 )
 
 /**
+ * Body of the `200` response of `GET /v1/devices/{user}/{device}/last-device-recovery/key`
+ * (docs/recovery-key-lifecycle.md).
+ */
+@Serializable
+internal class LastDeviceRecoveryKeyStatusResponse(
+    val state: String,
+    val recoveryKeyEpoch: Long?,
+    val installedAt: Long?,
+    val revokedAt: Long?,
+    val activePublicKey: String?,
+)
+
+/** Body of `PUT /v1/devices/{user}/{device}/last-device-recovery/key/rotation`. User and authorizing device are in the path. */
+@Serializable
+internal class RecoveryKeyRotationRequestDto(
+    val currentPublicKey: String,
+    val newPublicKey: String,
+    val recoveryKeyEpoch: Long,
+    val timestamp: Long,
+    val nonce: String,
+    val currentKeySignature: String,
+    val newKeyProofOfPossession: String,
+)
+
+/** Body of `PUT /v1/devices/{user}/{device}/last-device-recovery/key/revocation`. User and authorizing device are in the path. */
+@Serializable
+internal class RecoveryKeyRevocationRequestDto(
+    val publicKey: String,
+    val recoveryKeyEpoch: Long,
+    val timestamp: Long,
+    val nonce: String,
+    val signature: String,
+)
+
+/**
  * Request authentication headers, format version 1 (docs/server-authentication.md).
  * Mirrored in server:ktor.
  */
@@ -194,3 +232,46 @@ internal fun LastDeviceRecoveryAuthorization.toRequest(): LastDeviceRecoveryRequ
         proofOfPossession = Base64.encode(proofOfPossession),
     )
 }
+
+/**
+ * Throws [IllegalArgumentException] for an unknown state, invalid Base64, a
+ * missing field for the state, a field that must be absent, or a
+ * non-positive epoch.
+ */
+internal fun LastDeviceRecoveryKeyStatusResponse.toStatus(): LastDeviceRecoveryKeyStatus = when (state) {
+    "unconfigured" -> {
+        require(recoveryKeyEpoch == null && installedAt == null && revokedAt == null && activePublicKey == null) { "Unexpected fields" }
+        LastDeviceRecoveryKeyStatus.Unconfigured
+    }
+    "active" -> {
+        require(revokedAt == null) { "Unexpected field" }
+        LastDeviceRecoveryKeyStatus.Active(
+            requireNotNull(recoveryKeyEpoch),
+            kotlin.time.Instant.fromEpochMilliseconds(requireNotNull(installedAt)),
+            Base64.decode(requireNotNull(activePublicKey)).also { require(it.size == 32) { "Invalid key size" } },
+        )
+    }
+    "revoked" -> {
+        require(installedAt == null && activePublicKey == null) { "Unexpected fields" }
+        LastDeviceRecoveryKeyStatus.Revoked(requireNotNull(recoveryKeyEpoch), kotlin.time.Instant.fromEpochMilliseconds(requireNotNull(revokedAt)))
+    }
+    else -> throw IllegalArgumentException("Unknown recovery key state")
+}
+
+internal fun RecoveryKeyRotationAuthorization.toRequest() = RecoveryKeyRotationRequestDto(
+    currentPublicKey = Base64.encode(statement.currentPublicKey),
+    newPublicKey = Base64.encode(statement.newPublicKey),
+    recoveryKeyEpoch = statement.expectedEpoch,
+    timestamp = statement.timestamp.toEpochMilliseconds(),
+    nonce = Base64.encode(statement.nonce.bytes),
+    currentKeySignature = Base64.encode(currentKeySignature),
+    newKeyProofOfPossession = Base64.encode(newKeyProofOfPossession),
+)
+
+internal fun RecoveryKeyRevocationAuthorization.toRequest() = RecoveryKeyRevocationRequestDto(
+    publicKey = Base64.encode(statement.currentPublicKey),
+    recoveryKeyEpoch = statement.expectedEpoch,
+    timestamp = statement.timestamp.toEpochMilliseconds(),
+    nonce = Base64.encode(statement.nonce.bytes),
+    signature = Base64.encode(signature),
+)

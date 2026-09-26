@@ -4,6 +4,7 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceAuthenticationRegistrationStatus
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
+import dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
@@ -11,6 +12,8 @@ import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.RequestAuthentication
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
@@ -42,6 +45,7 @@ class SecureMessageServer(
     private val recovery = DeviceRecoveryService(storage.devices, clock)
     private val rotation = DeviceAuthenticationRotationService(storage.devices, clock)
     private val lastDeviceRecovery = LastDeviceRecoveryService(storage.devices, storage.lastDeviceRecovery, clock)
+    private val recoveryKeyLifecycle = RecoveryKeyLifecycleService(storage.lastDeviceRecovery, clock)
 
     /**
      * Registers the device authentication key of [registration]'s address.
@@ -112,14 +116,55 @@ class SecureMessageServer(
     /**
      * Registers [registration]'s public key as the last-device recovery key
      * of the authenticated [device]'s user (docs/last-device-recovery.md).
-     * Returns `true` if it was stored, `false` if exactly this key was
-     * registered before. Throws [LastDeviceRecoveryException.InvalidKeyRegistration]
-     * if the registration is for another user or its proof of possession
-     * does not verify, and [LastDeviceRecoveryKeyException.Conflict] if the
-     * user has another recovery key: a recovery key is never replaced.
+     * Returns `true` if it was stored (the user had none, or its key was
+     * revoked: the recovery key epoch continues, docs/recovery-key-lifecycle.md),
+     * `false` if exactly this key is active. Throws
+     * [LastDeviceRecoveryException.InvalidKeyRegistration] if the
+     * registration is for another user or its proof of possession does not
+     * verify, [LastDeviceRecoveryKeyException.Conflict] if the user has
+     * another active recovery key (only [rotateLastDeviceRecoveryKey]
+     * replaces it), and [LastDeviceRecoveryKeyException.EpochExhausted] if
+     * the recovery key epoch cannot grow any more.
      */
     suspend fun registerLastDeviceRecoveryKey(device: AuthenticatedDevice, registration: LastDeviceRecoveryKeyRegistration): Boolean =
         lastDeviceRecovery.registerKey(device, registration)
+
+    /**
+     * The recovery key state of the authenticated [device]'s user
+     * (docs/recovery-key-lifecycle.md): unconfigured, active (epoch,
+     * installation time, public key) or revoked (epoch, revocation time).
+     */
+    suspend fun lastDeviceRecoveryKeyStatus(device: AuthenticatedDevice): LastDeviceRecoveryKeyStatus =
+        recoveryKeyLifecycle.status(device)
+
+    /**
+     * Replaces the authenticated [device]'s user's offline recovery key with
+     * the statement's new key (docs/recovery-key-lifecycle.md): authorized by
+     * the device (ServerAuth, [ProtectedEndpoint.ROTATE_LAST_DEVICE_RECOVERY_KEY])
+     * together with the current recovery key's signature, proven by the new
+     * key. Throws [RecoveryKeyLifecycleException] and changes nothing if any
+     * check fails. From the moment this returns
+     * [RecoveryKeyRotationOutcome.ROTATED], only the new key authorizes
+     * last-device recoveries, and every outstanding challenge of the user is
+     * gone. Device registrations, prekeys and mailboxes are not touched.
+     */
+    suspend fun rotateLastDeviceRecoveryKey(
+        device: AuthenticatedDevice,
+        authorization: RecoveryKeyRotationAuthorization,
+    ): RecoveryKeyRotationOutcome = recoveryKeyLifecycle.rotate(device, authorization)
+
+    /**
+     * Revokes the authenticated [device]'s user's offline recovery key
+     * (docs/recovery-key-lifecycle.md), authorized by the device together
+     * with the current recovery key's signature. Throws
+     * [RecoveryKeyLifecycleException] and changes nothing if any check fails.
+     * Afterwards no last-device recovery is possible until a new key is
+     * registered, and every outstanding challenge of the user is gone.
+     */
+    suspend fun revokeLastDeviceRecoveryKey(
+        device: AuthenticatedDevice,
+        authorization: RecoveryKeyRevocationAuthorization,
+    ): RecoveryKeyRevocationOutcome = recoveryKeyLifecycle.revoke(device, authorization)
 
     /**
      * The challenge for recovering [target] with its user's last-device

@@ -4,6 +4,7 @@ import dev.kreienbuehl.ksecuremessage.model.CiphertextMessage
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
+import dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus
 import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.MessageId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
@@ -26,6 +27,8 @@ import dev.kreienbuehl.ksecuremessage.protocol.PreKeyFormat
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolException
 import dev.kreienbuehl.ksecuremessage.protocol.PublicIdentityKey
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocation
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotation
 import dev.kreienbuehl.ksecuremessage.protocol.SafetyNumber
 import dev.kreienbuehl.ksecuremessage.protocol.SafetyNumberCodec
 import dev.kreienbuehl.ksecuremessage.protocol.SafetyNumberComparison
@@ -650,6 +653,113 @@ class SecureMessageClient(
         val registration = LastDeviceRecovery.registerKey(key, localAddress.userId)
         withRequestSigner { _, signer -> transport.registerLastDeviceRecoveryKey(localAddress, registration, signer) }
     }
+
+    /**
+     * The server's state of this user's offline recovery key
+     * (docs/recovery-key-lifecycle.md): unconfigured, active (epoch,
+     * installation time, public key) or revoked (epoch, revocation time).
+     * A signed request with this device's active device authentication key;
+     * never cached. Compare [LastDeviceRecoveryKeyStatus.Active.isKey] with
+     * a backed-up key's [LastDeviceRecoveryKey.publicKey] to check that the
+     * backup is still the active key.
+     */
+    suspend fun lastDeviceRecoveryKeyStatus(): LastDeviceRecoveryKeyStatus = deviceAuthenticationMutex.withLock {
+        withRequestSigner { _, signer -> transport.lastDeviceRecoveryKeyStatus(localAddress, signer) }
+    }
+
+    /**
+     * Replaces this user's offline recovery key [currentKey] with [newKey]
+     * (docs/recovery-key-lifecycle.md). Two authorities: this device's
+     * signed request, and [currentKey]'s signature; [newKey] proves
+     * possession. Neither key is stored.
+     *
+     * **Back up [newKey] before calling this.** Create it with
+     * [createLastDeviceRecoveryKey], have the user store
+     * [LastDeviceRecoveryKey.encode] offline and confirm it, and only then
+     * rotate: once the server accepted the rotation, [currentKey] no longer
+     * recovers anything, and a lost [newKey] cannot be replaced by a device
+     * alone.
+     *
+     * Reads the status first. If [newKey] is already active (an earlier
+     * call's response was lost, or the application restarted), returns
+     * [LastDeviceRecoveryKeyRotationResult.ALREADY_ACTIVE] without sending
+     * anything; call it again with the same keys to resolve an unknown
+     * outcome. Throws [SecureMessageClientException.LastDeviceRecoveryKeyNotConfigured]
+     * if no key is active, [SecureMessageClientException.LastDeviceRecoveryKeyMismatch]
+     * if neither key is the active one, and
+     * [SecureMessageTransportException.RecoveryKeyRotationRejected] if the
+     * server refused (for example `CONFLICT` if another transition won).
+     * Never called implicitly.
+     */
+    suspend fun rotateLastDeviceRecoveryKey(
+        currentKey: LastDeviceRecoveryKey,
+        newKey: LastDeviceRecoveryKey,
+    ): LastDeviceRecoveryKeyRotationResult {
+        require(currentKey != newKey) { "The new recovery key must differ from the current one" }
+        return deviceAuthenticationMutex.withLock {
+            withRequestSigner { _, signer ->
+                val status = transport.lastDeviceRecoveryKeyStatus(localAddress, signer)
+                val active = status as? LastDeviceRecoveryKeyStatus.Active ?: throw SecureMessageClientException.LastDeviceRecoveryKeyNotConfigured()
+                if (active.isKey(newKey.publicKey)) return@withRequestSigner LastDeviceRecoveryKeyRotationResult.ALREADY_ACTIVE
+                if (!active.isKey(currentKey.publicKey)) throw SecureMessageClientException.LastDeviceRecoveryKeyMismatch()
+                val authorization = RecoveryKeyRotation.authorize(currentKey, newKey, localAddress, active.epoch, clock.now())
+                try {
+                    transport.rotateLastDeviceRecoveryKey(authorization, signer)
+                } catch (e: SecureMessageTransportException.RecoveryKeyRotationRejected) {
+                    // Another submission of this rotation may have won; then the new key is active.
+                    val now = runCatching { transport.lastDeviceRecoveryKeyStatus(localAddress, signer) }.getOrNull()
+                    if (e.reason == SecureMessageTransportException.RecoveryKeyTransitionFailure.CONFLICT &&
+                        now is LastDeviceRecoveryKeyStatus.Active && now.isKey(newKey.publicKey)
+                    ) {
+                        return@withRequestSigner LastDeviceRecoveryKeyRotationResult.ROTATED
+                    }
+                    throw e
+                }
+                LastDeviceRecoveryKeyRotationResult.ROTATED
+            }
+        }
+    }
+
+    /**
+     * Revokes this user's offline recovery key [currentKey]
+     * (docs/recovery-key-lifecycle.md): this device's signed request and
+     * [currentKey]'s signature. Afterwards no last-device recovery is
+     * possible, and outstanding challenges are dead, until a new key is
+     * registered with [registerLastDeviceRecoveryKey] (the recovery key
+     * epoch continues). Nothing is generated as a replacement.
+     *
+     * Reads the status first: an already revoked key gives
+     * [LastDeviceRecoveryKeyRevocationResult.ALREADY_REVOKED] without
+     * sending anything. Throws [SecureMessageClientException.LastDeviceRecoveryKeyNotConfigured]
+     * if the user never registered a key,
+     * [SecureMessageClientException.LastDeviceRecoveryKeyMismatch] if
+     * [currentKey] is not the active key, and
+     * [SecureMessageTransportException.RecoveryKeyRevocationRejected] if the
+     * server refused. Never called implicitly.
+     */
+    suspend fun revokeLastDeviceRecoveryKey(currentKey: LastDeviceRecoveryKey): LastDeviceRecoveryKeyRevocationResult =
+        deviceAuthenticationMutex.withLock {
+            withRequestSigner { _, signer ->
+                val active = when (val status = transport.lastDeviceRecoveryKeyStatus(localAddress, signer)) {
+                    LastDeviceRecoveryKeyStatus.Unconfigured -> throw SecureMessageClientException.LastDeviceRecoveryKeyNotConfigured()
+                    is LastDeviceRecoveryKeyStatus.Revoked -> return@withRequestSigner LastDeviceRecoveryKeyRevocationResult.ALREADY_REVOKED
+                    is LastDeviceRecoveryKeyStatus.Active -> status
+                }
+                if (!active.isKey(currentKey.publicKey)) throw SecureMessageClientException.LastDeviceRecoveryKeyMismatch()
+                val authorization = RecoveryKeyRevocation.authorize(currentKey, localAddress, active.epoch, clock.now())
+                try {
+                    transport.revokeLastDeviceRecoveryKey(authorization, signer)
+                } catch (e: SecureMessageTransportException.RecoveryKeyRevocationRejected) {
+                    // Another device may have revoked the key meanwhile (CONFLICT, or NOT_CONFIGURED once revoked): the goal is reached.
+                    val now = runCatching { transport.lastDeviceRecoveryKeyStatus(localAddress, signer) }.getOrNull()
+                    if (e.reason in REVOCATION_RACE_FAILURES && now is LastDeviceRecoveryKeyStatus.Revoked) {
+                        return@withRequestSigner LastDeviceRecoveryKeyRevocationResult.ALREADY_REVOKED
+                    }
+                    throw e
+                }
+                LastDeviceRecoveryKeyRevocationResult.REVOKED
+            }
+        }
 
     /**
      * Starts or resumes a last-device recovery of this device
@@ -1522,6 +1632,12 @@ class SecureMessageClient(
             SecureMessageTransportException.RecoveryFailure.CONFLICT,
             SecureMessageTransportException.RecoveryFailure.EXPIRED,
             SecureMessageTransportException.RecoveryFailure.REPLAY,
+        )
+
+        /** Recovery key revocation rejections after which another device may have revoked the key already. */
+        private val REVOCATION_RACE_FAILURES = setOf(
+            SecureMessageTransportException.RecoveryKeyTransitionFailure.CONFLICT,
+            SecureMessageTransportException.RecoveryKeyTransitionFailure.NOT_CONFIGURED,
         )
 
         /** Last-device recovery rejections after which the pending key may be registered already. */

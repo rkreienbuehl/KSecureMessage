@@ -81,7 +81,10 @@ M14 does not weaken authentication to cover this case. Milestone 18 adds a
 separate path for that case: last-device recovery with an offline recovery
 key the user registered beforehand (docs/last-device-recovery.md). It has
 its own domains, endpoints, challenge and pending-key slot; M14's formats
-and semantics are unchanged.
+and semantics are unchanged. Milestone 19 lets that offline key be rotated
+or revoked, again only with two authorities (a registered device and the
+current offline key, docs/recovery-key-lifecycle.md); it never touches
+device registrations, so M14 recovery is unaffected by it.
 
 ## Protocol
 

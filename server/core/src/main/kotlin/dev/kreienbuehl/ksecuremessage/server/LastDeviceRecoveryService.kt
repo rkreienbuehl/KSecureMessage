@@ -77,7 +77,9 @@ enum class LastDeviceRecoveryOutcome {
  *    installed the registered key, and both proofs verify, the result is
  *    ALREADY_APPLIED without any write (the challenge is already consumed);
  * 5. the target's stored challenge has the statement's ID, nonce, epoch and
- *    expiry, and has not expired at [clock]'s time (bounds included);
+ *    expiry, was issued under the current recovery key epoch
+ *    (docs/recovery-key-lifecycle.md), and has not expired at [clock]'s
+ *    time (bounds included);
  * 6. the registered key and epoch are still the ones the challenge was
  *    issued for (if 5 or 6 fails, the exact retry check of 4 is repeated on
  *    the current registration: an identical submission may have committed
@@ -103,7 +105,8 @@ internal class LastDeviceRecoveryService(
         if (!LastDeviceRecovery.verifyKeyRegistration(registration)) {
             throw LastDeviceRecoveryException.InvalidKeyRegistration("Recovery key proof of possession is invalid")
         }
-        // Throws LastDeviceRecoveryKeyException.Conflict (storage:core) for another key: never replaced.
+        // Throws LastDeviceRecoveryKeyException.Conflict (storage:core) for another active key: only a
+        // rotation replaces it. After a revocation a new key continues the epoch (EpochExhausted at the end).
         return repository.registerRecoveryKey(registration.userId, registration.publicKey, now())
     }
 
@@ -142,9 +145,12 @@ internal class LastDeviceRecoveryService(
 
         val now = now()
         val stored = repository.challenge(address)
+        // A challenge issued under another recovery key epoch (before a rotation or revocation) is dead.
+        val recoveryKeyEpoch = repository.recoveryKeyState(address.userId)?.epoch
         val failure = when {
             stored == null || stored.challenge.id != challenge.id || !stored.challenge.nonce.contentEquals(challenge.nonce) ||
-                stored.challenge.authEpoch != challenge.authEpoch || stored.challenge.expiresAt != challenge.expiresAt ->
+                stored.challenge.authEpoch != challenge.authEpoch || stored.challenge.expiresAt != challenge.expiresAt ||
+                stored.recoveryKeyEpoch != recoveryKeyEpoch ->
                 LastDeviceRecoveryException.ChallengeInvalid()
             now > stored.challenge.expiresAt -> LastDeviceRecoveryException.Expired()
             !registeredKey.contentEquals(stored.authPublicKey) || state.authEpoch != stored.challenge.authEpoch ->

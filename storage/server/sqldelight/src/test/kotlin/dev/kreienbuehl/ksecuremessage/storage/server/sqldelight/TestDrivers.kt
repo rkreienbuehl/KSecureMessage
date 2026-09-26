@@ -132,3 +132,11 @@ internal fun SqlDriver.setAuthEpoch(address: dev.kreienbuehl.ksecuremessage.mode
 internal fun fixedClock(instant: kotlin.time.Instant): kotlin.time.Clock = object : kotlin.time.Clock {
     override fun now() = instant
 }
+
+/** Sets [userId]'s recovery key epoch directly, for the exhaustion boundary. */
+internal fun SqlDriver.setRecoveryKeyEpoch(userId: dev.kreienbuehl.ksecuremessage.model.UserId, epoch: Long) {
+    execute(null, "UPDATE last_device_recovery_key_state SET epoch = ? WHERE user_id = ?", 2) {
+        bindLong(0, epoch)
+        bindString(1, userId.value)
+    }
+}

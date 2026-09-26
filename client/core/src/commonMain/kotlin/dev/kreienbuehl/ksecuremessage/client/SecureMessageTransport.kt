@@ -4,6 +4,7 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceAuthenticationRegistrationStatus
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
+import dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
@@ -11,6 +12,8 @@ import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.RequestAuthentication
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
 
@@ -85,6 +88,35 @@ interface SecureMessageTransport {
         registration: LastDeviceRecoveryKeyRegistration,
         signer: ServerRequestSigner,
     )
+
+    /**
+     * The user's recovery key state (docs/recovery-key-lifecycle.md):
+     * `GET /v1/devices/{user}/{device}/last-device-recovery/key` for
+     * [address], signed with [address]'s registered device authentication
+     * key. Throws [SecureMessageTransportException.AuthenticationFailed].
+     */
+    suspend fun lastDeviceRecoveryKeyStatus(address: DeviceAddress, signer: ServerRequestSigner): LastDeviceRecoveryKeyStatus
+
+    /**
+     * Submits a recovery key rotation (docs/recovery-key-lifecycle.md):
+     * `PUT /v1/devices/{user}/{device}/last-device-recovery/key/rotation` for
+     * the statement's authorizing device, signed with that device's
+     * registered device authentication key. The body carries the current
+     * recovery key's signature and the new key's proof of possession. Returns
+     * once the server rotated the key, or recognized a retry of the rotation
+     * that did. Throws [SecureMessageTransportException.RecoveryKeyRotationRejected]
+     * or [SecureMessageTransportException.AuthenticationFailed].
+     */
+    suspend fun rotateLastDeviceRecoveryKey(authorization: RecoveryKeyRotationAuthorization, signer: ServerRequestSigner)
+
+    /**
+     * Submits a recovery key revocation (docs/recovery-key-lifecycle.md):
+     * `PUT /v1/devices/{user}/{device}/last-device-recovery/key/revocation`,
+     * signed like [rotateLastDeviceRecoveryKey]. Throws
+     * [SecureMessageTransportException.RecoveryKeyRevocationRejected] or
+     * [SecureMessageTransportException.AuthenticationFailed].
+     */
+    suspend fun revokeLastDeviceRecoveryKey(authorization: RecoveryKeyRevocationAuthorization, signer: ServerRequestSigner)
 
     /**
      * A last-device recovery challenge for [target]:

@@ -121,6 +121,18 @@ object ServerApiPaths {
     /** Registers the user's last-device recovery key. ServerAuth-signed. */
     const val LAST_DEVICE_RECOVERY_KEY: String = "last-device-recovery/key"
 
+    /**
+     * Rotates the user's last-device recovery key (docs/recovery-key-lifecycle.md).
+     * ServerAuth-signed; the body carries the current recovery key's signature.
+     */
+    const val LAST_DEVICE_RECOVERY_KEY_ROTATION: String = "last-device-recovery/key/rotation"
+
+    /**
+     * Revokes the user's last-device recovery key (docs/recovery-key-lifecycle.md).
+     * ServerAuth-signed; the body carries the current recovery key's signature.
+     */
+    const val LAST_DEVICE_RECOVERY_KEY_REVOCATION: String = "last-device-recovery/key/revocation"
+
     /** `/v1/devices/{user}/{device}/{endpoint}`. */
     fun device(address: DeviceAddress, endpoint: String): String =
         "/v1/devices/${encodeSegment(address.userId.value)}/${encodeSegment(address.deviceId.value)}/$endpoint"

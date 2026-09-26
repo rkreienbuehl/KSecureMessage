@@ -147,8 +147,9 @@ PUT /v1/devices/{user}/{device}/last-device-recovery/key    (ServerAuth v1, sign
   (`ProtectedEndpoint.REGISTER_LAST_DEVICE_RECOVERY_KEY`).
 - **Proof of possession:** the body carries the recovery key's own signature
   over `u32 len | KSecureMessage-LastDeviceRecoveryKey-PoP-v1 | u32 len |
-  userId | public key`. A registration cannot be replaced in M18, so a key
-  nobody holds (a typo, a wrong key) must never get registered. The PoP is
+  userId | public key`. An active key can be replaced only by a rotation
+  that needs this key's signature (M19), so a key nobody holds (a typo, a
+  wrong key) must never get registered. The PoP is
   bound to the user, so a registration for another user does not verify.
 - **Results:**
 
@@ -156,7 +157,9 @@ PUT /v1/devices/{user}/{device}/last-device-recovery/key    (ServerAuth v1, sign
   |---|---|
   | no key registered | stored: `201` |
   | the same key again | idempotent: `204`, nothing changes |
-  | a different key | `409 last_device_recovery_key_conflict`, nothing changes (never replaced) |
+  | a different key | `409 last_device_recovery_key_conflict`, nothing changes (only a rotation replaces an active key, docs/recovery-key-lifecycle.md) |
+  | the user's key was revoked (M19) | stored: `201`, at recovery key epoch + 1 |
+  | revoked at the maximum epoch (M19) | `409 recovery_key_epoch_exhausted` |
   | malformed body, bad PoP, or PoP for another user | `400 invalid_last_device_recovery_key` |
   | authentication failure | the usual `401` codes |
 
@@ -195,6 +198,13 @@ other way, because the signed `GET …/registration` needs the lost key.
 - **Pruning:** challenges that expired before `now` are deleted when a
   challenge is issued and in every storage recovery attempt, inside those
   transactions. There is no background job.
+- **Recovery key epoch (M19):** each challenge also records the recovery key
+  epoch it was issued under. A recovery key rotation or revocation deletes
+  every challenge of the user in the same transaction, and issue, reuse and
+  consumption compare the challenge's epoch with the current one. A
+  challenge from before a rotation or revocation never authorizes anything
+  (docs/recovery-key-lifecycle.md). The frozen statement format is
+  unchanged: the binding is server-side state.
 - **Persistence:** challenges live in server storage
   (`last_device_recovery_challenge`) and survive restarts until they expire.
 - **Privacy:** the public endpoint reveals whether a device is registered
@@ -286,7 +296,8 @@ before the last step:
    the result is `204` with no write. This check comes before the challenge
    check, because the challenge is already consumed.
 5. The target's stored challenge has the statement's ID, nonce, epoch and
-   expiry (else `401 last_device_recovery_challenge_invalid`), and
+   expiry, and was issued under the current recovery key epoch (M19) (else
+   `401 last_device_recovery_challenge_invalid`), and
    `now <= expiresAt` (else `401 last_device_recovery_expired`).
 6. The registration still has the key and epoch the challenge was issued
    for. Else `409 last_device_recovery_conflict`: another transition won.
@@ -313,8 +324,8 @@ transaction (SQLDelight) or under the one authentication mutex (in-memory):
 1. Not registered: `NOT_REGISTERED`.
 2. The stored `last_device_recovery_id` equals this ID: `ALREADY_APPLIED`,
    no write.
-3. The user's recovery key is missing or different: `NOT_CONFIGURED`.
-4. No matching challenge: `CHALLENGE_INVALID`. A matching one that expired:
+3. The user's recovery key is missing, revoked or different: `NOT_CONFIGURED`.
+4. No matching challenge, or one of another recovery key epoch: `CHALLENGE_INVALID`. A matching one that expired:
    `EXPIRED`. Expired challenges are pruned either way.
 5. Key or epoch differ from the expected state or from the challenge's, or
    K2 is the current key: `CONFLICT`.
@@ -439,7 +450,10 @@ Unexpected failures return `500 {"error":"internal_error"}`.
 
 ## Server storage
 
-Server schema version 5 (`4.sqm`, docs/server-storage.md):
+Server schema version 5 (`4.sqm`, docs/server-storage.md); M19's version 6
+(`5.sqm`) replaces `last_device_recovery_key` by
+`last_device_recovery_key_state` and adds the challenges' recovery key
+epoch (docs/recovery-key-lifecycle.md). As shipped by M18:
 
 - `device_registration.last_device_recovery_id BLOB` (NULL for existing
   rows);
@@ -486,7 +500,7 @@ client.receive()
   - `SqlDelightServerLastDeviceRecoveryTest`: restarts, stale replay,
     rollback;
   - `SqlDelightServerMigrationTest`: 1/2/3/4 → 5 and fixture shape;
-  - `SqlDelightServerStorageOpenTest`: refuses formats 1–4.
+  - `SqlDelightServerStorageOpenTest`: refuses formats 1–4 (1–5 since M19).
 - `server:core` `LastDeviceRecoveryServerTest`:
   - provisioning rules;
   - every rejection and the check order;
@@ -522,8 +536,10 @@ client.receive()
   no recovery path. There is no admin override.
 - Stealing the recovery key grants server-authentication recovery authority
   over every device of the user.
-- M18 has no recovery key rotation or revocation. A compromised recovery key
-  cannot be replaced yet; that is a future milestone.
+- M18 had no recovery key rotation or revocation. Milestone 19 adds both,
+  with two authorities (a registered device of the user and the current
+  offline key; docs/recovery-key-lifecycle.md). A **lost** recovery key still
+  cannot be replaced by a device alone.
 - There is no human or account identity proof. The recovery key is the
   authority.
 - There is no messaging identity or session recovery, no backup and no TOFU

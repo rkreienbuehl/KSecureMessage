@@ -380,6 +380,21 @@ class DeviceAuthenticationRotationStorageTest {
 
         override suspend fun lastDeviceRecoveryChallenge(target: DeviceAddress): LastDeviceRecoveryChallenge = error("not used")
 
+        override suspend fun lastDeviceRecoveryKeyStatus(
+            address: dev.kreienbuehl.ksecuremessage.model.DeviceAddress,
+            signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
+        ): dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus = error("not used")
+
+        override suspend fun rotateLastDeviceRecoveryKey(
+            authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization,
+            signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
+        ) = error("not used")
+
+        override suspend fun revokeLastDeviceRecoveryKey(
+            authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization,
+            signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
+        ) = error("not used")
+
         override suspend fun recoverLastDevice(authorization: LastDeviceRecoveryAuthorization) = error("not used")
 
         override suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization) {

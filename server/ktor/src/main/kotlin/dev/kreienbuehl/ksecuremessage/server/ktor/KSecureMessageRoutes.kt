@@ -12,6 +12,7 @@ import dev.kreienbuehl.ksecuremessage.server.DeviceAuthenticationRotationExcepti
 import dev.kreienbuehl.ksecuremessage.server.DeviceRecoveryException
 import dev.kreienbuehl.ksecuremessage.server.LastDeviceRecoveryException
 import dev.kreienbuehl.ksecuremessage.server.ProtectedEndpoint
+import dev.kreienbuehl.ksecuremessage.server.RecoveryKeyLifecycleException
 import dev.kreienbuehl.ksecuremessage.server.SecureMessageServer
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
 import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryKeyException
@@ -196,6 +197,89 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
         } catch (e: LastDeviceRecoveryKeyException.Conflict) {
             call.application.log.info("Last-device recovery key of ${address.userId} rejected: conflict")
             call.respondError(HttpStatusCode.Conflict, "last_device_recovery_key_conflict")
+        } catch (e: LastDeviceRecoveryKeyException.EpochExhausted) {
+            call.application.log.info("Last-device recovery key of ${address.userId} rejected: epoch exhausted")
+            call.respondError(HttpStatusCode.Conflict, RECOVERY_KEY_EPOCH_EXHAUSTED)
+        } catch (e: Exception) {
+            call.respondInternalError(e)
+        }
+    }
+
+    // The user's recovery key state (docs/recovery-key-lifecycle.md), for a
+    // registered device of the user: ServerAuth-signed.
+    get("/v1/devices/{user}/{device}/last-device-recovery/key") {
+        val address = call.deviceAddress()
+        val body = call.receive<ByteArray>()
+        val device = try {
+            server.authenticate(address, ProtectedEndpoint.READ_LAST_DEVICE_RECOVERY_KEY, body, call.authentication())
+        } catch (e: DeviceAuthenticationException) {
+            return@get call.respondAuthenticationError(e)
+        } catch (e: Exception) {
+            return@get call.respondInternalError(e)
+        }
+        val status = try {
+            server.lastDeviceRecoveryKeyStatus(device)
+        } catch (e: Exception) {
+            return@get call.respondInternalError(e)
+        }
+        call.respond(status.toResponse())
+    }
+
+    // Recovery key rotation (docs/recovery-key-lifecycle.md): two
+    // authorities. ServerAuth by the path's device (authenticated before the
+    // body is parsed), and in the body the current recovery key's signature
+    // and the new key's proof of possession over the binary statement, which
+    // names that device.
+    put("/v1/devices/{user}/{device}/last-device-recovery/key/rotation") {
+        val address = call.deviceAddress()
+        val body = call.receive<ByteArray>()
+        val device = try {
+            server.authenticate(address, ProtectedEndpoint.ROTATE_LAST_DEVICE_RECOVERY_KEY, body, call.authentication())
+        } catch (e: DeviceAuthenticationException) {
+            return@put call.respondAuthenticationError(e)
+        } catch (e: Exception) {
+            return@put call.respondInternalError(e)
+        }
+        val authorization = try {
+            Json.decodeFromString<RecoveryKeyRotationRequestDto>(body.decodeToString()).toAuthorization(address)
+        } catch (e: IllegalArgumentException) {
+            // Malformed JSON (SerializationException), non-canonical Base64, sizes, epoch, timestamp, same key.
+            return@put call.respondError(HttpStatusCode.BadRequest, INVALID_RECOVERY_KEY_ROTATION)
+        }
+        try {
+            val outcome = server.rotateLastDeviceRecoveryKey(device, authorization)
+            call.application.log.info("Recovery key rotation of ${address.userId} authorized by $address: ${outcome.name.lowercase()}")
+            call.respond(HttpStatusCode.NoContent)
+        } catch (e: RecoveryKeyLifecycleException) {
+            call.respondRecoveryKeyLifecycleError(address, "rotation", e)
+        } catch (e: Exception) {
+            call.respondInternalError(e)
+        }
+    }
+
+    // Recovery key revocation (docs/recovery-key-lifecycle.md): the same two
+    // authorities as a rotation, without a new key.
+    put("/v1/devices/{user}/{device}/last-device-recovery/key/revocation") {
+        val address = call.deviceAddress()
+        val body = call.receive<ByteArray>()
+        val device = try {
+            server.authenticate(address, ProtectedEndpoint.REVOKE_LAST_DEVICE_RECOVERY_KEY, body, call.authentication())
+        } catch (e: DeviceAuthenticationException) {
+            return@put call.respondAuthenticationError(e)
+        } catch (e: Exception) {
+            return@put call.respondInternalError(e)
+        }
+        val authorization = try {
+            Json.decodeFromString<RecoveryKeyRevocationRequestDto>(body.decodeToString()).toAuthorization(address)
+        } catch (e: IllegalArgumentException) {
+            return@put call.respondError(HttpStatusCode.BadRequest, INVALID_RECOVERY_KEY_REVOCATION)
+        }
+        try {
+            val outcome = server.revokeLastDeviceRecoveryKey(device, authorization)
+            call.application.log.info("Recovery key revocation of ${address.userId} authorized by $address: ${outcome.name.lowercase()}")
+            call.respond(HttpStatusCode.NoContent)
+        } catch (e: RecoveryKeyLifecycleException) {
+            call.respondRecoveryKeyLifecycleError(address, "revocation", e)
         } catch (e: Exception) {
             call.respondInternalError(e)
         }
@@ -319,6 +403,27 @@ private const val INVALID_ROTATION = "invalid_device_auth_rotation"
 private const val EPOCH_EXHAUSTED = "device_auth_epoch_exhausted"
 private const val INVALID_RECOVERY_KEY = "invalid_last_device_recovery_key"
 private const val INVALID_LAST_DEVICE_RECOVERY = "invalid_last_device_recovery"
+private const val INVALID_RECOVERY_KEY_ROTATION = "invalid_recovery_key_rotation"
+private const val INVALID_RECOVERY_KEY_REVOCATION = "invalid_recovery_key_revocation"
+private const val RECOVERY_KEY_EPOCH_EXHAUSTED = "recovery_key_epoch_exhausted"
+
+/**
+ * [kind] is `rotation` or `revocation`. The user, the authorizing device and
+ * the failure category only are logged: never keys, signatures or the body.
+ */
+private suspend fun ApplicationCall.respondRecoveryKeyLifecycleError(authorizer: DeviceAddress, kind: String, e: RecoveryKeyLifecycleException) {
+    val (status, error) = when (e) {
+        is RecoveryKeyLifecycleException.InvalidRequest -> HttpStatusCode.BadRequest to "invalid_recovery_key_$kind"
+        is RecoveryKeyLifecycleException.NotConfigured -> HttpStatusCode.NotFound to "recovery_key_not_configured"
+        is RecoveryKeyLifecycleException.Expired -> HttpStatusCode.Unauthorized to "recovery_key_${kind}_expired"
+        is RecoveryKeyLifecycleException.InvalidProof -> HttpStatusCode.Unauthorized to "recovery_key_${kind}_invalid_proof"
+        is RecoveryKeyLifecycleException.Replay -> HttpStatusCode.Unauthorized to "recovery_key_${kind}_replay"
+        is RecoveryKeyLifecycleException.Conflict -> HttpStatusCode.Conflict to "recovery_key_${kind}_conflict"
+        is RecoveryKeyLifecycleException.EpochExhausted -> HttpStatusCode.Conflict to RECOVERY_KEY_EPOCH_EXHAUSTED
+    }
+    application.log.info("Recovery key $kind of ${authorizer.userId} authorized by $authorizer rejected: $error")
+    respondError(status, error)
+}
 
 /** Target address and the failure category only are logged: never keys, signatures, challenges or the body. */
 private suspend fun ApplicationCall.respondLastDeviceRecoveryError(target: DeviceAddress, e: LastDeviceRecoveryException) {

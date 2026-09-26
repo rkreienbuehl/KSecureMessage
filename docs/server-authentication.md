@@ -284,6 +284,9 @@ request that fails steps 1–4 consumes nothing.
 | `PUT /v1/devices/{u}/{d}/last-device-recovery/key` (M18) | registered device (`ProtectedEndpoint.REGISTER_LAST_DEVICE_RECOVERY_KEY`, signed body) plus the recovery key's proof of possession in the body (docs/last-device-recovery.md) | `201` first, `204` identical | `401` first; then `400 invalid_last_device_recovery_key`, `409 last_device_recovery_key_conflict` |
 | `POST /v1/devices/{u}/{d}/last-device-recovery/challenge` (M18) | public | `200` challenge | `404 last_device_recovery_not_configured`, `404 last_device_recovery_target_not_registered` |
 | `PUT /v1/devices/{u}/{d}/last-device-recovery` (M18) | offline recovery key signature + proof of possession over a server-issued challenge in the body, no headers | `204` | `400 invalid_last_device_recovery`, `401 last_device_recovery_{challenge_invalid,expired,proof_invalid}`, `404`, `409 last_device_recovery_conflict`, `409 device_auth_epoch_exhausted` |
+| `GET /v1/devices/{u}/{d}/last-device-recovery/key` (M19) | registered device (`ProtectedEndpoint.READ_LAST_DEVICE_RECOVERY_KEY`, empty body) | `200` recovery key status of the device's user (docs/recovery-key-lifecycle.md) | `401` |
+| `PUT /v1/devices/{u}/{d}/last-device-recovery/key/rotation` (M19) | registered device (`ProtectedEndpoint.ROTATE_LAST_DEVICE_RECOVERY_KEY`, signed body) **and** the current recovery key's signature + the new key's proof of possession in the body | `204` | `401` first; then `400 invalid_recovery_key_rotation`, `401 recovery_key_rotation_{expired,invalid_proof,replay}`, `404 recovery_key_not_configured`, `409 recovery_key_rotation_conflict`, `409 recovery_key_epoch_exhausted` |
+| `PUT /v1/devices/{u}/{d}/last-device-recovery/key/revocation` (M19) | registered device (`ProtectedEndpoint.REVOKE_LAST_DEVICE_RECOVERY_KEY`, signed body) **and** the current recovery key's signature in the body | `204` | `401` first; then `400 invalid_recovery_key_revocation`, `401 recovery_key_revocation_{expired,invalid_proof,replay}`, `404 recovery_key_not_configured`, `409 recovery_key_revocation_conflict`, `409 recovery_key_epoch_exhausted` |
 
 `401` bodies: `missing_authentication`, `invalid_authentication`,
 `expired_authentication`, `authentication_replay`, `device_not_registered`.
@@ -333,8 +336,15 @@ requests for another address. Applications never build signatures.
   offline recovery key (M18, docs/last-device-recovery.md); routine rotation
   needs the current key and is explicit (M16/M17,
   docs/device-authentication-rotation.md); no reset, deletion or multiple
-  active keys per device. ServerAuth v1 is unchanged by M18: the new
-  registration endpoint is an ordinary signed request.
+  active keys per device. ServerAuth v1 is unchanged by M18 and M19: the
+  recovery key registration, status, rotation and revocation endpoints are
+  ordinary signed requests. Rotation and revocation additionally need the
+  current recovery key's signature in the body (two authorities,
+  docs/recovery-key-lifecycle.md); their statement nonce is claimed in the
+  same per-device nonce namespace, atomically with the recovery key
+  transition. `AuthenticatedDevice` also carries (internally) the
+  registration its request was verified with, so a recovery key transition
+  commits only while that registration is still current.
 - Persistent server storage (`storage:server:sqldelight`, M13) is SQLite
   only, single node, unencrypted (docs/server-storage.md).
 - The server still sees sender and recipient metadata; `POST /v1/messages`

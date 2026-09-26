@@ -89,6 +89,30 @@ internal class FlakyNetwork(val fake: FakeNetwork = FakeNetwork()) : SecureMessa
         fake.recoverLastDevice(authorization)
     }
 
+    override suspend fun lastDeviceRecoveryKeyStatus(
+        address: DeviceAddress,
+        signer: ServerRequestSigner,
+    ): dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus {
+        checkNoTransaction()
+        return fake.lastDeviceRecoveryKeyStatus(address, signer)
+    }
+
+    override suspend fun rotateLastDeviceRecoveryKey(
+        authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization,
+        signer: ServerRequestSigner,
+    ) {
+        checkNoTransaction()
+        fake.rotateLastDeviceRecoveryKey(authorization, signer)
+    }
+
+    override suspend fun revokeLastDeviceRecoveryKey(
+        authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization,
+        signer: ServerRequestSigner,
+    ) {
+        checkNoTransaction()
+        fake.revokeLastDeviceRecoveryKey(authorization, signer)
+    }
+
     override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) {
         checkNoTransaction()
         fake.publishPreKeys(publication, signer)

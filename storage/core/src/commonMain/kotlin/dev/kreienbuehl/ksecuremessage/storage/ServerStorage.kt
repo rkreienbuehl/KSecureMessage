@@ -12,6 +12,8 @@ import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryId
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallengeId
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryId
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationId
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationId
 import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
 import kotlin.time.Instant
 
@@ -193,10 +195,13 @@ interface DeviceRegistrationRepository {
      * 2. the target's current key was installed by the last-device recovery
      *    with [LastDeviceRecoveryReplacement.recoveryId]:
      *    [LastDeviceRecoveryReplacementResult.ALREADY_APPLIED], nothing written;
-     * 3. the target's user has no recovery key, or another one than
+     * 3. the target's user has no active recovery key (none registered, or
+     *    revoked), or another one than
      *    [LastDeviceRecoveryReplacement.expectedRecoveryPublicKey]:
      *    [LastDeviceRecoveryReplacementResult.NOT_CONFIGURED], nothing written;
-     * 4. the target has no stored challenge with this ID and nonce:
+     * 4. the target has no stored challenge with this ID and nonce, or it was
+     *    issued under another recovery key epoch than the current one
+     *    (docs/recovery-key-lifecycle.md):
      *    [LastDeviceRecoveryReplacementResult.CHALLENGE_INVALID];
      *    it has, but it expired before [LastDeviceRecoveryReplacement.now]:
      *    [LastDeviceRecoveryReplacementResult.EXPIRED];
@@ -444,38 +449,105 @@ interface AuthenticationNonceRepository {
 }
 
 /**
- * Last-device recovery state (docs/last-device-recovery.md): per user the
- * public key of its offline recovery key, and per device at most one
- * outstanding server-issued challenge. Shares its atomicity with
- * [DeviceRegistrationRepository]: [DeviceRegistrationRepository.replaceForLastDeviceRecovery]
- * consumes a challenge in the same step as it replaces the key. Never holds
- * private key material.
+ * Last-device recovery state (docs/last-device-recovery.md,
+ * docs/recovery-key-lifecycle.md): per user the state of its offline
+ * recovery key (public key, recovery key epoch, transition metadata), and per
+ * device at most one outstanding server-issued challenge. Shares its
+ * atomicity with [DeviceRegistrationRepository] and
+ * [AuthenticationNonceRepository]:
+ * [DeviceRegistrationRepository.replaceForLastDeviceRecovery] consumes a
+ * challenge in the same step as it replaces the key, and a recovery key
+ * rotation or revocation claims its nonce, compares the authorizing device's
+ * registration and removes every challenge of the user in the same step as
+ * it changes the recovery key. Never holds private key material.
+ *
+ * The recovery key epoch is 1 for a first registration and grows by one with
+ * every rotation, revocation and registration after a revocation. It never
+ * decreases, never wraps and is never reset: at [Long.MAX_VALUE] no further
+ * transition is possible.
  */
 interface LastDeviceRecoveryRepository {
-    /** A copy of the recovery public key registered for [userId], or `null`. */
+    /** A copy of the **active** recovery public key of [userId], or `null` (none registered, or revoked). */
     suspend fun recoveryKey(userId: UserId): ByteArray?
 
+    /** The recovery key state of [userId], or `null` if the user never registered one. */
+    suspend fun recoveryKeyState(userId: UserId): RecoveryKeyState?
+
     /**
-     * Registers [publicKey] (32 bytes) as [userId]'s recovery key if the user
-     * has none: returns `true`. Returns `false` if exactly this key is
-     * registered already (nothing changes). Throws
-     * [LastDeviceRecoveryKeyException.Conflict] and changes nothing if
-     * another key is registered: a recovery key is never replaced. Concurrent
-     * calls behave as if they ran one after the other.
+     * Registers [publicKey] (32 bytes) as [userId]'s recovery key:
+     *
+     * - the user never registered one: stores it at epoch 1, returns `true`;
+     * - the user's key was revoked at epoch N: stores it at epoch N + 1 and
+     *   clears the transition IDs, returns `true`; at N = [Long.MAX_VALUE]
+     *   throws [LastDeviceRecoveryKeyException.EpochExhausted];
+     * - exactly this key is active: returns `false`, nothing changes;
+     * - another key is active: throws [LastDeviceRecoveryKeyException.Conflict],
+     *   nothing changes. Only [rotateRecoveryKey] replaces an active key.
+     *
+     * [registeredAt] (server time) becomes the key's installation time.
+     * Concurrent calls behave as if they ran one after the other.
      */
     suspend fun registerRecoveryKey(userId: UserId, publicKey: ByteArray, registeredAt: Instant): Boolean
+
+    /**
+     * Replaces the user's active recovery key in one atomic step. In this order:
+     *
+     * 1. the user never registered a key: [RecoveryKeyRotationResult.NOT_CONFIGURED];
+     * 2. the active key was installed by the rotation with
+     *    [RecoveryKeyRotationTransition.rotationId] and is its new key:
+     *    [RecoveryKeyRotationResult.ALREADY_APPLIED], nothing written;
+     * 3. the key is revoked, or its key or epoch differ from the expected
+     *    ones, or the new key is the active key, or the authorizing device's
+     *    registration differs from [RecoveryKeyRotationTransition.expectedAuthorizer]
+     *    (key and epoch): [RecoveryKeyRotationResult.CONFLICT], nothing written;
+     * 4. the epoch is [Long.MAX_VALUE]: [RecoveryKeyRotationResult.EPOCH_EXHAUSTED];
+     * 5. prunes nonces older than [RecoveryKeyRotationTransition.pruneBefore]
+     *    and claims the nonce under the authorizing device
+     *    ([AuthenticationNonceRepository], same namespace); already claimed:
+     *    [RecoveryKeyRotationResult.REPLAY] (the prune may commit);
+     * 6. stores the new key, epoch + 1, the rotation ID (clearing a
+     *    revocation ID) and [RecoveryKeyRotationTransition.now] as
+     *    installation and transition time, and deletes every last-device
+     *    recovery challenge of the user: [RecoveryKeyRotationResult.ROTATED].
+     *
+     * Nothing else changes: device registrations, epochs and installation
+     * times, prekeys, mailboxes and other nonces stay.
+     */
+    suspend fun rotateRecoveryKey(transition: RecoveryKeyRotationTransition): RecoveryKeyRotationResult
+
+    /**
+     * Revokes the user's active recovery key in one atomic step. In this order:
+     *
+     * 1. the user never registered a key: [RecoveryKeyRevocationResult.NOT_CONFIGURED];
+     * 2. the key is revoked and the revocation with
+     *    [RecoveryKeyRevocationTransition.revocationId] revoked it:
+     *    [RecoveryKeyRevocationResult.ALREADY_APPLIED], nothing written;
+     * 3. the key is revoked (by another revocation), or its key or epoch
+     *    differ from the expected ones, or the authorizing device's
+     *    registration differs from the expected one:
+     *    [RecoveryKeyRevocationResult.CONFLICT], nothing written;
+     * 4. the epoch is [Long.MAX_VALUE]: [RecoveryKeyRevocationResult.EPOCH_EXHAUSTED];
+     * 5. prunes and claims the nonce as [rotateRecoveryKey] does:
+     *    [RecoveryKeyRevocationResult.REPLAY];
+     * 6. removes the key, stores epoch + 1, the revocation ID (clearing a
+     *    rotation ID) and [RecoveryKeyRevocationTransition.now] as
+     *    revocation time, and deletes every last-device recovery challenge
+     *    of the user: [RecoveryKeyRevocationResult.REVOKED].
+     */
+    suspend fun revokeRecoveryKey(transition: RecoveryKeyRevocationTransition): RecoveryKeyRevocationResult
 
     /**
      * In one atomic step: prunes every challenge that expired before
      * [LastDeviceRecoveryChallengeRequest.now]; then
      *
      * - the target has no registration: [LastDeviceRecoveryChallengeIssue.NotRegistered];
-     * - its user has no recovery key: [LastDeviceRecoveryChallengeIssue.NotConfigured];
+     * - its user has no active recovery key (none, or revoked):
+     *   [LastDeviceRecoveryChallengeIssue.NotConfigured];
      * - the target has an unexpired challenge issued for its current key and
-     *   epoch: returns that one unchanged;
+     *   epoch and the current recovery key epoch: returns that one unchanged;
      * - otherwise stores the request's candidate ID and nonce with the
-     *   current key and epoch (replacing an outdated challenge of the target)
-     *   and returns it.
+     *   current key, epoch and recovery key epoch (replacing an outdated
+     *   challenge of the target) and returns it.
      *
      * So a target has at most one challenge, and requesting another one while
      * it is valid returns the same challenge.
@@ -511,12 +583,15 @@ class LastDeviceRecoveryChallengeRequest(
 }
 
 /**
- * A stored challenge: the public [challenge] and the registered key it was
- * issued for ([authPublicKey], server-side only, never returned to clients).
+ * A stored challenge: the public [challenge], the registered key it was
+ * issued for ([authPublicKey], server-side only, never returned to clients)
+ * and the recovery key epoch it was issued under ([recoveryKeyEpoch]; a
+ * rotation or revocation of the recovery key invalidates it).
  */
 class StoredLastDeviceRecoveryChallenge(
     val challenge: LastDeviceRecoveryChallenge,
     authPublicKey: ByteArray,
+    val recoveryKeyEpoch: Long,
 ) {
     private val key: ByteArray = authPublicKey.copyOf()
 
@@ -537,8 +612,164 @@ sealed interface LastDeviceRecoveryChallengeIssue {
 
 /** A rejected recovery key registration. Nothing was stored. Messages never contain key bytes. */
 sealed class LastDeviceRecoveryKeyException(message: String) : Exception(message) {
-    /** The user has a different recovery key. Milestone 18 never replaces it. */
+    /** The user has a different active recovery key. Only a rotation replaces it (docs/recovery-key-lifecycle.md). */
     class Conflict : LastDeviceRecoveryKeyException("A different last-device recovery key is registered")
+
+    /** The recovery key epoch cannot grow any more. */
+    class EpochExhausted : LastDeviceRecoveryKeyException("Recovery key epoch is exhausted")
+}
+
+/** Whether a user's recovery key is [ACTIVE] or [REVOKED]. A user that never registered one has no [RecoveryKeyState]. */
+enum class RecoveryKeyStatus { ACTIVE, REVOKED }
+
+/**
+ * A user's stored recovery key state (docs/recovery-key-lifecycle.md):
+ * [epoch], the [publicKey] and its server installation time [installedAt]
+ * (both only while [status] is [RecoveryKeyStatus.ACTIVE]), the server time
+ * of the last transition [transitionedAt] (registration, rotation or
+ * revocation; for a revoked key the revocation time), and the transition
+ * that produced this state: [rotationId] for a rotation, [revocationId] for
+ * a revocation, none for a registration. At most one of them is set.
+ */
+class RecoveryKeyState(
+    val epoch: Long,
+    val status: RecoveryKeyStatus,
+    publicKey: ByteArray?,
+    val installedAt: Instant?,
+    val transitionedAt: Instant,
+    val rotationId: RecoveryKeyRotationId? = null,
+    val revocationId: RecoveryKeyRevocationId? = null,
+) {
+    private val key: ByteArray? = publicKey?.copyOf()
+
+    init {
+        require(epoch >= 1) { "Recovery key epoch must be positive" }
+        require(rotationId == null || revocationId == null) { "A state is produced by one transition only" }
+        when (status) {
+            RecoveryKeyStatus.ACTIVE -> {
+                require(key != null && key.size == 32) { "An active recovery key needs a 32-byte public key" }
+                require(installedAt != null) { "An active recovery key needs an installation time" }
+                require(revocationId == null) { "An active recovery key was not revoked" }
+            }
+            RecoveryKeyStatus.REVOKED -> {
+                require(key == null && installedAt == null) { "A revoked recovery key has no key" }
+                require(rotationId == null) { "A revoked recovery key was not installed by a rotation" }
+            }
+        }
+    }
+
+    /** A copy of the active public key, or `null` when revoked. */
+    val publicKey: ByteArray? get() = key?.copyOf()
+
+    override fun toString(): String = "RecoveryKeyState(epoch=$epoch, status=$status)"
+}
+
+/**
+ * A verified recovery key rotation for [LastDeviceRecoveryRepository.rotateRecoveryKey]:
+ * replace [userId]'s key [expectedPublicKey] at [expectedEpoch] with
+ * [newPublicKey]. [expectedAuthorizer] is the authorizing device's
+ * registration the ServerAuth request was verified with; the rotation only
+ * happens while it is still current. [nonce] / [timestamp] are the
+ * statement's (client-supplied, used for replay protection only); [now] is
+ * the server time stored as installation time.
+ */
+class RecoveryKeyRotationTransition(
+    val userId: UserId,
+    expectedPublicKey: ByteArray,
+    val expectedEpoch: Long,
+    newPublicKey: ByteArray,
+    val expectedAuthorizer: DeviceRegistrationState,
+    val rotationId: RecoveryKeyRotationId,
+    val nonce: RequestNonce,
+    val timestamp: Instant,
+    val pruneBefore: Instant,
+    val now: Instant,
+) {
+    private val expected: ByteArray = expectedPublicKey.copyOf()
+    private val new: ByteArray = newPublicKey.copyOf()
+
+    init {
+        require(expectedAuthorizer.address.userId == userId) { "The authorizing device must belong to the user" }
+    }
+
+    /** A copy of the key the rotation replaces. */
+    val expectedPublicKey: ByteArray get() = expected.copyOf()
+
+    /** A copy of the new key. */
+    val newPublicKey: ByteArray get() = new.copyOf()
+
+    override fun toString(): String = "RecoveryKeyRotationTransition(userId=$userId, expectedEpoch=$expectedEpoch)"
+}
+
+/** Outcome of [LastDeviceRecoveryRepository.rotateRecoveryKey]. */
+enum class RecoveryKeyRotationResult {
+    /** The key was replaced, the epoch incremented and the user's challenges removed. */
+    ROTATED,
+
+    /** This rotation installed the active key before; nothing changed. */
+    ALREADY_APPLIED,
+
+    /** The user never registered a recovery key; nothing changed. */
+    NOT_CONFIGURED,
+
+    /** The recovery key state or the authorizing registration is no longer the verified one; nothing changed. */
+    CONFLICT,
+
+    /** The nonce was claimed before; nothing changed. */
+    REPLAY,
+
+    /** The recovery key epoch cannot grow any more; nothing changed. */
+    EPOCH_EXHAUSTED,
+}
+
+/**
+ * A verified recovery key revocation for [LastDeviceRecoveryRepository.revokeRecoveryKey]:
+ * revoke [userId]'s key [expectedPublicKey] at [expectedEpoch]. The other
+ * fields as in [RecoveryKeyRotationTransition]; [now] becomes the
+ * revocation time.
+ */
+class RecoveryKeyRevocationTransition(
+    val userId: UserId,
+    expectedPublicKey: ByteArray,
+    val expectedEpoch: Long,
+    val expectedAuthorizer: DeviceRegistrationState,
+    val revocationId: RecoveryKeyRevocationId,
+    val nonce: RequestNonce,
+    val timestamp: Instant,
+    val pruneBefore: Instant,
+    val now: Instant,
+) {
+    private val expected: ByteArray = expectedPublicKey.copyOf()
+
+    init {
+        require(expectedAuthorizer.address.userId == userId) { "The authorizing device must belong to the user" }
+    }
+
+    /** A copy of the key the revocation removes. */
+    val expectedPublicKey: ByteArray get() = expected.copyOf()
+
+    override fun toString(): String = "RecoveryKeyRevocationTransition(userId=$userId, expectedEpoch=$expectedEpoch)"
+}
+
+/** Outcome of [LastDeviceRecoveryRepository.revokeRecoveryKey]. */
+enum class RecoveryKeyRevocationResult {
+    /** The key was removed, the epoch incremented and the user's challenges removed. */
+    REVOKED,
+
+    /** This revocation revoked the key before; nothing changed. */
+    ALREADY_APPLIED,
+
+    /** The user never registered a recovery key; nothing changed. */
+    NOT_CONFIGURED,
+
+    /** The recovery key state or the authorizing registration is no longer the verified one; nothing changed. */
+    CONFLICT,
+
+    /** The nonce was claimed before; nothing changed. */
+    REPLAY,
+
+    /** The recovery key epoch cannot grow any more; nothing changed. */
+    EPOCH_EXHAUSTED,
 }
 
 interface ServerStorage {

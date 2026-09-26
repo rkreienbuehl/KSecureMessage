@@ -21,6 +21,8 @@ import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecovery
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallengeId
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryId
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationId
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationId
 import dev.kreienbuehl.ksecuremessage.storage.AuthenticationNonceRepository
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationRepository
@@ -34,6 +36,12 @@ import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryRepository
 import dev.kreienbuehl.ksecuremessage.storage.MailboxRepository
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyPublicationException
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyRepository
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyRevocationResult
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyRevocationTransition
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyRotationResult
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyRotationTransition
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyState
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyStatus
 import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacement
 import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacementResult
 import dev.kreienbuehl.ksecuremessage.storage.RotationReplacement
@@ -72,7 +80,7 @@ import kotlin.time.Instant
  * uniqueness is additionally enforced by the schema's primary keys.
  *
  * The database holds public registration keys, public last-device recovery
- * keys and challenges, public prekeys, opaque encrypted envelopes with their
+ * key states and challenges, public prekeys, opaque encrypted envelopes with their
  * routing metadata and nonce replay metadata. It is not encrypted. Timestamps are stored as epoch
  * milliseconds.
  */
@@ -196,14 +204,14 @@ class SqlDelightServerStorage private constructor(
                 if (current.lastDeviceRecoveryId == replacement.recoveryId) {
                     return@transaction LastDeviceRecoveryReplacementResult.ALREADY_APPLIED
                 }
-                val registeredRecoveryKey = selectRecoveryKey(target.user).executeAsOneOrNull()
-                if (registeredRecoveryKey == null || !registeredRecoveryKey.contentEquals(recoveryKey)) {
+                val registeredRecoveryKey = loadRecoveryKeyState(target.userId)?.takeIf { it.status == RecoveryKeyStatus.ACTIVE }
+                if (registeredRecoveryKey == null || !registeredRecoveryKey.publicKey.contentEquals(recoveryKey)) {
                     return@transaction LastDeviceRecoveryReplacementResult.NOT_CONFIGURED
                 }
                 val stored = selectChallenge(target.user, target.device).executeAsOneOrNull()
                 val result = when {
                     stored == null || !stored.challenge_id.contentEquals(replacement.challengeId.bytes) ||
-                        !stored.challenge_nonce.contentEquals(challengeNonce) ->
+                        !stored.challenge_nonce.contentEquals(challengeNonce) || stored.recovery_key_epoch != registeredRecoveryKey.epoch ->
                         LastDeviceRecoveryReplacementResult.CHALLENGE_INVALID
                     stored.expires_at < now -> LastDeviceRecoveryReplacementResult.EXPIRED
                     else -> null
@@ -231,11 +239,6 @@ class SqlDelightServerStorage private constructor(
                     KeyReplacement.EPOCH_EXHAUSTED -> LastDeviceRecoveryReplacementResult.EPOCH_EXHAUSTED
                 }
             }
-        }
-
-        private fun ServerStateQueries.claimNonce(address: DeviceAddress, nonce: ByteArray, timestamp: Instant, pruneBefore: Instant): Boolean {
-            pruneNonces(pruneBefore.toEpochMilliseconds())
-            return insertNonce(address.user, address.device, nonce, timestamp.toEpochMilliseconds()).value == 1L
         }
 
         /**
@@ -275,44 +278,191 @@ class SqlDelightServerStorage private constructor(
             return KeyReplacement.REPLACED
         }
 
-        private fun ServerStateQueries.loadState(address: DeviceAddress): DeviceRegistrationState? =
-            selectRegistrationState(address.user, address.device).executeAsOneOrNull()?.let {
-                // open() stamped every migrated registration; a missing time is damage, never "now".
-                val installedAt = checkNotNull(it.auth_key_installed_at) { "Registration has no key installation time" }
-                DeviceRegistrationState(
-                    DeviceRegistration(address, it.auth_public_key),
-                    it.auth_epoch,
-                    Instant.fromEpochMilliseconds(installedAt),
-                    it.recovery_id?.let(::DeviceRecoveryId),
-                    it.rotation_id?.let(::DeviceAuthenticationRotationId),
-                    it.last_device_recovery_id?.let(::LastDeviceRecoveryId),
-                )
-            }
-
-        private fun DeviceRegistrationState.matches(expected: DeviceRegistrationState) =
-            authEpoch == expected.authEpoch && registration.publicKey.contentEquals(expected.registration.publicKey)
     }
+
+    private fun ServerStateQueries.loadState(address: DeviceAddress): DeviceRegistrationState? =
+        selectRegistrationState(address.user, address.device).executeAsOneOrNull()?.let {
+            // open() stamped every migrated registration; a missing time is damage, never "now".
+            val installedAt = checkNotNull(it.auth_key_installed_at) { "Registration has no key installation time" }
+            DeviceRegistrationState(
+                DeviceRegistration(address, it.auth_public_key),
+                it.auth_epoch,
+                Instant.fromEpochMilliseconds(installedAt),
+                it.recovery_id?.let(::DeviceRecoveryId),
+                it.rotation_id?.let(::DeviceAuthenticationRotationId),
+                it.last_device_recovery_id?.let(::LastDeviceRecoveryId),
+            )
+        }
+
+    private fun DeviceRegistrationState.matches(expected: DeviceRegistrationState) =
+        authEpoch == expected.authEpoch && registration.publicKey.contentEquals(expected.registration.publicKey)
+
+    private fun ServerStateQueries.claimNonce(address: DeviceAddress, nonce: ByteArray, timestamp: Instant, pruneBefore: Instant): Boolean {
+        pruneNonces(pruneBefore.toEpochMilliseconds())
+        return insertNonce(address.user, address.device, nonce, timestamp.toEpochMilliseconds()).value == 1L
+    }
+
+    /** The recovery key state of [userId]; an unknown state code is damage and fails closed. */
+    private fun ServerStateQueries.loadRecoveryKeyState(userId: UserId): RecoveryKeyState? =
+        selectRecoveryKeyState(userId.value).executeAsOneOrNull()?.let {
+            RecoveryKeyState(
+                epoch = it.epoch,
+                status = when (it.state) {
+                    STATE_ACTIVE -> RecoveryKeyStatus.ACTIVE
+                    STATE_REVOKED -> RecoveryKeyStatus.REVOKED
+                    else -> error("Unknown recovery key state")
+                },
+                publicKey = it.public_key,
+                installedAt = it.installed_at?.let(Instant::fromEpochMilliseconds),
+                transitionedAt = Instant.fromEpochMilliseconds(it.transitioned_at),
+                rotationId = it.rotation_id?.let(::RecoveryKeyRotationId),
+                revocationId = it.revocation_id?.let(::RecoveryKeyRevocationId),
+            )
+        }
 
     private inner class SqlDelightLastDeviceRecoveryRepository : LastDeviceRecoveryRepository {
         override suspend fun recoveryKey(userId: UserId): ByteArray? =
-            transaction { selectRecoveryKey(userId.value).executeAsOneOrNull() }
+            transaction { loadRecoveryKeyState(userId)?.takeIf { it.status == RecoveryKeyStatus.ACTIVE }?.publicKey }
 
-        // A plain INSERT after the lookup, in one transaction: an existing key
-        // is never overwritten, and the primary key rejects a second row.
+        override suspend fun recoveryKeyState(userId: UserId): RecoveryKeyState? = transaction { loadRecoveryKeyState(userId) }
+
+        // A plain INSERT for a first key (the primary key rejects a second
+        // row); after a revocation the guarded UPDATE continues the epoch. An
+        // active key is never overwritten.
         override suspend fun registerRecoveryKey(userId: UserId, publicKey: ByteArray, registeredAt: Instant): Boolean {
             require(publicKey.size == LastDeviceRecovery.PUBLIC_KEY_SIZE) { "Recovery public key has an invalid size" }
             val key = publicKey.copyOf()
+            val time = registeredAt.toEpochMilliseconds()
             return transaction {
-                val existing = selectRecoveryKey(userId.value).executeAsOneOrNull()
+                val existing = loadRecoveryKeyState(userId)
                 when {
                     existing == null -> {
-                        insertRecoveryKey(userId.value, key, registeredAt.toEpochMilliseconds())
+                        insertRecoveryKeyState(userId.value, key, time, time)
                         true
                     }
-                    existing.contentEquals(key) -> false
-                    else -> throw LastDeviceRecoveryKeyException.Conflict()
+                    existing.status == RecoveryKeyStatus.ACTIVE ->
+                        if (existing.publicKey.contentEquals(key)) false else throw LastDeviceRecoveryKeyException.Conflict()
+                    // Never let SQLite turn epoch + 1 into a REAL: epochs do not wrap.
+                    existing.epoch == Long.MAX_VALUE -> throw LastDeviceRecoveryKeyException.EpochExhausted()
+                    else -> {
+                        writeRecoveryKeyTransition(userId, existing, STATE_ACTIVE, key, time, time, rotationId = null, revocationId = null)
+                        true
+                    }
                 }
             }
+        }
+
+        // Checks, authorizer compare, nonce claim, guarded UPDATE and the
+        // challenge wipe in one transaction.
+        override suspend fun rotateRecoveryKey(transition: RecoveryKeyRotationTransition): RecoveryKeyRotationResult {
+            val newKey = transition.newPublicKey
+            val expectedKey = transition.expectedPublicKey
+            return transaction {
+                val current = loadRecoveryKeyState(transition.userId) ?: return@transaction RecoveryKeyRotationResult.NOT_CONFIGURED
+                if (current.rotationId == transition.rotationId && current.publicKey.contentEquals(newKey)) {
+                    return@transaction RecoveryKeyRotationResult.ALREADY_APPLIED
+                }
+                val authorizer = loadState(transition.expectedAuthorizer.address)
+                if (current.status != RecoveryKeyStatus.ACTIVE || current.epoch != transition.expectedEpoch ||
+                    !current.publicKey.contentEquals(expectedKey) || current.publicKey.contentEquals(newKey) ||
+                    authorizer == null || !authorizer.matches(transition.expectedAuthorizer)
+                ) {
+                    return@transaction RecoveryKeyRotationResult.CONFLICT
+                }
+                val now = transition.now.toEpochMilliseconds()
+                when (
+                    transitionRecoveryKey(
+                        transition.userId, current, STATE_ACTIVE, newKey, installedAt = now, transitionedAt = now,
+                        rotationId = transition.rotationId, revocationId = null,
+                    ) {
+                        claimNonce(transition.expectedAuthorizer.address, transition.nonce.bytes, transition.timestamp, transition.pruneBefore)
+                    }
+                ) {
+                    RecoveryKeyTransition.APPLIED -> RecoveryKeyRotationResult.ROTATED
+                    RecoveryKeyTransition.REPLAY -> RecoveryKeyRotationResult.REPLAY
+                    RecoveryKeyTransition.EPOCH_EXHAUSTED -> RecoveryKeyRotationResult.EPOCH_EXHAUSTED
+                }
+            }
+        }
+
+        override suspend fun revokeRecoveryKey(transition: RecoveryKeyRevocationTransition): RecoveryKeyRevocationResult {
+            val expectedKey = transition.expectedPublicKey
+            return transaction {
+                val current = loadRecoveryKeyState(transition.userId) ?: return@transaction RecoveryKeyRevocationResult.NOT_CONFIGURED
+                if (current.status == RecoveryKeyStatus.REVOKED && current.revocationId == transition.revocationId) {
+                    return@transaction RecoveryKeyRevocationResult.ALREADY_APPLIED
+                }
+                val authorizer = loadState(transition.expectedAuthorizer.address)
+                if (current.status != RecoveryKeyStatus.ACTIVE || current.epoch != transition.expectedEpoch ||
+                    !current.publicKey.contentEquals(expectedKey) ||
+                    authorizer == null || !authorizer.matches(transition.expectedAuthorizer)
+                ) {
+                    return@transaction RecoveryKeyRevocationResult.CONFLICT
+                }
+                when (
+                    transitionRecoveryKey(
+                        transition.userId, current, STATE_REVOKED, newKey = null, installedAt = null,
+                        transitionedAt = transition.now.toEpochMilliseconds(), rotationId = null, revocationId = transition.revocationId,
+                    ) {
+                        claimNonce(transition.expectedAuthorizer.address, transition.nonce.bytes, transition.timestamp, transition.pruneBefore)
+                    }
+                ) {
+                    RecoveryKeyTransition.APPLIED -> RecoveryKeyRevocationResult.REVOKED
+                    RecoveryKeyTransition.REPLAY -> RecoveryKeyRevocationResult.REPLAY
+                    RecoveryKeyTransition.EPOCH_EXHAUSTED -> RecoveryKeyRevocationResult.EPOCH_EXHAUSTED
+                }
+            }
+        }
+
+        /**
+         * The compare-and-set shared by recovery key rotation and revocation,
+         * inside their transaction after their own idempotency and
+         * expected-state checks: epoch exhaustion, [claim] (nonce prune +
+         * claim; `false` = replay), the guarded UPDATE, then the removal of
+         * every last-device recovery challenge of the user.
+         */
+        private fun ServerStateQueries.transitionRecoveryKey(
+            userId: UserId,
+            current: RecoveryKeyState,
+            newState: Long,
+            newKey: ByteArray?,
+            installedAt: Long?,
+            transitionedAt: Long,
+            rotationId: RecoveryKeyRotationId?,
+            revocationId: RecoveryKeyRevocationId?,
+            claim: ServerStateQueries.() -> Boolean,
+        ): RecoveryKeyTransition {
+            if (current.epoch == Long.MAX_VALUE) return RecoveryKeyTransition.EPOCH_EXHAUSTED
+            if (!claim()) return RecoveryKeyTransition.REPLAY
+            writeRecoveryKeyTransition(userId, current, newState, newKey, installedAt, transitionedAt, rotationId, revocationId)
+            deleteChallengesOfUser(userId.value)
+            return RecoveryKeyTransition.APPLIED
+        }
+
+        private fun ServerStateQueries.writeRecoveryKeyTransition(
+            userId: UserId,
+            current: RecoveryKeyState,
+            newState: Long,
+            newKey: ByteArray?,
+            installedAt: Long?,
+            transitionedAt: Long,
+            rotationId: RecoveryKeyRotationId?,
+            revocationId: RecoveryKeyRevocationId?,
+        ) {
+            val updated = transitionRecoveryKeyState(
+                new_state = newState,
+                new_key = newKey,
+                installed_at = installedAt,
+                transitioned_at = transitionedAt,
+                rotation_id = rotationId?.bytes,
+                revocation_id = revocationId?.bytes,
+                user_id = userId.value,
+                expected_state = if (current.status == RecoveryKeyStatus.ACTIVE) STATE_ACTIVE else STATE_REVOKED,
+                expected_epoch = current.epoch,
+                expected_key = current.publicKey,
+            ).value
+            // Cannot happen after the checks above in this transaction; never commit a half transition.
+            check(updated == 1L) { "Recovery key state changed during the transition" }
         }
 
         override suspend fun issueChallenge(request: LastDeviceRecoveryChallengeRequest): LastDeviceRecoveryChallengeIssue {
@@ -323,24 +473,29 @@ class SqlDelightServerStorage private constructor(
                 pruneChallenges(now)
                 val registration = selectRegistrationState(target.user, target.device).executeAsOneOrNull()
                     ?: return@transaction LastDeviceRecoveryChallengeIssue.NotRegistered
-                selectRecoveryKey(target.user).executeAsOneOrNull() ?: return@transaction LastDeviceRecoveryChallengeIssue.NotConfigured
+                val recoveryKey = loadRecoveryKeyState(target.userId)?.takeIf { it.status == RecoveryKeyStatus.ACTIVE }
+                    ?: return@transaction LastDeviceRecoveryChallengeIssue.NotConfigured
                 val existing = selectChallenge(target.user, target.device).executeAsOneOrNull()
                 if (existing != null && existing.auth_epoch == registration.auth_epoch &&
-                    existing.auth_public_key.contentEquals(registration.auth_public_key)
+                    existing.auth_public_key.contentEquals(registration.auth_public_key) &&
+                    existing.recovery_key_epoch == recoveryKey.epoch
                 ) {
                     return@transaction LastDeviceRecoveryChallengeIssue.Issued(
-                        stored(target, existing.challenge_id, existing.challenge_nonce, existing.auth_epoch, existing.expires_at, existing.auth_public_key),
+                        stored(
+                            target, existing.challenge_id, existing.challenge_nonce, existing.auth_epoch, existing.expires_at,
+                            existing.auth_public_key, existing.recovery_key_epoch,
+                        ),
                     )
                 }
                 deleteChallenge(target.user, target.device)
                 insertChallenge(
                     target.user, target.device, request.candidateId.bytes, nonce, registration.auth_epoch,
-                    registration.auth_public_key, now, request.expiresAt.toEpochMilliseconds(),
+                    registration.auth_public_key, now, request.expiresAt.toEpochMilliseconds(), recoveryKey.epoch,
                 )
                 LastDeviceRecoveryChallengeIssue.Issued(
                     stored(
                         target, request.candidateId.bytes, nonce, registration.auth_epoch,
-                        request.expiresAt.toEpochMilliseconds(), registration.auth_public_key,
+                        request.expiresAt.toEpochMilliseconds(), registration.auth_public_key, recoveryKey.epoch,
                     ),
                 )
             }
@@ -348,7 +503,7 @@ class SqlDelightServerStorage private constructor(
 
         override suspend fun challenge(target: DeviceAddress): StoredLastDeviceRecoveryChallenge? = transaction {
             selectChallenge(target.user, target.device).executeAsOneOrNull()?.let {
-                stored(target, it.challenge_id, it.challenge_nonce, it.auth_epoch, it.expires_at, it.auth_public_key)
+                stored(target, it.challenge_id, it.challenge_nonce, it.auth_epoch, it.expires_at, it.auth_public_key, it.recovery_key_epoch)
             }
         }
 
@@ -359,11 +514,13 @@ class SqlDelightServerStorage private constructor(
             authEpoch: Long,
             expiresAt: Long,
             authPublicKey: ByteArray,
+            recoveryKeyEpoch: Long,
         ) = StoredLastDeviceRecoveryChallenge(
             LastDeviceRecoveryChallenge(
                 target, LastDeviceRecoveryChallengeId(id), nonce, authEpoch, Instant.fromEpochMilliseconds(expiresAt),
             ),
             authPublicKey,
+            recoveryKeyEpoch,
         )
     }
 
@@ -501,11 +658,12 @@ class SqlDelightServerStorage private constructor(
 
     companion object {
         /**
-         * Server database schema, version 5. Independent of the client
-         * schema. `Schema.migrate(driver, 1, 5)` migrates a milestone 13
-         * database, `Schema.migrate(driver, 2, 5)` a milestone 14/15 one,
-         * `Schema.migrate(driver, 3, 5)` a milestone 16 one and
-         * `Schema.migrate(driver, 4, 5)` a milestone 17 one
+         * Server database schema, version 6. Independent of the client
+         * schema. `Schema.migrate(driver, 1, 6)` migrates a milestone 13
+         * database, `Schema.migrate(driver, 2, 6)` a milestone 14/15 one,
+         * `Schema.migrate(driver, 3, 6)` a milestone 16 one,
+         * `Schema.migrate(driver, 4, 6)` a milestone 17 one and
+         * `Schema.migrate(driver, 5, 6)` a milestone 18 one
          * (docs/server-storage.md).
          */
         val Schema: SqlSchema<QueryResult.Value<Unit>> get() = ServerDatabase.Schema
@@ -515,13 +673,14 @@ class SqlDelightServerStorage private constructor(
         private const val FORMAT_V3 = 3L
         private const val FORMAT_V4 = 4L
         private const val FORMAT_V5 = 5L
+        private const val FORMAT_V6 = 6L
 
         /**
          * Opens the server storage on [driver], whose database must already
          * have the current schema ([Schema]). Creates and migrates no schema
          * and never closes [driver]: the caller keeps owning it. Throws
          * [IllegalStateException] if the database was not created with this
-         * schema, or is still at schema version 1, 2, 3 or 4 (migrate it with
+         * schema, or is still at schema version 1, 2, 3, 4 or 5 (migrate it with
          * [Schema] first). Blocking database calls run on [dispatcher].
          *
          * Registrations that a migration from schema version 3 or older left
@@ -548,13 +707,20 @@ class SqlDelightServerStorage private constructor(
             check(format != FORMAT_V2) { "Database has server storage schema version 2; migrate it with SqlDelightServerStorage.Schema" }
             check(format != FORMAT_V3) { "Database has server storage schema version 3; migrate it with SqlDelightServerStorage.Schema" }
             check(format != FORMAT_V4) { "Database has server storage schema version 4; migrate it with SqlDelightServerStorage.Schema" }
-            check(format == FORMAT_V5) { "Database has no supported server storage schema" }
+            check(format != FORMAT_V5) { "Database has server storage schema version 5; migrate it with SqlDelightServerStorage.Schema" }
+            check(format == FORMAT_V6) { "Database has no supported server storage schema" }
             return SqlDelightServerStorage(driver, dispatcher).also { it.stampMissingInstallationTimes(clock) }
         }
     }
 }
 
 private enum class KeyReplacement { REPLACED, REPLAY, EPOCH_EXHAUSTED }
+
+private enum class RecoveryKeyTransition { APPLIED, REPLAY, EPOCH_EXHAUSTED }
+
+/** `last_device_recovery_key_state.state` codes. */
+private const val STATE_ACTIVE = 1L
+private const val STATE_REVOKED = 2L
 
 private val DeviceAddress.user get() = userId.value
 private val DeviceAddress.device get() = deviceId.value

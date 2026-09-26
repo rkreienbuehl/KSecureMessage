@@ -237,10 +237,19 @@ client.registerLastDeviceRecoveryKey(recoveryKey)
 client.recoverLastDevice(LastDeviceRecoveryKey.decode(text)) // after every device-auth key is lost
 ```
 
+Milestone 19 done: offline recovery key rotation and revocation. The recovery key of M18 can now be replaced or removed, but only with two authorities at once: a ServerAuth-signed request of a registered device of the user **and** a signature of the current offline key over a frozen statement (domains `KSecureMessage-RecoveryKeyRotation-v1` / `-NewKeyPoP-v1` / `KSecureMessage-RecoveryKeyRotationId-v1`, `KSecureMessage-RecoveryKeyRevocation-v1` / `KSecureMessage-RecoveryKeyRevocationId-v1`: user, authorizing device, current key, new key, recovery key epoch, timestamp, nonce); a rotation's new key also proves possession. Neither a device nor the recovery key alone can change it, and a lost offline key cannot be replaced by a device (deliberately). The server keeps a per-user recovery key state (`UNCONFIGURED` / `ACTIVE(epoch, key, installedAt)` / `REVOKED(epoch, revokedAt)`) with a monotonic recovery key epoch that never wraps and never resets: registration, rotation, revocation and registration after a revocation each advance it. Rotation and revocation are one atomic compare-and-set on key, epoch and the authorizing device's registration, with the statement nonce claim and the deletion of every outstanding last-device recovery challenge of the user; challenges are also bound to the recovery key epoch. Exact retries return `204` (recognized by the stored transition ID, even after the window and restarts), stale statements conflict, and races have one winner. Client: `rotateLastDeviceRecoveryKey(current, new)` (create and back up the new key first; calling again after a lost response returns `ALREADY_ACTIVE`), `revokeLastDeviceRecoveryKey(current)`, `lastDeviceRecoveryKeyStatus()` (signed `GET …/last-device-recovery/key`); nothing is stored on the client. Only the recovery key state changes: messaging identity, pins, verification, sessions, device authentication, prekeys, mailbox and messages stay. Server schema version 6 (`5.sqm`: existing keys become ACTIVE at epoch 1 with their registration time); no client schema change. See [docs/recovery-key-lifecycle.md](docs/recovery-key-lifecycle.md).
+
+```kotlin
+val newKey = client.createLastDeviceRecoveryKey()             // back up newKey.encode() offline first
+client.rotateLastDeviceRecoveryKey(currentKey, newKey)        // device + current key; new key proves possession
+client.revokeLastDeviceRecoveryKey(currentKey)                // or: turn last-device recovery off
+client.registerLastDeviceRecoveryKey(client.createLastDeviceRecoveryKey()) // after a revocation; the epoch continues
+```
+
 ## Next implementation steps
 
-1. Recovery key rotation and revocation for last-device recovery (replace a lost or compromised offline key, authorized by an authenticated device together with the current recovery key); a PostgreSQL server adapter if multi-node deployment is needed.
-2. An application commit boundary for received messages and bounded dedup retention.
+1. An application commit boundary for received messages and bounded dedup retention.
+2. A deliberate, policy-controlled recovery key reset for a lost offline key (delay plus notification of every device), if applications need one; a PostgreSQL server adapter if multi-node deployment is needed.
 3. Sealed sender.
 
 ## Gradle wrapper

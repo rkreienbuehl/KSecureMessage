@@ -1,0 +1,40 @@
+-- Server schema version 5 to 6 (milestone 19): recovery key rotation and
+-- revocation (docs/recovery-key-lifecycle.md). Replaces the per-user
+-- last_device_recovery_key table, whose key could never change, by
+-- last_device_recovery_key_state with a recovery key epoch, an explicit
+-- ACTIVE/REVOKED state and transition metadata, and binds challenges to the
+-- recovery key epoch they were issued under.
+--
+-- Every existing recovery key becomes ACTIVE at epoch 1 (schema version 5
+-- could never replace it, so it is the user's first and only key). Its
+-- installation time is the server time it was registered at (registered_at,
+-- recorded by the server in milestone 18): no time is invented. Every
+-- existing challenge was issued under that key, so it is bound to epoch 1;
+-- a challenge whose user has no recovery key (not issued by milestone 18) is
+-- dropped rather than guessed. No other table changes: registrations, epochs,
+-- installation times, recovery/rotation/last-device recovery IDs, nonces,
+-- prekeys, one-time prekey tombstones, mailbox rows and the mailbox sequence
+-- stay as they are.
+CREATE TABLE last_device_recovery_key_state (
+    user_id TEXT NOT NULL PRIMARY KEY,
+    state INTEGER NOT NULL CHECK (state IN (1, 2)),
+    epoch INTEGER NOT NULL CHECK (epoch >= 1),
+    public_key BLOB,
+    installed_at INTEGER,
+    transitioned_at INTEGER NOT NULL,
+    rotation_id BLOB,
+    revocation_id BLOB,
+    CHECK ((state = 1 AND public_key IS NOT NULL AND installed_at IS NOT NULL AND revocation_id IS NULL) OR
+           (state = 2 AND public_key IS NULL AND installed_at IS NULL AND rotation_id IS NULL))
+);
+
+INSERT INTO last_device_recovery_key_state (user_id, state, epoch, public_key, installed_at, transitioned_at, rotation_id, revocation_id)
+SELECT user_id, 1, 1, public_key, registered_at, registered_at, NULL, NULL FROM last_device_recovery_key;
+
+ALTER TABLE last_device_recovery_challenge ADD COLUMN recovery_key_epoch INTEGER NOT NULL DEFAULT 1;
+
+DELETE FROM last_device_recovery_challenge WHERE user_id NOT IN (SELECT user_id FROM last_device_recovery_key_state);
+
+DROP TABLE last_device_recovery_key;
+
+UPDATE server_storage SET format = 6;
