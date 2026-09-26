@@ -87,7 +87,9 @@ import kotlin.time.Instant
  * docs/device-recovery.md), version 10 the `remote_identity.verification`
  * column (milestone 15, docs/identity-verification.md), version 11 the
  * `device_authentication_rotation_key` table (milestone 16,
- * docs/device-authentication-rotation.md). A driver created with
+ * docs/device-authentication-rotation.md), version 12 the
+ * `device_authentication_last_device_recovery_key` table (milestone 18,
+ * docs/last-device-recovery.md). A driver created with
  * [Schema] upgrades an older database on open; an application that manages
  * versions itself calls `Schema.migrate(driver, oldVersion, Schema.version)`. An upgraded database still holds
  * its milestone 8 plaintext until [open] encrypts it. Session state written
@@ -132,6 +134,13 @@ class SqlDelightClientStorage private constructor(
             transaction { deviceAuthentication.storePendingRotationKeyPair(keyPair) }
         override suspend fun removePendingRotationKeyPair() = transaction { deviceAuthentication.removePendingRotationKeyPair() }
         override suspend fun promotePendingRotationKeyPair() = transaction { deviceAuthentication.promotePendingRotationKeyPair() }
+        override suspend fun pendingLastDeviceRecoveryKeyPair() = transaction { deviceAuthentication.pendingLastDeviceRecoveryKeyPair() }
+        override suspend fun storePendingLastDeviceRecoveryKeyPair(keyPair: DeviceAuthenticationKeyPair) =
+            transaction { deviceAuthentication.storePendingLastDeviceRecoveryKeyPair(keyPair) }
+        override suspend fun removePendingLastDeviceRecoveryKeyPair() =
+            transaction { deviceAuthentication.removePendingLastDeviceRecoveryKeyPair() }
+        override suspend fun promotePendingLastDeviceRecoveryKeyPair() =
+            transaction { deviceAuthentication.promotePendingLastDeviceRecoveryKeyPair() }
     }
 
     override val remoteIdentities: RemoteIdentityStore = object : RemoteIdentityStore {
@@ -503,6 +512,9 @@ private class DatabaseView(private val queries: ClientStateQueries, private val 
             check(queries.selectDeviceAuthenticationRotationKey().awaitAsOneOrNull() == null) {
                 "A device authentication rotation is pending"
             }
+            check(queries.selectDeviceAuthenticationLastDeviceRecoveryKey().awaitAsOneOrNull() == null) {
+                "A last-device recovery is pending"
+            }
             queries.insertDeviceAuthenticationRecoveryKey(records.sealDeviceAuthenticationRecoveryKey(keyPair))
         }
 
@@ -538,6 +550,9 @@ private class DatabaseView(private val queries: ClientStateQueries, private val 
             check(queries.selectDeviceAuthenticationRecoveryKey().awaitAsOneOrNull() == null) {
                 "A device recovery is pending"
             }
+            check(queries.selectDeviceAuthenticationLastDeviceRecoveryKey().awaitAsOneOrNull() == null) {
+                "A last-device recovery is pending"
+            }
             queries.insertDeviceAuthenticationRotationKey(records.sealDeviceAuthenticationRotationKey(keyPair))
         }
 
@@ -555,6 +570,46 @@ private class DatabaseView(private val queries: ClientStateQueries, private val 
                 queries.deleteDeviceAuthenticationKey()
                 queries.insertDeviceAuthenticationKey(active)
                 queries.deleteDeviceAuthenticationRotationKey()
+                queries.clearDeviceAuthenticationAwaitsUpgradeKey()
+            } finally {
+                keyPair.privateKey.fill(0)
+            }
+        }
+
+        override suspend fun pendingLastDeviceRecoveryKeyPair(): DeviceAuthenticationKeyPair? =
+            queries.selectDeviceAuthenticationLastDeviceRecoveryKey().awaitAsOneOrNull()
+                ?.let { records.openDeviceAuthenticationLastDeviceRecoveryKey(it) }
+
+        override suspend fun storePendingLastDeviceRecoveryKeyPair(keyPair: DeviceAuthenticationKeyPair) {
+            // Existence only: a pending key that fails to open must not look absent.
+            check(queries.selectDeviceAuthenticationLastDeviceRecoveryKey().awaitAsOneOrNull() == null) {
+                "A pending last-device recovery key is already stored"
+            }
+            check(queries.selectDeviceAuthenticationRecoveryKey().awaitAsOneOrNull() == null) {
+                "A device recovery is pending"
+            }
+            check(queries.selectDeviceAuthenticationRotationKey().awaitAsOneOrNull() == null) {
+                "A device authentication rotation is pending"
+            }
+            queries.insertDeviceAuthenticationLastDeviceRecoveryKey(records.sealDeviceAuthenticationLastDeviceRecoveryKey(keyPair))
+        }
+
+        override suspend fun removePendingLastDeviceRecoveryKeyPair() {
+            queries.deleteDeviceAuthenticationLastDeviceRecoveryKey()
+        }
+
+        // Like the other promotions: open (a damaged record throws and changes
+        // nothing), reseal as the active key, all in the caller's transaction.
+        override suspend fun promotePendingLastDeviceRecoveryKeyPair() {
+            val sealed = checkNotNull(queries.selectDeviceAuthenticationLastDeviceRecoveryKey().awaitAsOneOrNull()) {
+                "No pending last-device recovery key"
+            }
+            val keyPair = records.openDeviceAuthenticationLastDeviceRecoveryKey(sealed)
+            try {
+                val active = records.sealDeviceAuthenticationKey(keyPair)
+                queries.deleteDeviceAuthenticationKey()
+                queries.insertDeviceAuthenticationKey(active)
+                queries.deleteDeviceAuthenticationLastDeviceRecoveryKey()
                 queries.clearDeviceAuthenticationAwaitsUpgradeKey()
             } finally {
                 keyPair.privateKey.fill(0)

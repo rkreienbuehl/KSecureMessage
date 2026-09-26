@@ -8,6 +8,9 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
 import dev.kreienbuehl.ksecuremessage.protocol.RequestAuthentication
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
 
@@ -65,6 +68,42 @@ interface SecureMessageTransport {
      * [SecureMessageTransportException.DeviceAuthenticationRotationRejected].
      */
     suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization)
+
+    /**
+     * Registers the user's last-device recovery public key
+     * (docs/last-device-recovery.md):
+     * `PUT /v1/devices/{user}/{device}/last-device-recovery/key` for
+     * [address], signed with [address]'s registered device authentication
+     * key. Registering the same key again is harmless. Throws
+     * [SecureMessageTransportException.LastDeviceRecoveryKeyRejected]
+     * ([SecureMessageTransportException.RecoveryKeyFailure.CONFLICT] if the
+     * user has another recovery key) or
+     * [SecureMessageTransportException.AuthenticationFailed].
+     */
+    suspend fun registerLastDeviceRecoveryKey(
+        address: DeviceAddress,
+        registration: LastDeviceRecoveryKeyRegistration,
+        signer: ServerRequestSigner,
+    )
+
+    /**
+     * A last-device recovery challenge for [target]:
+     * `POST /v1/devices/{user}/{device}/last-device-recovery/challenge`.
+     * Public. Throws [SecureMessageTransportException.LastDeviceRecoveryRejected]
+     * (`NOT_CONFIGURED`, `TARGET_NOT_REGISTERED`).
+     */
+    suspend fun lastDeviceRecoveryChallenge(target: DeviceAddress): LastDeviceRecoveryChallenge
+
+    /**
+     * Submits a last-device recovery (docs/last-device-recovery.md):
+     * `PUT /v1/devices/{user}/{device}/last-device-recovery` for the
+     * statement's target. Not signed with a [ServerRequestSigner]: the
+     * authorization carries the recovery key's signature and the replacement
+     * key's proof of possession. Returns once the server replaced the key, or
+     * recognized a retry of the recovery that did. Throws
+     * [SecureMessageTransportException.LastDeviceRecoveryRejected].
+     */
+    suspend fun recoverLastDevice(authorization: LastDeviceRecoveryAuthorization)
 
     /**
      * Uploads public prekey material. The server applies it atomically and

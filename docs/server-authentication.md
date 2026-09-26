@@ -281,6 +281,9 @@ request that fails steps 1–4 consumes nothing.
 | `PUT /v1/devices/{u}/{d}/registration/recovery` (M14) | authorizer signature + proof of possession in the body (docs/device-recovery.md) | `204` | `400 invalid_recovery`, `401`, `403`, `404`, `409 recovery_conflict`, `409 device_auth_epoch_exhausted` |
 | `GET /v1/devices/{u}/{d}/registration` (M16, extended M17) | registered device (`ProtectedEndpoint.READ_REGISTRATION`, empty body) | `200 {"authEpoch":N,"authKeyInstalledAt":T}` (T: server time the registered key was installed at, epoch ms; docs/device-authentication-rotation.md) | `401` |
 | `PUT /v1/devices/{u}/{d}/registration/rotation` (M16) | current-key authorization + proof of possession in the body, no headers (docs/device-authentication-rotation.md) | `204` | `400 invalid_device_auth_rotation`, `401`, `404`, `409 device_auth_rotation_conflict`, `409 device_auth_epoch_exhausted` |
+| `PUT /v1/devices/{u}/{d}/last-device-recovery/key` (M18) | registered device (`ProtectedEndpoint.REGISTER_LAST_DEVICE_RECOVERY_KEY`, signed body) plus the recovery key's proof of possession in the body (docs/last-device-recovery.md) | `201` first, `204` identical | `401` first; then `400 invalid_last_device_recovery_key`, `409 last_device_recovery_key_conflict` |
+| `POST /v1/devices/{u}/{d}/last-device-recovery/challenge` (M18) | public | `200` challenge | `404 last_device_recovery_not_configured`, `404 last_device_recovery_target_not_registered` |
+| `PUT /v1/devices/{u}/{d}/last-device-recovery` (M18) | offline recovery key signature + proof of possession over a server-issued challenge in the body, no headers | `204` | `400 invalid_last_device_recovery`, `401 last_device_recovery_{challenge_invalid,expired,proof_invalid}`, `404`, `409 last_device_recovery_conflict`, `409 device_auth_epoch_exhausted` |
 
 `401` bodies: `missing_authentication`, `invalid_authentication`,
 `expired_authentication`, `authentication_replay`, `device_not_registered`.
@@ -325,11 +328,13 @@ requests for another address. Applications never build signatures.
 ## Limitations
 
 - First registration is not proof of human or account ownership.
-- Auth-key recovery only through another registered device of the same
-  user (M14, docs/device-recovery.md); routine rotation needs the current
-  key and is explicit, without a policy (M16,
+- Auth-key recovery through another registered device of the same user
+  (M14, docs/device-recovery.md) or, for the last device, with the user's
+  offline recovery key (M18, docs/last-device-recovery.md); routine rotation
+  needs the current key and is explicit (M16/M17,
   docs/device-authentication-rotation.md); no reset, deletion or multiple
-  active keys per device.
+  active keys per device. ServerAuth v1 is unchanged by M18: the new
+  registration endpoint is an ordinary signed request.
 - Persistent server storage (`storage:server:sqldelight`, M13) is SQLite
   only, single node, unencrypted (docs/server-storage.md).
 - The server still sees sender and recipient metadata; `POST /v1/messages`

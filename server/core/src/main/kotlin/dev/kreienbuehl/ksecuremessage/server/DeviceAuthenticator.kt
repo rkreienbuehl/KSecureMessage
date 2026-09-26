@@ -25,6 +25,9 @@ enum class ProtectedEndpoint(val method: String, val endpoint: String) {
 
     /** `GET /v1/devices/{user}/{device}/registration`: the device's own registration state. */
     READ_REGISTRATION("GET", ServerApiPaths.REGISTRATION),
+
+    /** `PUT /v1/devices/{user}/{device}/last-device-recovery/key`: registers the user's last-device recovery key. */
+    REGISTER_LAST_DEVICE_RECOVERY_KEY("PUT", ServerApiPaths.LAST_DEVICE_RECOVERY_KEY),
 }
 
 /**

@@ -1,5 +1,8 @@
 package dev.kreienbuehl.ksecuremessage.storage.client.sqldelight
 
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.client.PreKeyConfiguration
@@ -656,6 +659,13 @@ class SqlDelightPersistenceTest {
 
         override suspend fun registrationStatus(address: DeviceAddress, signer: ServerRequestSigner): DeviceAuthenticationRegistrationStatus =
             error("These tests set bundles directly, see publish")
+
+        override suspend fun registerLastDeviceRecoveryKey(address: DeviceAddress, registration: LastDeviceRecoveryKeyRegistration, signer: ServerRequestSigner) =
+            error("not used")
+
+        override suspend fun lastDeviceRecoveryChallenge(target: DeviceAddress): LastDeviceRecoveryChallenge = error("not used")
+
+        override suspend fun recoverLastDevice(authorization: LastDeviceRecoveryAuthorization) = error("not used")
 
         override suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization) =
             error("These tests set bundles directly, see publish")

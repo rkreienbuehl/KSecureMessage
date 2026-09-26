@@ -241,6 +241,7 @@ Tables:
 - `device_authentication_key`: one row, the sealed device authentication key pair (schema version 8, milestone 12, [server-authentication.md](server-authentication.md))
 - `device_authentication_recovery_key`: at most one row, the sealed pending replacement key of a device recovery (record type 8, schema version 9, milestone 14, [device-recovery.md](device-recovery.md))
 - `device_authentication_rotation_key`: at most one row, the sealed pending replacement key of a routine rotation (record type 9, schema version 11, milestone 16, [device-authentication-rotation.md](device-authentication-rotation.md)); never filled together with the recovery key
+- `device_authentication_last_device_recovery_key`: at most one row, the sealed pending replacement key of a last-device recovery (record type 10, schema version 12, milestone 18, [last-device-recovery.md](last-device-recovery.md)); never filled together with the recovery or the rotation key. The offline recovery key is never stored
 - `device_authentication_state`: one row, `awaits_upgrade_key` (plaintext flag: set by the version 8 migration when an identity existed without a key)
 - `signed_pre_key`: sealed key pair, with `created_at` and `replaced_at` (epoch milliseconds, nullable)
 - `one_time_pre_key`: sealed key pair
@@ -261,7 +262,7 @@ does not depend on Kodium internals. All IDs have a
 Open the storage with `SqlDelightClientStorage.open(driver, keyProvider)`.
 There is no unencrypted mode.
 
-The schema version is 11. Version 1 (milestones 3 and 4) had no
+The schema version is 12. Version 1 (milestones 3 and 4) had no
 `remote_identity` table; `1.sqm` adds it and changes nothing else. Version 2
 (milestone 5) had no `retired_session_initiation` table; `2.sqm` adds it and
 changes nothing else. Version 3 (milestone 6) had no lifecycle columns;
@@ -296,7 +297,10 @@ unverified and nothing else changes
 Version 10 (milestone 15) had no pending rotation key; `10.sqm` creates
 `device_authentication_rotation_key`, empty, and changes no existing row
 ([device-authentication-rotation.md](device-authentication-rotation.md#storage)).
-Frozen copies of versions 1–10 (`Version1Schema` … `Version10Schema`) back the
+Version 11 (milestones 16 and 17) had no pending last-device recovery key;
+`11.sqm` creates `device_authentication_last_device_recovery_key`, empty, and
+changes no existing row ([last-device-recovery.md](last-device-recovery.md#client-state)).
+Frozen copies of versions 1–11 (`Version1Schema` … `Version11Schema`) back the
 migration tests.
 A driver created with `SqlDelightClientStorage.Schema`,
 as in the table above, reads SQLite's `user_version` on open and runs the

@@ -1,5 +1,8 @@
 package dev.kreienbuehl.ksecuremessage.storage.client.sqldelight
 
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
 import app.cash.sqldelight.db.SqlDriver
 import dev.kreienbuehl.ksecuremessage.client.PreKeyConfiguration
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageClient
@@ -207,15 +210,16 @@ class DeviceRecoveryStorageTest {
         database.closeOpenDrivers()
 
         val storage = reopen()
-        assertEquals(listOf(11L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(12L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
         assertEquals(
             before.withUnverifiedPins(),
-            after - "device_authentication_recovery_key" - "device_authentication_rotation_key",
+            after - "device_authentication_recovery_key" - "device_authentication_rotation_key" - "device_authentication_last_device_recovery_key",
             "no existing row changes",
         )
         assertEquals(emptyList(), after.getValue("device_authentication_recovery_key"))
         assertEquals(emptyList(), after.getValue("device_authentication_rotation_key"))
+        assertEquals(emptyList(), after.getValue("device_authentication_last_device_recovery_key"))
         assertNull(storage.deviceAuthentication.pendingRecoveryKeyPair())
     }
 
@@ -224,6 +228,7 @@ class DeviceRecoveryStorageTest {
         laptop(reopen()).initialize()
         driver.exec("DROP TABLE device_authentication_recovery_key")
         driver.exec("DROP TABLE device_authentication_rotation_key")
+        driver.exec("DROP TABLE device_authentication_last_device_recovery_key")
         driver.exec("ALTER TABLE remote_identity DROP COLUMN verification")
         driver.exec("PRAGMA user_version = 8")
         val downgraded = driver.tables().associateWith { driver.columns(it) }
@@ -271,6 +276,13 @@ class DeviceRecoveryStorageTest {
         }
 
         override suspend fun registrationStatus(address: DeviceAddress, signer: ServerRequestSigner): DeviceAuthenticationRegistrationStatus = error("not used")
+
+        override suspend fun registerLastDeviceRecoveryKey(address: DeviceAddress, registration: LastDeviceRecoveryKeyRegistration, signer: ServerRequestSigner) =
+            error("not used")
+
+        override suspend fun lastDeviceRecoveryChallenge(target: DeviceAddress): LastDeviceRecoveryChallenge = error("not used")
+
+        override suspend fun recoverLastDevice(authorization: LastDeviceRecoveryAuthorization) = error("not used")
 
         override suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization) = error("not used")
 

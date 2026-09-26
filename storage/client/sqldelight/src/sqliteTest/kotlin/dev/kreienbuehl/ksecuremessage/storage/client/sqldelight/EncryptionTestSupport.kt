@@ -1,5 +1,8 @@
 package dev.kreienbuehl.ksecuremessage.storage.client.sqldelight
 
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageClient
@@ -46,6 +49,13 @@ class TestRelay : SecureMessageTransport {
 
     override suspend fun registrationStatus(address: DeviceAddress, signer: ServerRequestSigner): DeviceAuthenticationRegistrationStatus = error("Tests set bundles directly")
 
+    override suspend fun registerLastDeviceRecoveryKey(address: DeviceAddress, registration: LastDeviceRecoveryKeyRegistration, signer: ServerRequestSigner) =
+        error("not used")
+
+    override suspend fun lastDeviceRecoveryChallenge(target: DeviceAddress): LastDeviceRecoveryChallenge = error("not used")
+
+    override suspend fun recoverLastDevice(authorization: LastDeviceRecoveryAuthorization) = error("not used")
+
     override suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization) =
         error("Tests set bundles directly")
 
@@ -71,7 +81,7 @@ class FailingRecords(private val delegate: ClientRecordCipher) : ClientRecordCip
     /**
      * Names of the seal functions that fail: identity, deviceAuthenticationKey,
      * deviceAuthenticationRecoveryKey, deviceAuthenticationRotationKey,
-     * signedPreKey, oneTimePreKey, session, pending.
+     * deviceAuthenticationLastDeviceRecoveryKey, signedPreKey, oneTimePreKey, session, pending.
      */
     var failing: Set<String> = emptySet()
 
@@ -96,6 +106,8 @@ class FailingRecords(private val delegate: ClientRecordCipher) : ClientRecordCip
         check("deviceAuthenticationRecoveryKey").let { delegate.sealDeviceAuthenticationRecoveryKey(keyPair) }
     override suspend fun sealDeviceAuthenticationRotationKey(keyPair: DeviceAuthenticationKeyPair): ByteArray =
         check("deviceAuthenticationRotationKey").let { delegate.sealDeviceAuthenticationRotationKey(keyPair) }
+    override suspend fun sealDeviceAuthenticationLastDeviceRecoveryKey(keyPair: DeviceAuthenticationKeyPair): ByteArray =
+        check("deviceAuthenticationLastDeviceRecoveryKey").let { delegate.sealDeviceAuthenticationLastDeviceRecoveryKey(keyPair) }
     override suspend fun sealSignedPreKey(preKey: SignedPreKeyPair): ByteArray =
         check("signedPreKey").let { delegate.sealSignedPreKey(preKey) }
     override suspend fun sealOneTimePreKey(preKey: OneTimePreKeyPair): ByteArray =

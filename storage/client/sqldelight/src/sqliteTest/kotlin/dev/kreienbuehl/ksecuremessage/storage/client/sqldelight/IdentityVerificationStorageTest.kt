@@ -129,6 +129,7 @@ class IdentityVerificationStorageTest {
         val rotation = aliceStorage.storageKeyRotationStatus()
 
         driver.exec("DROP TABLE device_authentication_rotation_key")
+        driver.exec("DROP TABLE device_authentication_last_device_recovery_key")
         driver.exec("ALTER TABLE remote_identity DROP COLUMN verification")
         driver.exec("PRAGMA user_version = 9")
         val fixture = TestDatabase()
@@ -141,13 +142,14 @@ class IdentityVerificationStorageTest {
         val before = driver.dump()
 
         val migrated = reopenAlice()
-        assertEquals(listOf(11L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(12L), driver.longs("PRAGMA user_version"))
         assertEquals(
             before.withUnverifiedPins(),
-            driver.dump() - "device_authentication_rotation_key",
-            "only the verification column and the empty rotation key table are new",
+            driver.dump() - "device_authentication_rotation_key" - "device_authentication_last_device_recovery_key",
+            "only the verification column and the empty rotation and last-device recovery key tables are new",
         )
         assertEquals(emptyList(), driver.dump().getValue("device_authentication_rotation_key"))
+        assertEquals(emptyList(), driver.dump().getValue("device_authentication_last_device_recovery_key"))
         assertEquals(VerificationState.UNVERIFIED, migrated.remoteIdentities.record(BOB)?.verification)
         assertContentEquals(identity.privateKey, migrated.identity.identity()?.privateKey)
         assertContentEquals(deviceKey.privateKey, migrated.deviceAuthentication.keyPair()?.privateKey)
@@ -175,7 +177,7 @@ class IdentityVerificationStorageTest {
         aliceDatabase.closeOpenDrivers()
 
         val storage = reopenAlice()
-        assertEquals(listOf(11L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(12L), driver.longs("PRAGMA user_version"))
         val record = assertNotNull(storage.remoteIdentities.record(BOB))
         assertContentEquals(ByteArray(64) { 5 }, record.identityKey)
         assertEquals(VerificationState.UNVERIFIED, record.verification)

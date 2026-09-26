@@ -1,0 +1,9 @@
+-- Schema version 11 to 12 (milestone 18): pending replacement key of a
+-- last-device recovery (docs/last-device-recovery.md). A new, empty table;
+-- nothing else changes. The record is sealed (record type 10) like every key
+-- pair. The recovery key itself is never stored here: the application keeps
+-- it offline.
+CREATE TABLE device_authentication_last_device_recovery_key (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    sealed_key_pair BLOB NOT NULL
+);

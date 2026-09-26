@@ -38,6 +38,14 @@ sealed class SecureMessageTransportException(message: String) : Exception(messag
     class DeviceAuthenticationRotationRejected(val reason: RotationFailure) :
         SecureMessageTransportException("Device authentication rotation rejected: $reason")
 
+    /** The server refused the last-device recovery key registration (docs/last-device-recovery.md). */
+    class LastDeviceRecoveryKeyRejected(val reason: RecoveryKeyFailure) :
+        SecureMessageTransportException("Last-device recovery key rejected: $reason")
+
+    /** The server refused a last-device recovery challenge or recovery (docs/last-device-recovery.md). */
+    class LastDeviceRecoveryRejected(val reason: LastDeviceRecoveryFailure) :
+        SecureMessageTransportException("Last-device recovery rejected: $reason")
+
     /** Any other unexpected server response. */
     class UnexpectedResponse(val status: Int) :
         SecureMessageTransportException("Unexpected server response $status")
@@ -125,6 +133,40 @@ sealed class SecureMessageTransportException(message: String) : Exception(messag
          * The registered key or epoch is not the one the statement names: an
          * earlier attempt, another rotation or a recovery changed it.
          */
+        CONFLICT,
+
+        /** The authentication epoch cannot grow any more. */
+        EPOCH_EXHAUSTED,
+    }
+
+    enum class RecoveryKeyFailure {
+        /** The registration was malformed, or its proof of possession does not verify. */
+        INVALID,
+
+        /** The user has a different recovery key. It is never replaced. */
+        CONFLICT,
+    }
+
+    enum class LastDeviceRecoveryFailure {
+        /** The request was malformed or named another device. */
+        INVALID_REQUEST,
+
+        /** The user has no registered last-device recovery key. */
+        NOT_CONFIGURED,
+
+        /** The device to recover is not registered: use first registration. */
+        TARGET_NOT_REGISTERED,
+
+        /** The challenge is unknown, consumed or replaced: request a new one. */
+        CHALLENGE_INVALID,
+
+        /** The challenge expired: request a new one. */
+        EXPIRED,
+
+        /** The recovery key's signature or the proof of possession does not verify, or it is not the user's recovery key. */
+        INVALID_PROOF,
+
+        /** The registration changed since the challenge was issued, or the key is already registered. */
         CONFLICT,
 
         /** The authentication epoch cannot grow any more. */

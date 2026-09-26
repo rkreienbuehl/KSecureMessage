@@ -9,6 +9,10 @@ import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallengeId
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
 
@@ -90,6 +94,32 @@ internal class DeviceRegistrationStateResponse(val authEpoch: Long, val authKeyI
 @Serializable
 internal class ErrorResponse(val error: String)
 
+/** Body of `PUT /v1/devices/{user}/{device}/last-device-recovery/key` (docs/last-device-recovery.md). */
+@Serializable
+internal class LastDeviceRecoveryKeyRequest(val publicKey: String, val proofOfPossession: String)
+
+/** Body of the `200` response of `POST /v1/devices/{user}/{device}/last-device-recovery/challenge`. */
+@Serializable
+internal class LastDeviceRecoveryChallengeResponse(
+    val challengeId: String,
+    val challengeNonce: String,
+    val authEpoch: Long,
+    val expiresAt: Long,
+)
+
+/** Body of `PUT /v1/devices/{user}/{device}/last-device-recovery`. The target is in the path. */
+@Serializable
+internal class LastDeviceRecoveryRequestDto(
+    val recoveryPublicKey: String,
+    val challengeId: String,
+    val challengeNonce: String,
+    val authEpoch: Long,
+    val expiresAt: Long,
+    val replacementPublicKey: String,
+    val recoverySignature: String,
+    val proofOfPossession: String,
+)
+
 /**
  * Request authentication headers, format version 1 (docs/server-authentication.md).
  * Mirrored in server:ktor.
@@ -138,3 +168,29 @@ internal fun DeviceAuthenticationRotationAuthorization.toRequest() = DeviceAuthe
     authorizationSignature = Base64.encode(authorizationSignature),
     proofOfPossession = Base64.encode(proofOfPossession),
 )
+
+internal fun LastDeviceRecoveryKeyRegistration.toRequest() =
+    LastDeviceRecoveryKeyRequest(Base64.encode(publicKey), Base64.encode(proofOfPossession))
+
+/** Throws [IllegalArgumentException] for invalid Base64, sizes, epoch or expiry. */
+internal fun LastDeviceRecoveryChallengeResponse.toChallenge(target: DeviceAddress) = LastDeviceRecoveryChallenge(
+    target = target,
+    id = LastDeviceRecoveryChallengeId(Base64.decode(challengeId)),
+    nonce = Base64.decode(challengeNonce),
+    authEpoch = authEpoch,
+    expiresAt = kotlin.time.Instant.fromEpochMilliseconds(expiresAt),
+)
+
+internal fun LastDeviceRecoveryAuthorization.toRequest(): LastDeviceRecoveryRequestDto {
+    val challenge = statement.challenge
+    return LastDeviceRecoveryRequestDto(
+        recoveryPublicKey = Base64.encode(statement.recoveryPublicKey),
+        challengeId = Base64.encode(challenge.id.bytes),
+        challengeNonce = Base64.encode(challenge.nonce),
+        authEpoch = challenge.authEpoch,
+        expiresAt = challenge.expiresAt.toEpochMilliseconds(),
+        replacementPublicKey = Base64.encode(statement.replacementPublicKey),
+        recoverySignature = Base64.encode(recoverySignature),
+        proofOfPossession = Base64.encode(proofOfPossession),
+    )
+}

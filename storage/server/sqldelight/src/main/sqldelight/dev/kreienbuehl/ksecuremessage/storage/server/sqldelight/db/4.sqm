@@ -1,0 +1,31 @@
+-- Server schema version 4 to 5 (milestone 18): last-device recovery
+-- (docs/last-device-recovery.md). Adds the ID of the last-device recovery
+-- that installed a registration's current key, the per-user recovery public
+-- key and the per-device recovery challenge. Existing registrations get NULL
+-- (their key was not installed by a last-device recovery); no user has a
+-- recovery key and no device a challenge. No table is rebuilt: keys, epochs,
+-- installation times, recovery and rotation IDs, nonces, prekeys, one-time
+-- prekey tombstones, mailbox rows and the mailbox sequence stay as they are.
+ALTER TABLE device_registration ADD COLUMN last_device_recovery_id BLOB;
+
+CREATE TABLE last_device_recovery_key (
+    user_id TEXT NOT NULL PRIMARY KEY,
+    public_key BLOB NOT NULL,
+    registered_at INTEGER NOT NULL
+);
+
+CREATE TABLE last_device_recovery_challenge (
+    user_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    challenge_id BLOB NOT NULL UNIQUE,
+    challenge_nonce BLOB NOT NULL,
+    auth_epoch INTEGER NOT NULL,
+    auth_public_key BLOB NOT NULL,
+    issued_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, device_id)
+);
+
+CREATE INDEX last_device_recovery_challenge_expiry ON last_device_recovery_challenge (expires_at);
+
+UPDATE server_storage SET format = 5;

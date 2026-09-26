@@ -17,6 +17,7 @@ internal val SEALED_COLUMNS: List<Pair<String, String>> = listOf(
     "device_authentication_key" to "sealed_key_pair",
     "device_authentication_recovery_key" to "sealed_key_pair",
     "device_authentication_rotation_key" to "sealed_key_pair",
+    "device_authentication_last_device_recovery_key" to "sealed_key_pair",
     "signed_pre_key" to "sealed_key_pair",
     "one_time_pre_key" to "sealed_key_pair",
     "session" to "sealed_state",

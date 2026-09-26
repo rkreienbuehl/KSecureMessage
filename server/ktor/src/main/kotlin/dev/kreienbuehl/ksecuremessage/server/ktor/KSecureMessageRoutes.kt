@@ -10,9 +10,11 @@ import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
 import dev.kreienbuehl.ksecuremessage.server.DeviceAuthenticationException
 import dev.kreienbuehl.ksecuremessage.server.DeviceAuthenticationRotationException
 import dev.kreienbuehl.ksecuremessage.server.DeviceRecoveryException
+import dev.kreienbuehl.ksecuremessage.server.LastDeviceRecoveryException
 import dev.kreienbuehl.ksecuremessage.server.ProtectedEndpoint
 import dev.kreienbuehl.ksecuremessage.server.SecureMessageServer
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryKeyException
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyPublicationException
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -34,9 +36,12 @@ import kotlin.time.Instant
  * [SecureMessageServer]; authentication, validation, conflicts and atomicity
  * live behind it.
  *
- * Device recovery (docs/device-recovery.md) and routine device
- * authentication key rotation (docs/device-authentication-rotation.md) carry
- * their own two signatures in the body and no authentication headers.
+ * Device recovery (docs/device-recovery.md), routine device authentication
+ * key rotation (docs/device-authentication-rotation.md) and last-device
+ * recovery (docs/last-device-recovery.md) carry their own two signatures in
+ * the body and no authentication headers. Registering the last-device
+ * recovery key is ServerAuth-signed; issuing a last-device recovery challenge
+ * is public.
  *
  * Registration, prekey publication and mailbox drain are authenticated by
  * the device: the signature covers the exact body bytes, so those routes read
@@ -164,6 +169,77 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
         }
     }
 
+    // Last-device recovery key registration (docs/last-device-recovery.md):
+    // ServerAuth-signed by a registered device of the user; the body is
+    // authenticated before it is parsed.
+    put("/v1/devices/{user}/{device}/last-device-recovery/key") {
+        val address = call.deviceAddress()
+        val body = call.receive<ByteArray>()
+        val device = try {
+            server.authenticate(address, ProtectedEndpoint.REGISTER_LAST_DEVICE_RECOVERY_KEY, body, call.authentication())
+        } catch (e: DeviceAuthenticationException) {
+            return@put call.respondAuthenticationError(e)
+        } catch (e: Exception) {
+            return@put call.respondInternalError(e)
+        }
+        val registration = try {
+            Json.decodeFromString<LastDeviceRecoveryKeyRequest>(body.decodeToString()).toRegistration(address)
+        } catch (e: IllegalArgumentException) {
+            return@put call.respondError(HttpStatusCode.BadRequest, INVALID_RECOVERY_KEY)
+        }
+        try {
+            val created = server.registerLastDeviceRecoveryKey(device, registration)
+            call.application.log.info("Last-device recovery key of ${address.userId} registered by $address: ${if (created) "created" else "unchanged"}")
+            call.respond(if (created) HttpStatusCode.Created else HttpStatusCode.NoContent)
+        } catch (e: LastDeviceRecoveryException.InvalidKeyRegistration) {
+            call.respondError(HttpStatusCode.BadRequest, INVALID_RECOVERY_KEY)
+        } catch (e: LastDeviceRecoveryKeyException.Conflict) {
+            call.application.log.info("Last-device recovery key of ${address.userId} rejected: conflict")
+            call.respondError(HttpStatusCode.Conflict, "last_device_recovery_key_conflict")
+        } catch (e: Exception) {
+            call.respondInternalError(e)
+        }
+    }
+
+    // A last-device recovery challenge for the target (public). Returns the
+    // outstanding challenge while it is valid, so repeated requests never
+    // invalidate each other.
+    post("/v1/devices/{user}/{device}/last-device-recovery/challenge") {
+        val target = call.deviceAddress()
+        val challenge = try {
+            server.lastDeviceRecoveryChallenge(target)
+        } catch (e: LastDeviceRecoveryException) {
+            return@post call.respondLastDeviceRecoveryError(target, e)
+        } catch (e: Exception) {
+            return@post call.respondInternalError(e)
+        }
+        call.respond(challenge.toResponse())
+    }
+
+    // Last-device recovery (docs/last-device-recovery.md): not ServerAuth-signed.
+    // The body carries the offline recovery key's signature and the replacement
+    // key's proof of possession over the binary recovery statement, which
+    // binds the server-issued challenge; the server verifies both before
+    // anything is changed.
+    put("/v1/devices/{user}/{device}/last-device-recovery") {
+        val target = call.deviceAddress()
+        val authorization = try {
+            Json.decodeFromString<LastDeviceRecoveryRequestDto>(call.receive<ByteArray>().decodeToString()).toAuthorization(target)
+        } catch (e: IllegalArgumentException) {
+            // Malformed JSON (SerializationException), non-canonical Base64, sizes, epoch, expiry, same key.
+            return@put call.respondError(HttpStatusCode.BadRequest, INVALID_LAST_DEVICE_RECOVERY)
+        }
+        try {
+            val outcome = server.recoverLastDevice(target, authorization)
+            call.application.log.info("Last-device recovery of $target: ${outcome.name.lowercase()}")
+            call.respond(HttpStatusCode.NoContent)
+        } catch (e: LastDeviceRecoveryException) {
+            call.respondLastDeviceRecoveryError(target, e)
+        } catch (e: Exception) {
+            call.respondInternalError(e)
+        }
+    }
+
     put("/v1/devices/{user}/{device}/prekeys") {
         val address = call.deviceAddress()
         val body = call.receive<ByteArray>()
@@ -241,6 +317,25 @@ private const val INVALID_REGISTRATION = "invalid_registration"
 private const val INVALID_RECOVERY = "invalid_recovery"
 private const val INVALID_ROTATION = "invalid_device_auth_rotation"
 private const val EPOCH_EXHAUSTED = "device_auth_epoch_exhausted"
+private const val INVALID_RECOVERY_KEY = "invalid_last_device_recovery_key"
+private const val INVALID_LAST_DEVICE_RECOVERY = "invalid_last_device_recovery"
+
+/** Target address and the failure category only are logged: never keys, signatures, challenges or the body. */
+private suspend fun ApplicationCall.respondLastDeviceRecoveryError(target: DeviceAddress, e: LastDeviceRecoveryException) {
+    val (status, error) = when (e) {
+        is LastDeviceRecoveryException.InvalidRequest -> HttpStatusCode.BadRequest to INVALID_LAST_DEVICE_RECOVERY
+        is LastDeviceRecoveryException.InvalidKeyRegistration -> HttpStatusCode.BadRequest to INVALID_RECOVERY_KEY
+        is LastDeviceRecoveryException.NotConfigured -> HttpStatusCode.NotFound to "last_device_recovery_not_configured"
+        is LastDeviceRecoveryException.TargetNotRegistered -> HttpStatusCode.NotFound to "last_device_recovery_target_not_registered"
+        is LastDeviceRecoveryException.ChallengeInvalid -> HttpStatusCode.Unauthorized to "last_device_recovery_challenge_invalid"
+        is LastDeviceRecoveryException.Expired -> HttpStatusCode.Unauthorized to "last_device_recovery_expired"
+        is LastDeviceRecoveryException.InvalidProof -> HttpStatusCode.Unauthorized to "last_device_recovery_proof_invalid"
+        is LastDeviceRecoveryException.Conflict -> HttpStatusCode.Conflict to "last_device_recovery_conflict"
+        is LastDeviceRecoveryException.EpochExhausted -> HttpStatusCode.Conflict to EPOCH_EXHAUSTED
+    }
+    application.log.info("Last-device recovery of $target rejected: $error")
+    respondError(status, error)
+}
 
 private suspend fun ApplicationCall.respondError(status: HttpStatusCode, error: String) =
     respond(status, ErrorResponse(error))

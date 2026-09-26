@@ -119,6 +119,37 @@ class ClientRecordCipherTest {
     }
 
     @Test
+    fun deviceAuthenticationLastDeviceRecoveryKeyIsItsOwnRecordType() = runTest {
+        // Same plaintext layout as the other device authentication key records; only the record type differs.
+        val keyPair = DeviceAuthenticationKeyPair(bytes(1), bytes(2))
+        val lastDevice = cipher.sealDeviceAuthenticationLastDeviceRecoveryKey(keyPair)
+        val others = listOf(
+            cipher.sealDeviceAuthenticationKey(keyPair),
+            cipher.sealDeviceAuthenticationRecoveryKey(keyPair),
+            cipher.sealDeviceAuthenticationRotationKey(keyPair),
+        )
+        val opened = cipher.openDeviceAuthenticationLastDeviceRecoveryKey(lastDevice)
+        assertContentEquals(bytes(1), opened.publicKey)
+        assertContentEquals(bytes(2), opened.privateKey)
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openDeviceAuthenticationKey(lastDevice) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openDeviceAuthenticationRecoveryKey(lastDevice) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openDeviceAuthenticationRotationKey(lastDevice) }
+        for (other in others) {
+            assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openDeviceAuthenticationLastDeviceRecoveryKey(other) }
+        }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> {
+            cipher.openDeviceAuthenticationLastDeviceRecoveryKey(lastDevice.flipped(lastDevice.size - 1))
+        }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> {
+            ClientRecordCipher(testKey(1, 100)).openDeviceAuthenticationLastDeviceRecoveryKey(lastDevice)
+        }
+        val privateKey = ByteArray(32) { 0x5A }
+        assertFalse(
+            cipher.sealDeviceAuthenticationLastDeviceRecoveryKey(DeviceAuthenticationKeyPair(bytes(1), privateKey)).toHex().contains(privateKey.toHex()),
+        )
+    }
+
+    @Test
     fun sealedRecordsDoNotContainPlaintext() = runTest {
         val secret = "super-secret-pending-message".encodeToByteArray()
         val sealed = cipher.sealPendingFrame(BOB, m1, secret)

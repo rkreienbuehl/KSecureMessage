@@ -228,9 +228,18 @@ when (client.rotateDeviceAuthenticationKeyIfNeeded(policy)) { // only when the a
 }
 ```
 
+Milestone 18 done: last-device recovery with an offline recovery key. A user whose last usable device authentication key is gone (no other registered device for M14 recovery, no current key for M16 rotation) can still get a new key registered, with an offline Ed25519 recovery key registered in advance. `createLastDeviceRecoveryKey()` returns the key to the application only (43-character canonical Base64url text form, never stored by the library); `registerLastDeviceRecoveryKey(key)` sends only its public key, with a proof of possession, in a ServerAuth-signed request of a registered device of the user; the server keeps one recovery key per user and never replaces it (`409` for another key). To recover, `prepareLastDeviceRecovery()` creates a pending replacement key K2 (sealed at rest as record type 10, kept across restarts and storage key rotation, never pending together with a recovery or rotation key) and `completeLastDeviceRecovery(key)` fetches a public, server-issued, single-use challenge (16-byte ID, 32-byte nonce, current epoch, 5-minute expiry, one per device, persisted), signs a frozen binary statement (domains `KSecureMessage-LastDeviceRecovery-v1` / `-PoP-v1`: target, recovery public key, challenge ID and nonce, epoch, expiry, K2) with the recovery key and with K2, and submits it. The server verifies both with the **registered** recovery key, consumes the challenge and replaces the key by the shared compare-and-set in one transaction (epoch + 1, installation time = server now). An exact retry is recognized by its `LastDeviceRecoveryId`; a lost response is resolved by the K2 registration probe; stale, cross-user and competing recoveries are rejected, and races with M14 recovery and M16 rotation have one winner. Only server authentication changes: messaging identity, pins, verification, sessions, prekeys, tombstones, mailbox and pending/processed messages stay. The server stores only public keys, so its database cannot forge a recovery; whoever holds the offline key can recover the user's devices, and there is no recovery key rotation or revocation yet. Server schema version 5 (`4.sqm`), client schema version 12 (`11.sqm`). See [docs/last-device-recovery.md](docs/last-device-recovery.md).
+
+```kotlin
+val recoveryKey = client.createLastDeviceRecoveryKey()        // while healthy; back up recoveryKey.encode() offline
+client.registerLastDeviceRecoveryKey(recoveryKey)
+
+client.recoverLastDevice(LastDeviceRecoveryKey.decode(text)) // after every device-auth key is lost
+```
+
 ## Next implementation steps
 
-1. Account-level recovery for the last device (recovery key or code); a PostgreSQL server adapter if multi-node deployment is needed.
+1. Recovery key rotation and revocation for last-device recovery (replace a lost or compromised offline key, authorized by an authenticated device together with the current recovery key); a PostgreSQL server adapter if multi-node deployment is needed.
 2. An application commit boundary for received messages and bounded dedup retention.
 3. Sealed sender.
 

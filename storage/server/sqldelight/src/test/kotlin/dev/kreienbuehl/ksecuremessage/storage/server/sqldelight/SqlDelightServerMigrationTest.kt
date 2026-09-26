@@ -16,7 +16,13 @@ import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationId
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryId
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallengeId
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryId
 import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryChallengeIssue
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryChallengeRequest
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryReplacement
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryReplacementResult
 import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacement
 import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacementResult
 import dev.kreienbuehl.ksecuremessage.storage.RotationReplacement
@@ -29,6 +35,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -37,12 +44,14 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
 /**
- * Server schema version 1 (milestone 13), 2 (milestones 14/15, 1.sqm) and 3
- * (milestone 16, 2.sqm) to 4 (milestone 17, 3.sqm): every row is kept,
- * version 1 registrations get epoch 1 and no recovery ID, older
- * registrations get no rotation ID, every migrated registration gets its key
- * installation time once, from the clock of the first open, and the
- * migrated schema equals a new one.
+ * Server schema version 1 (milestone 13), 2 (milestones 14/15, 1.sqm), 3
+ * (milestone 16, 2.sqm) and 4 (milestone 17, 3.sqm) to 5 (milestone 18,
+ * 4.sqm): every row is kept, version 1 registrations get epoch 1 and no
+ * recovery ID, older registrations get no rotation ID, every migrated
+ * registration gets its key installation time once, from the clock of the
+ * first open, no registration gets a last-device recovery ID, the
+ * last-device recovery tables start empty, and the migrated schema equals a
+ * new one.
  */
 class SqlDelightServerMigrationTest {
     private val database = TempDatabase()
@@ -90,12 +99,13 @@ class SqlDelightServerMigrationTest {
     fun driverWithTheSchemaMigratesAndKeepsEveryRow() = runTest {
         val before = version1Database()
         val driver = open(SqlDelightServerStorage.Schema)
-        assertEquals(listOf(4L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(5L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
 
-        assertEquals(before - "device_registration" - "server_storage", after - "device_registration" - "server_storage")
-        assertEquals(listOf("0|4"), after.getValue("server_storage"))
-        assertEquals(before.getValue("device_registration").map { "$it|1|NULL|NULL|NULL" }, after.getValue("device_registration"))
+        assertEquals(before - "device_registration" - "server_storage" - NEW_TABLES, after - "device_registration" - "server_storage" - NEW_TABLES)
+        assertEquals(listOf("0|5"), after.getValue("server_storage"))
+        NEW_TABLES.forEach { assertEquals(emptyList(), after.getValue(it), it) }
+        assertEquals(before.getValue("device_registration").map { "$it|1|NULL|NULL|NULL|NULL" }, after.getValue("device_registration"))
 
         val storage = SqlDelightServerStorage.open(driver, clock = fixedClock(tMigration))
         val state = assertNotNull(storage.devices.registrationState(alice))
@@ -143,12 +153,13 @@ class SqlDelightServerMigrationTest {
     fun version2DatabaseMigratesAndKeepsEveryRow() = runTest {
         val before = version2Database()
         val driver = open(SqlDelightServerStorage.Schema)
-        assertEquals(listOf(4L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(5L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
 
-        assertEquals(before - "device_registration" - "server_storage", after - "device_registration" - "server_storage")
-        assertEquals(listOf("0|4"), after.getValue("server_storage"))
-        assertEquals(before.getValue("device_registration").map { "$it|NULL|NULL" }, after.getValue("device_registration"))
+        assertEquals(before - "device_registration" - "server_storage" - NEW_TABLES, after - "device_registration" - "server_storage" - NEW_TABLES)
+        assertEquals(listOf("0|5"), after.getValue("server_storage"))
+        NEW_TABLES.forEach { assertEquals(emptyList(), after.getValue(it), it) }
+        assertEquals(before.getValue("device_registration").map { "$it|NULL|NULL|NULL" }, after.getValue("device_registration"))
 
         val storage = SqlDelightServerStorage.open(driver, clock = fixedClock(tMigration))
         val recovered = assertNotNull(storage.devices.registrationState(laptop))
@@ -215,18 +226,19 @@ class SqlDelightServerMigrationTest {
     fun version3DatabaseMigratesAndStampsLegacyRegistrationsOnce() = runTest {
         val before = version3Database()
         val driver = open(SqlDelightServerStorage.Schema)
-        assertEquals(listOf(4L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(5L), driver.longs("PRAGMA user_version"))
         val migrated = driver.dump()
-        assertEquals(before - "device_registration" - "server_storage", migrated - "device_registration" - "server_storage")
-        assertEquals(listOf("0|4"), migrated.getValue("server_storage"))
-        assertEquals(before.getValue("device_registration").map { "$it|NULL" }, migrated.getValue("device_registration"), "SQL invents no time")
+        assertEquals(before - "device_registration" - "server_storage" - NEW_TABLES, migrated - "device_registration" - "server_storage" - NEW_TABLES)
+        assertEquals(listOf("0|5"), migrated.getValue("server_storage"))
+        NEW_TABLES.forEach { assertEquals(emptyList(), migrated.getValue(it), it) }
+        assertEquals(before.getValue("device_registration").map { "$it|NULL|NULL" }, migrated.getValue("device_registration"), "SQL invents no time")
 
         // The first open stamps every legacy registration with its clock's time, in one step.
         val storage = SqlDelightServerStorage.open(driver, clock = fixedClock(tMigration))
         val stamped = driver.dump()
         assertEquals(migrated - "device_registration", stamped - "device_registration", "stamping changes nothing else")
         assertEquals(
-            before.getValue("device_registration").map { "$it|${tMigration.toEpochMilliseconds()}" },
+            before.getValue("device_registration").map { "$it|${tMigration.toEpochMilliseconds()}|NULL" },
             stamped.getValue("device_registration"),
             "keys, epochs, recovery and rotation IDs unchanged",
         )
@@ -270,6 +282,124 @@ class SqlDelightServerMigrationTest {
         assertFailsWith<IllegalStateException> { SqlDelightServerStorage.open(driver) }
         SqlDelightServerStorage.Schema.migrate(driver, 3, SqlDelightServerStorage.Schema.version)
         assertEquals(tMigration, SqlDelightServerStorage.open(driver, clock = fixedClock(tMigration)).devices.registrationState(bob)?.authKeyInstalledAt)
+    }
+
+    /**
+     * A milestone 17 database: a row in every table, registrations from first
+     * registration, recovery and rotation, each with a key installation time,
+     * written through the version 4 schema.
+     */
+    private fun version4Database(): Map<String, List<String>> {
+        val old = open(ServerVersion4Schema)
+        old.exec("INSERT INTO device_registration VALUES ('alice', 'phone', ?, 1, NULL, NULL, ${t0.toEpochMilliseconds()})", key(1))
+        old.exec("INSERT INTO device_registration VALUES ('alice', 'laptop', ?, 3, ?, NULL, ${(t0 + 1.days).toEpochMilliseconds()})", key(2), ByteArray(32) { 4 })
+        old.exec("INSERT INTO device_registration VALUES ('bob', 'laptop', ?, 5, NULL, ?, ${(t0 + 2.days).toEpochMilliseconds()})", key(5), ByteArray(32) { 6 })
+        old.exec("INSERT INTO authentication_nonce VALUES ('alice', 'laptop', ?, ${t0.toEpochMilliseconds()})", ByteArray(16) { 9 })
+        old.exec("INSERT INTO device_prekey_state VALUES ('bob', 'laptop', ?, 1, ?, ?)", key(3), key(4), ByteArray(64) { 5 })
+        old.exec("INSERT INTO available_one_time_prekey VALUES ('bob', 'laptop', 2, ?)", key(6))
+        old.exec("INSERT INTO consumed_one_time_prekey VALUES ('bob', 'laptop', 1)")
+        for (sequence in 1..3) {
+            old.exec("INSERT INTO mailbox_message (sender_user_id, sender_device_id, recipient_user_id, recipient_device_id, envelope_id, protocol_version, payload) VALUES ('alice', 'phone', 'bob', 'laptop', 'm$sequence', 1, ?)", byteArrayOf(sequence.toByte()))
+        }
+        old.exec("DELETE FROM mailbox_message WHERE sequence = 3")
+        val before = old.dump()
+        old.close()
+        drivers -= old
+        return before
+    }
+
+    @Test
+    fun version4DatabaseMigratesAndKeepsEveryRow() = runTest {
+        val before = version4Database()
+        val driver = open(SqlDelightServerStorage.Schema)
+        assertEquals(listOf(5L), driver.longs("PRAGMA user_version"))
+        val migrated = driver.dump()
+        assertEquals(before - "device_registration" - "server_storage", migrated - "device_registration" - "server_storage" - NEW_TABLES)
+        assertEquals(listOf("0|5"), migrated.getValue("server_storage"))
+        NEW_TABLES.forEach { assertEquals(emptyList(), migrated.getValue(it), it) }
+        assertEquals(
+            before.getValue("device_registration").map { "$it|NULL" },
+            migrated.getValue("device_registration"),
+            "keys, epochs, installation times, recovery and rotation IDs unchanged",
+        )
+
+        // Opening changes nothing: every registration already has its installation time.
+        val storage = SqlDelightServerStorage.open(driver, clock = fixedClock(tMigration))
+        assertEquals(migrated, driver.dump())
+        val recovered = assertNotNull(storage.devices.registrationState(laptop))
+        assertEquals(3, recovered.authEpoch)
+        assertEquals(DeviceRecoveryId(ByteArray(32) { 4 }), recovered.recoveryId)
+        assertEquals(t0 + 1.days, recovered.authKeyInstalledAt)
+        assertNull(recovered.lastDeviceRecoveryId)
+        val rotated = assertNotNull(storage.devices.registrationState(bob))
+        assertEquals(DeviceAuthenticationRotationId(ByteArray(32) { 6 }), rotated.rotationId)
+        assertEquals(t0 + 2.days, rotated.authKeyInstalledAt)
+        assertFalse(storage.authenticationNonces.claim(laptop, ByteArray(16) { 9 }, t0, t0 - 5.minutes), "nonce kept")
+        assertEquals(1, storage.preKeys.oneTimePreKeyCount(bob))
+        storage.preKeys.publish(
+            PreKeyPublication(bob, key(3), PublicSignedPreKey(SignedPreKeyId(1), key(4), ByteArray(64) { 5 }), listOf(PublicOneTimePreKey(OneTimePreKeyId(1), key(7)))),
+        )
+        assertEquals(1, storage.preKeys.oneTimePreKeyCount(bob), "tombstone kept")
+        storage.mailboxes.enqueue(EncryptedEnvelope(MessageId("m4"), alice, bob, payload = byteArrayOf(4)))
+        assertEquals(listOf("m1", "m2", "m4"), storage.mailboxes.drain(bob).map { it.id.value })
+        assertEquals(listOf(4L), driver.longs("SELECT seq FROM sqlite_sequence WHERE name = 'mailbox_message'"), "sequence continues")
+
+        // A migrated registration can be recovered with a last-device recovery key.
+        assertTrue(storage.lastDeviceRecovery.registerRecoveryKey(alice.userId, key(20), tMigration))
+        val challenge = assertIs<LastDeviceRecoveryChallengeIssue.Issued>(
+            storage.lastDeviceRecovery.issueChallenge(
+                LastDeviceRecoveryChallengeRequest(laptop, LastDeviceRecoveryChallengeId(ByteArray(16) { 1 }), ByteArray(32) { 2 }, tMigration, tMigration + 5.minutes),
+            ),
+        ).challenge
+        assertEquals(3, challenge.challenge.authEpoch)
+        val id = LastDeviceRecoveryId(ByteArray(32) { 3 })
+        assertEquals(
+            LastDeviceRecoveryReplacementResult.REPLACED,
+            storage.devices.replaceForLastDeviceRecovery(
+                LastDeviceRecoveryReplacement(recovered, key(20), challenge.challenge.id, challenge.challenge.nonce, key(8), id, tMigration + 1.minutes),
+            ),
+        )
+        val replaced = assertNotNull(storage.devices.registrationState(laptop))
+        assertEquals(4, replaced.authEpoch)
+        assertEquals(id, replaced.lastDeviceRecoveryId)
+        assertNull(replaced.recoveryId)
+        assertEquals(tMigration + 1.minutes, replaced.authKeyInstalledAt)
+    }
+
+    @Test
+    fun explicitMigrationOfAVersion4DatabaseByTheHost() = runTest {
+        version4Database()
+        val driver = open(ServerVersion4Schema)
+        val e = assertFailsWith<IllegalStateException> { SqlDelightServerStorage.open(driver) }
+        assertTrue(e.message.orEmpty().contains("migrate"))
+        SqlDelightServerStorage.Schema.migrate(driver, 4, SqlDelightServerStorage.Schema.version)
+        assertEquals(5, SqlDelightServerStorage.open(driver).devices.registrationState(bob)?.authEpoch)
+    }
+
+    @Test
+    fun migratedVersion4SchemaEqualsNewSchema() {
+        version4Database()
+        val migrated = open(SqlDelightServerStorage.Schema)
+        val fresh = inMemoryDriver().also { drivers += it }
+        assertEquals(fresh.schemaShape(), migrated.schemaShape())
+        assertEquals(fresh.longs("PRAGMA user_version"), migrated.longs("PRAGMA user_version"))
+        assertEquals(fresh.dump().getValue("server_storage"), migrated.dump().getValue("server_storage"))
+    }
+
+    @Test
+    fun freshVersion4FixtureMatchesTheVersion4Schema() {
+        // The frozen fixture is what 3.sqm produced: a version 3 database migrated to 4 has its shape.
+        version3Database()
+        val migrated = open(ServerVersion3Schema)
+        SqlDelightServerStorage.Schema.migrate(migrated, 3, 4)
+        val fixtureDatabase = TempDatabase()
+        val fixture = JdbcSqliteDriver("jdbc:sqlite:${fixtureDatabase.path.toAbsolutePath()}", Properties(), ServerVersion4Schema)
+        try {
+            assertEquals(fixture.schemaShape(), migrated.schemaShape())
+        } finally {
+            fixture.close()
+            fixtureDatabase.close()
+        }
     }
 
     @Test
@@ -360,6 +490,11 @@ class SqlDelightServerMigrationTest {
         assertEquals(fresh.schemaShape(), migrated.schemaShape())
         assertEquals(fresh.longs("PRAGMA user_version"), migrated.longs("PRAGMA user_version"))
         assertEquals(fresh.dump().getValue("server_storage"), migrated.dump().getValue("server_storage"))
+    }
+
+    private companion object {
+        /** Tables added by 4.sqm; empty after every migration. */
+        val NEW_TABLES = listOf("last_device_recovery_key", "last_device_recovery_challenge")
     }
 
     @Test

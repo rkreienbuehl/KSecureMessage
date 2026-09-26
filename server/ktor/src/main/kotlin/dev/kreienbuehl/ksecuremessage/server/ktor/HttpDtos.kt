@@ -14,6 +14,11 @@ import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAutho
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationStatement
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryRequest
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallengeId
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryStatement
 import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
@@ -94,6 +99,45 @@ internal class DeviceAuthenticationRotationRequestDto(
 @Serializable
 internal class DeviceRegistrationStateResponse(val authEpoch: Long, val authKeyInstalledAt: Long)
 
+/**
+ * Body of `PUT /v1/devices/{user}/{device}/last-device-recovery/key`
+ * (docs/last-device-recovery.md): the recovery public key and its proof of
+ * possession. Registered for the path's user. Never a private key.
+ */
+@Serializable
+internal class LastDeviceRecoveryKeyRequest(val publicKey: String, val proofOfPossession: String)
+
+/**
+ * Body of the `200` response of
+ * `POST /v1/devices/{user}/{device}/last-device-recovery/challenge`.
+ * [expiresAt] is epoch milliseconds (server clock).
+ */
+@Serializable
+internal class LastDeviceRecoveryChallengeResponse(
+    val challengeId: String,
+    val challengeNonce: String,
+    val authEpoch: Long,
+    val expiresAt: Long,
+)
+
+/**
+ * Body of `PUT /v1/devices/{user}/{device}/last-device-recovery`
+ * (docs/last-device-recovery.md). The target is in the path; the challenge
+ * fields are the ones the server issued. The signatures cover the binary
+ * recovery statement, never this JSON.
+ */
+@Serializable
+internal class LastDeviceRecoveryRequestDto(
+    val recoveryPublicKey: String,
+    val challengeId: String,
+    val challengeNonce: String,
+    val authEpoch: Long,
+    val expiresAt: Long,
+    val replacementPublicKey: String,
+    val recoverySignature: String,
+    val proofOfPossession: String,
+)
+
 /** Body of 4xx responses. */
 @Serializable
 internal class ErrorResponse(val error: String)
@@ -147,6 +191,40 @@ internal fun DeviceAuthenticationRotationRequestDto.toAuthorization(address: Dev
         nonce = RequestNonce(decodeCanonicalBase64(nonce)),
     ),
     decodeCanonicalBase64(authorizationSignature),
+    decodeCanonicalBase64(proofOfPossession),
+)
+
+/** Throws [IllegalArgumentException] for non-canonical Base64 or wrong sizes. */
+internal fun LastDeviceRecoveryKeyRequest.toRegistration(address: DeviceAddress) = LastDeviceRecoveryKeyRegistration(
+    address.userId,
+    decodeCanonicalBase64(publicKey),
+    decodeCanonicalBase64(proofOfPossession),
+)
+
+internal fun LastDeviceRecoveryChallenge.toResponse() = LastDeviceRecoveryChallengeResponse(
+    challengeId = Base64.encode(id.bytes),
+    challengeNonce = Base64.encode(nonce),
+    authEpoch = authEpoch,
+    expiresAt = expiresAt.toEpochMilliseconds(),
+)
+
+/**
+ * Throws [IllegalArgumentException] for non-canonical Base64, wrong sizes, a
+ * non-positive epoch, a negative expiry, or the recovery key as replacement.
+ */
+internal fun LastDeviceRecoveryRequestDto.toAuthorization(target: DeviceAddress) = LastDeviceRecoveryAuthorization(
+    LastDeviceRecoveryStatement(
+        LastDeviceRecoveryChallenge(
+            target = target,
+            id = LastDeviceRecoveryChallengeId(decodeCanonicalBase64(challengeId)),
+            nonce = decodeCanonicalBase64(challengeNonce),
+            authEpoch = authEpoch,
+            expiresAt = Instant.fromEpochMilliseconds(expiresAt),
+        ),
+        recoveryPublicKey = decodeCanonicalBase64(recoveryPublicKey),
+        replacementPublicKey = decodeCanonicalBase64(replacementPublicKey),
+    ),
+    decodeCanonicalBase64(recoverySignature),
     decodeCanonicalBase64(proofOfPossession),
 )
 

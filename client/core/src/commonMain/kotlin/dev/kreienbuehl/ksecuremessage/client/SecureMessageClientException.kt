@@ -142,4 +142,23 @@ sealed class SecureMessageClientException(message: String, cause: Throwable? = n
 
     /** The pending rotation key changed while the rotation was submitted. Nothing was promoted. */
     class InvalidDeviceAuthenticationRotation(message: String) : SecureMessageClientException(message)
+
+    /**
+     * A device recovery or a routine rotation cannot start while a
+     * last-device recovery is pending (docs/last-device-recovery.md).
+     * Complete it, or resolve and then cancel it. Nothing was changed.
+     */
+    class LastDeviceRecoveryInProgress :
+        SecureMessageClientException("A last-device recovery is pending")
+
+    /** There is no pending last-device recovery: call [SecureMessageClient.prepareLastDeviceRecovery]. */
+    class NoPendingLastDeviceRecovery : SecureMessageClientException("No last-device recovery is pending")
+
+    /**
+     * A last-device recovery is not acceptable for this device
+     * (docs/last-device-recovery.md): the server issued a challenge for
+     * another device, or the pending key changed while the recovery was
+     * submitted. Nothing was promoted.
+     */
+    class InvalidLastDeviceRecovery(message: String) : SecureMessageClientException(message)
 }

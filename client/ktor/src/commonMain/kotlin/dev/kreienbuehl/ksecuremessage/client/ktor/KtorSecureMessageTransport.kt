@@ -3,8 +3,10 @@ package dev.kreienbuehl.ksecuremessage.client.ktor
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransport
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.AuthenticationFailure
+import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.LastDeviceRecoveryFailure
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.Reason
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RecoveryFailure
+import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RecoveryKeyFailure
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RotationFailure
 import dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
@@ -15,6 +17,9 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
 import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
 import io.ktor.client.HttpClient
@@ -121,6 +126,60 @@ class KtorSecureMessageTransport(
             else -> throw SecureMessageTransportException.UnexpectedResponse(response.status.value)
         }
         throw SecureMessageTransportException.DeviceAuthenticationRotationRejected(failure)
+    }
+
+    override suspend fun registerLastDeviceRecoveryKey(
+        address: DeviceAddress,
+        registration: LastDeviceRecoveryKeyRegistration,
+        signer: ServerRequestSigner,
+    ) {
+        val body = Json.encodeToString(registration.toRequest()).encodeToByteArray()
+        val response = authenticated(HttpMethod.Put, address, ServerApiPaths.LAST_DEVICE_RECOVERY_KEY, body, signer)
+        when {
+            response.status.isSuccess() -> Unit
+            response.status == HttpStatusCode.Conflict ->
+                throw SecureMessageTransportException.LastDeviceRecoveryKeyRejected(RecoveryKeyFailure.CONFLICT)
+            response.status == HttpStatusCode.BadRequest ->
+                throw SecureMessageTransportException.LastDeviceRecoveryKeyRejected(RecoveryKeyFailure.INVALID)
+            else -> throw response.unexpected()
+        }
+    }
+
+    override suspend fun lastDeviceRecoveryChallenge(target: DeviceAddress): LastDeviceRecoveryChallenge {
+        val response = client.request(baseUrl + ServerApiPaths.device(target, ServerApiPaths.LAST_DEVICE_RECOVERY_CHALLENGE)) {
+            method = HttpMethod.Post
+        }
+        if (response.status != HttpStatusCode.OK) throw response.lastDeviceRecoveryRejected()
+        return try {
+            response.body<LastDeviceRecoveryChallengeResponse>().toChallenge(target)
+        } catch (e: IllegalArgumentException) {
+            throw SecureMessageTransportException.UnexpectedResponse(response.status.value)
+        }
+    }
+
+    override suspend fun recoverLastDevice(authorization: LastDeviceRecoveryAuthorization) {
+        val target = authorization.statement.target
+        val body = Json.encodeToString(authorization.toRequest()).encodeToByteArray()
+        val response = client.request(baseUrl + ServerApiPaths.device(target, ServerApiPaths.LAST_DEVICE_RECOVERY)) {
+            method = HttpMethod.Put
+            setBody(ByteArrayContent(body, ContentType.Application.Json))
+        }
+        if (!response.status.isSuccess()) throw response.lastDeviceRecoveryRejected()
+    }
+
+    private suspend fun HttpResponse.lastDeviceRecoveryRejected(): SecureMessageTransportException {
+        val failure = when (runCatching { body<ErrorResponse>().error }.getOrNull()) {
+            "invalid_last_device_recovery" -> LastDeviceRecoveryFailure.INVALID_REQUEST
+            "last_device_recovery_not_configured" -> LastDeviceRecoveryFailure.NOT_CONFIGURED
+            "last_device_recovery_target_not_registered" -> LastDeviceRecoveryFailure.TARGET_NOT_REGISTERED
+            "last_device_recovery_challenge_invalid" -> LastDeviceRecoveryFailure.CHALLENGE_INVALID
+            "last_device_recovery_expired" -> LastDeviceRecoveryFailure.EXPIRED
+            "last_device_recovery_proof_invalid" -> LastDeviceRecoveryFailure.INVALID_PROOF
+            "last_device_recovery_conflict" -> LastDeviceRecoveryFailure.CONFLICT
+            "device_auth_epoch_exhausted" -> LastDeviceRecoveryFailure.EPOCH_EXHAUSTED
+            else -> return SecureMessageTransportException.UnexpectedResponse(status.value)
+        }
+        return SecureMessageTransportException.LastDeviceRecoveryRejected(failure)
     }
 
     override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) {

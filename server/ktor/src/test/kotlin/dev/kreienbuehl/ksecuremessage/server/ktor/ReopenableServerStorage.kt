@@ -6,8 +6,12 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
+import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.storage.AuthenticationNonceRepository
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationRepository
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryChallengeRequest
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryReplacement
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryRepository
 import dev.kreienbuehl.ksecuremessage.storage.MailboxRepository
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyRepository
 import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacement
@@ -66,10 +70,20 @@ internal class ReopenableServerStorage : ServerStorage, AutoCloseable {
         override suspend fun registrationState(address: DeviceAddress) = current.devices.registrationState(address)
         override suspend fun replaceForRecovery(replacement: RecoveryReplacement) = current.devices.replaceForRecovery(replacement)
         override suspend fun replaceForRotation(replacement: RotationReplacement) = current.devices.replaceForRotation(replacement)
+        override suspend fun replaceForLastDeviceRecovery(replacement: LastDeviceRecoveryReplacement) =
+            current.devices.replaceForLastDeviceRecovery(replacement)
     }
 
     override val authenticationNonces: AuthenticationNonceRepository = object : AuthenticationNonceRepository {
         override suspend fun claim(address: DeviceAddress, nonce: ByteArray, timestamp: Instant, pruneBefore: Instant) =
             current.authenticationNonces.claim(address, nonce, timestamp, pruneBefore)
+    }
+
+    override val lastDeviceRecovery: LastDeviceRecoveryRepository = object : LastDeviceRecoveryRepository {
+        override suspend fun recoveryKey(userId: UserId) = current.lastDeviceRecovery.recoveryKey(userId)
+        override suspend fun registerRecoveryKey(userId: UserId, publicKey: ByteArray, registeredAt: Instant) =
+            current.lastDeviceRecovery.registerRecoveryKey(userId, publicKey, registeredAt)
+        override suspend fun issueChallenge(request: LastDeviceRecoveryChallengeRequest) = current.lastDeviceRecovery.issueChallenge(request)
+        override suspend fun challenge(target: DeviceAddress) = current.lastDeviceRecovery.challenge(target)
     }
 }

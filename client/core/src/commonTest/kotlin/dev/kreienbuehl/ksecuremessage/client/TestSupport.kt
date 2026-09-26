@@ -16,6 +16,11 @@ import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotation
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecovery
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecovery
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallengeId
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
@@ -32,12 +37,18 @@ import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionInitiationStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryChallengeIssue
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryChallengeRequest
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryKeyException
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryReplacement
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryReplacementResult
 import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacement
 import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacementResult
 import dev.kreienbuehl.ksecuremessage.storage.RotationReplacement
 import dev.kreienbuehl.ksecuremessage.storage.RotationReplacementResult
 import dev.kreienbuehl.ksecuremessage.storage.server.inmemory.InMemoryServerStorage
 import kotlinx.coroutines.CompletableDeferred
+import kotlin.random.Random
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Instant
@@ -78,6 +89,16 @@ internal class FakeNetwork : SecureMessageTransport {
     override suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization) {
         rotations += authorization
     }
+
+    override suspend fun registerLastDeviceRecoveryKey(
+        address: DeviceAddress,
+        registration: LastDeviceRecoveryKeyRegistration,
+        signer: ServerRequestSigner,
+    ) = error("Not used with FakeNetwork")
+
+    override suspend fun lastDeviceRecoveryChallenge(target: DeviceAddress): LastDeviceRecoveryChallenge = error("Not used with FakeNetwork")
+
+    override suspend fun recoverLastDevice(authorization: LastDeviceRecoveryAuthorization) = error("Not used with FakeNetwork")
 
     /** Only records: these tests set [bundles] by hand, see [publish]. */
     override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) {
@@ -264,6 +285,99 @@ internal class ServerBackedNetwork(
         whileRotationResponsePending()
     }
 
+    /** Key registration: authenticated by the device, same user, valid proof of possession, never replaced. */
+    override suspend fun registerLastDeviceRecoveryKey(
+        address: DeviceAddress,
+        registration: LastDeviceRecoveryKeyRegistration,
+        signer: ServerRequestSigner,
+    ) {
+        beforeNetworkCall()
+        authenticate(address, "PUT", ServerApiPaths.LAST_DEVICE_RECOVERY_KEY, ByteArray(0), signer)
+        if (registration.userId != address.userId || !LastDeviceRecovery.verifyKeyRegistration(registration)) {
+            throw SecureMessageTransportException.LastDeviceRecoveryKeyRejected(SecureMessageTransportException.RecoveryKeyFailure.INVALID)
+        }
+        try {
+            server.lastDeviceRecovery.registerRecoveryKey(registration.userId, registration.publicKey, now())
+        } catch (e: LastDeviceRecoveryKeyException.Conflict) {
+            throw SecureMessageTransportException.LastDeviceRecoveryKeyRejected(SecureMessageTransportException.RecoveryKeyFailure.CONFLICT)
+        }
+    }
+
+    /** Runs after a challenge was issued, before the response: another transition or the clock can move meanwhile. */
+    var afterLastDeviceRecoveryChallenge: suspend () -> Unit = {}
+
+    /** Challenges requested, in order. */
+    val lastDeviceRecoveryChallenges = mutableListOf<LastDeviceRecoveryChallenge>()
+
+    override suspend fun lastDeviceRecoveryChallenge(target: DeviceAddress): LastDeviceRecoveryChallenge {
+        beforeNetworkCall()
+        val now = now()
+        val request = LastDeviceRecoveryChallengeRequest(
+            target, LastDeviceRecoveryChallengeId(Random.nextBytes(16)), Random.nextBytes(32), now, now + LastDeviceRecovery.CHALLENGE_LIFETIME,
+        )
+        val challenge = when (val issue = server.lastDeviceRecovery.issueChallenge(request)) {
+            is LastDeviceRecoveryChallengeIssue.Issued -> issue.challenge.challenge
+            LastDeviceRecoveryChallengeIssue.NotConfigured -> rejectLastDevice(SecureMessageTransportException.LastDeviceRecoveryFailure.NOT_CONFIGURED)
+            LastDeviceRecoveryChallengeIssue.NotRegistered ->
+                rejectLastDevice(SecureMessageTransportException.LastDeviceRecoveryFailure.TARGET_NOT_REGISTERED)
+        }
+        lastDeviceRecoveryChallenges += challenge
+        afterLastDeviceRecoveryChallenge()
+        return challenge
+    }
+
+    /** Last-device recovery requests that reached the server, in order. */
+    val lastDeviceRecoveryAttempts = mutableListOf<LastDeviceRecoveryAuthorization>()
+
+    /**
+     * Runs after the server committed a last-device recovery (or recognized
+     * a retry), before the response: throwing here stands for a lost response.
+     */
+    var afterLastDeviceRecovery: () -> Unit = {}
+
+    private fun rejectLastDevice(failure: SecureMessageTransportException.LastDeviceRecoveryFailure): Nothing =
+        throw SecureMessageTransportException.LastDeviceRecoveryRejected(failure)
+
+    /**
+     * The checks of server:core's last-device recovery: the user's registered
+     * recovery key, registered target, exact retry, both proofs, then the
+     * atomic challenge consumption and replacement (which checks the
+     * challenge and its expiry against the server clock).
+     */
+    override suspend fun recoverLastDevice(authorization: LastDeviceRecoveryAuthorization) {
+        beforeNetworkCall()
+        lastDeviceRecoveryAttempts += authorization
+        val statement = authorization.statement
+        val target = statement.target
+        val recoveryKey = server.lastDeviceRecovery.recoveryKey(target.userId)
+            ?: rejectLastDevice(SecureMessageTransportException.LastDeviceRecoveryFailure.NOT_CONFIGURED)
+        if (!recoveryKey.contentEquals(statement.recoveryPublicKey)) {
+            rejectLastDevice(SecureMessageTransportException.LastDeviceRecoveryFailure.INVALID_PROOF)
+        }
+        val state = server.devices.registrationState(target)
+            ?: rejectLastDevice(SecureMessageTransportException.LastDeviceRecoveryFailure.TARGET_NOT_REGISTERED)
+        if (!LastDeviceRecovery.verifyRecoverySignature(recoveryKey, authorization) || !LastDeviceRecovery.verifyProofOfPossession(authorization)) {
+            rejectLastDevice(SecureMessageTransportException.LastDeviceRecoveryFailure.INVALID_PROOF)
+        }
+        val id = LastDeviceRecovery.recoveryId(statement)
+        val result = server.devices.replaceForLastDeviceRecovery(
+            LastDeviceRecoveryReplacement(state, recoveryKey, statement.challenge.id, statement.challenge.nonce, statement.replacementPublicKey, id, now()),
+        )
+        when (result) {
+            LastDeviceRecoveryReplacementResult.REPLACED, LastDeviceRecoveryReplacementResult.ALREADY_APPLIED -> Unit
+            LastDeviceRecoveryReplacementResult.NOT_REGISTERED ->
+                rejectLastDevice(SecureMessageTransportException.LastDeviceRecoveryFailure.TARGET_NOT_REGISTERED)
+            LastDeviceRecoveryReplacementResult.NOT_CONFIGURED -> rejectLastDevice(SecureMessageTransportException.LastDeviceRecoveryFailure.NOT_CONFIGURED)
+            LastDeviceRecoveryReplacementResult.CHALLENGE_INVALID ->
+                rejectLastDevice(SecureMessageTransportException.LastDeviceRecoveryFailure.CHALLENGE_INVALID)
+            LastDeviceRecoveryReplacementResult.EXPIRED -> rejectLastDevice(SecureMessageTransportException.LastDeviceRecoveryFailure.EXPIRED)
+            LastDeviceRecoveryReplacementResult.CONFLICT -> rejectLastDevice(SecureMessageTransportException.LastDeviceRecoveryFailure.CONFLICT)
+            LastDeviceRecoveryReplacementResult.EPOCH_EXHAUSTED ->
+                rejectLastDevice(SecureMessageTransportException.LastDeviceRecoveryFailure.EPOCH_EXHAUSTED)
+        }
+        afterLastDeviceRecovery()
+    }
+
     override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) {
         beforeNetworkCall()
         authenticate(publication.address, "PUT", ServerApiPaths.PRE_KEYS, ByteArray(0), signer)
@@ -356,6 +470,8 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
     var failRecoveryKeyPromotion = false
     var failPendingRotationKeyStore = false
     var failRotationKeyPromotion = false
+    var failPendingLastDeviceRecoveryKeyStore = false
+    var failLastDeviceRecoveryKeyPromotion = false
     var failSignedPreKeyRemoval = false
     var failLegacyStamp = false
     var failPendingStore = false
@@ -404,6 +520,16 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
             override suspend fun promotePendingRotationKeyPair() {
                 if (failRotationKeyPromotion) throw StorageFailure()
                 tx.deviceAuthentication.promotePendingRotationKeyPair()
+            }
+
+            override suspend fun storePendingLastDeviceRecoveryKeyPair(keyPair: DeviceAuthenticationKeyPair) {
+                if (failPendingLastDeviceRecoveryKeyStore) throw StorageFailure()
+                tx.deviceAuthentication.storePendingLastDeviceRecoveryKeyPair(keyPair)
+            }
+
+            override suspend fun promotePendingLastDeviceRecoveryKeyPair() {
+                if (failLastDeviceRecoveryKeyPromotion) throw StorageFailure()
+                tx.deviceAuthentication.promotePendingLastDeviceRecoveryKeyPair()
             }
         }
 

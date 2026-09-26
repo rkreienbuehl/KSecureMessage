@@ -35,6 +35,7 @@ private val AUTH_TABLES = setOf(
     "device_authentication_state",
     "device_authentication_recovery_key",
     "device_authentication_rotation_key",
+    "device_authentication_last_device_recovery_key",
 )
 
 /**
@@ -75,6 +76,7 @@ class DeviceAuthenticationStorageTest {
         driver.exec("DROP TABLE device_authentication_state")
         driver.exec("DROP TABLE device_authentication_recovery_key")
         driver.exec("DROP TABLE device_authentication_rotation_key")
+        driver.exec("DROP TABLE device_authentication_last_device_recovery_key")
         driver.exec("ALTER TABLE remote_identity DROP COLUMN verification")
         driver.exec("PRAGMA user_version = 7")
     }
@@ -132,7 +134,7 @@ class DeviceAuthenticationStorageTest {
         database.closeOpenDrivers()
 
         val storage = reopen()
-        assertEquals(listOf(11L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(12L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
         assertEquals(before.withUnverifiedPins(), after - AUTH_TABLES, "no existing row changes")
         assertEquals(emptyList(), after.getValue("device_authentication_key"), "SQL creates no key material")

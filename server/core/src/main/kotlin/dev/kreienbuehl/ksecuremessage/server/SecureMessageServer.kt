@@ -8,9 +8,13 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
 import dev.kreienbuehl.ksecuremessage.protocol.RequestAuthentication
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryKeyException
 import dev.kreienbuehl.ksecuremessage.storage.MailboxRepository
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyPublicationException
 import dev.kreienbuehl.ksecuremessage.storage.ServerStorage
@@ -37,6 +41,7 @@ class SecureMessageServer(
     private val authenticator = DeviceAuthenticator(storage.devices, storage.authenticationNonces, clock)
     private val recovery = DeviceRecoveryService(storage.devices, clock)
     private val rotation = DeviceAuthenticationRotationService(storage.devices, clock)
+    private val lastDeviceRecovery = LastDeviceRecoveryService(storage.devices, storage.lastDeviceRecovery, clock)
 
     /**
      * Registers the device authentication key of [registration]'s address.
@@ -55,8 +60,8 @@ class SecureMessageServer(
      *
      * First registration is trust on first registration: whoever registers
      * an unregistered address first owns it. There is no reset; only
-     * [recoverDevice] and [rotateDeviceAuthenticationKey] replace a
-     * registered key.
+     * [recoverDevice], [rotateDeviceAuthenticationKey] and [recoverLastDevice]
+     * replace a registered key.
      */
     suspend fun registerDevice(
         registration: DeviceRegistration,
@@ -103,6 +108,44 @@ class SecureMessageServer(
         address: DeviceAddress,
         authorization: DeviceAuthenticationRotationAuthorization,
     ): DeviceAuthenticationRotationOutcome = rotation.rotate(address, authorization)
+
+    /**
+     * Registers [registration]'s public key as the last-device recovery key
+     * of the authenticated [device]'s user (docs/last-device-recovery.md).
+     * Returns `true` if it was stored, `false` if exactly this key was
+     * registered before. Throws [LastDeviceRecoveryException.InvalidKeyRegistration]
+     * if the registration is for another user or its proof of possession
+     * does not verify, and [LastDeviceRecoveryKeyException.Conflict] if the
+     * user has another recovery key: a recovery key is never replaced.
+     */
+    suspend fun registerLastDeviceRecoveryKey(device: AuthenticatedDevice, registration: LastDeviceRecoveryKeyRegistration): Boolean =
+        lastDeviceRecovery.registerKey(device, registration)
+
+    /**
+     * The challenge for recovering [target] with its user's last-device
+     * recovery key: the target's outstanding challenge while it is valid for
+     * the current registration, else a new random one valid for
+     * [dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecovery.CHALLENGE_LIFETIME].
+     * Public. Throws [LastDeviceRecoveryException.TargetNotRegistered] or
+     * [LastDeviceRecoveryException.NotConfigured].
+     */
+    suspend fun lastDeviceRecoveryChallenge(target: DeviceAddress): LastDeviceRecoveryChallenge =
+        lastDeviceRecovery.issueChallenge(target)
+
+    /**
+     * Replaces [address]'s registered device authentication key with the
+     * statement's replacement key, authorized by the user's offline recovery
+     * key over the server-issued challenge and proven by the replacement key
+     * (docs/last-device-recovery.md). Consumes the challenge. Throws
+     * [LastDeviceRecoveryException] and changes nothing if any check fails.
+     *
+     * From the moment this returns [LastDeviceRecoveryOutcome.REPLACED], only
+     * the replacement key authenticates the device and the epoch is one
+     * higher. The messaging identity, prekeys and mailbox are not touched. A
+     * retry of the same recovery returns [LastDeviceRecoveryOutcome.ALREADY_APPLIED].
+     */
+    suspend fun recoverLastDevice(address: DeviceAddress, authorization: LastDeviceRecoveryAuthorization): LastDeviceRecoveryOutcome =
+        lastDeviceRecovery.recover(address, authorization)
 
     /**
      * The authenticated [device]'s registration metadata: its current

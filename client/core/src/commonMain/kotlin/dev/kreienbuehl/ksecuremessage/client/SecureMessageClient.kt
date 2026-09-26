@@ -19,6 +19,8 @@ import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecovery
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryCodec
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryRequest
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecovery
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.PreKeyFormat
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolEngine
@@ -155,9 +157,10 @@ class SecureMessageClient(
     private val sendMutex = Mutex()
 
     /**
-     * Serializes this instance's routine rotation steps, so that concurrent
-     * calls never race two submissions of one pending key
-     * (docs/device-authentication-rotation.md). Independent of [sendMutex].
+     * Serializes this instance's routine rotation and last-device recovery
+     * steps, so that concurrent calls never race two submissions of one
+     * pending key (docs/device-authentication-rotation.md,
+     * docs/last-device-recovery.md). Independent of [sendMutex].
      * Public rotation functions take it once and call the `…Locked`
      * variants, because it is not reentrant.
      */
@@ -221,7 +224,9 @@ class SecureMessageClient(
      * [SecureMessageClientException.InvalidDeviceRecovery] if [authorizer] is
      * this device or belongs to another user, and
      * [SecureMessageClientException.DeviceAuthenticationRotationInProgress]
-     * while a routine rotation is pending.
+     * while a routine rotation is pending and
+     * [SecureMessageClientException.LastDeviceRecoveryInProgress] while a
+     * last-device recovery is pending.
      */
     suspend fun prepareDeviceAuthenticationRecovery(authorizer: DeviceAddress): DeviceRecoveryRequest {
         if (authorizer == localAddress) throw SecureMessageClientException.InvalidDeviceRecovery("A device cannot authorize its own recovery")
@@ -233,6 +238,10 @@ class SecureMessageClient(
             deviceAuthentication.pendingRotationKeyPair()?.let {
                 it.privateKey.fill(0)
                 throw SecureMessageClientException.DeviceAuthenticationRotationInProgress()
+            }
+            deviceAuthentication.pendingLastDeviceRecoveryKeyPair()?.let {
+                it.privateKey.fill(0)
+                throw SecureMessageClientException.LastDeviceRecoveryInProgress()
             }
             deviceAuthentication.pendingRecoveryKeyPair()
                 ?: protocol.createDeviceAuthenticationKey().also { deviceAuthentication.storePendingRecoveryKeyPair(it) }
@@ -366,8 +375,10 @@ class SecureMessageClient(
      * the local identity and K1 ([SecureMessageClientException.NotInitialized]
      * if either is missing); throws
      * [SecureMessageClientException.DeviceAuthenticationRecoveryInProgress]
-     * while a device recovery is pending. A device that lost K1 uses device
-     * recovery instead (docs/device-recovery.md).
+     * while a device recovery is pending and
+     * [SecureMessageClientException.LastDeviceRecoveryInProgress] while a
+     * last-device recovery is pending. A device that lost K1 uses device
+     * recovery instead (docs/device-recovery.md, docs/last-device-recovery.md).
      */
     suspend fun prepareDeviceAuthenticationRotation() {
         deviceAuthenticationMutex.withLock { prepareRotationLocked() }
@@ -379,6 +390,10 @@ class SecureMessageClient(
             deviceAuthentication.pendingRecoveryKeyPair()?.let {
                 it.privateKey.fill(0)
                 throw SecureMessageClientException.DeviceAuthenticationRecoveryInProgress()
+            }
+            deviceAuthentication.pendingLastDeviceRecoveryKeyPair()?.let {
+                it.privateKey.fill(0)
+                throw SecureMessageClientException.LastDeviceRecoveryInProgress()
             }
             val pending = deviceAuthentication.pendingRotationKeyPair()
                 ?: protocol.createDeviceAuthenticationKey().also { deviceAuthentication.storePendingRotationKeyPair(it) }
@@ -467,7 +482,9 @@ class SecureMessageClient(
      * the server time the registered key was installed at, read from the
      * server with a request signed by the active key (never cached, never
      * stored locally), the key's age by this client's clock (clamped at
-     * zero), and whether a rotation or recovery key is pending locally.
+     * zero), and whether a rotation or recovery key is pending locally
+     * ([DeviceAuthenticationRotationStatus.pendingRecovery] covers device
+     * recovery and last-device recovery).
      * Changes nothing. Throws [SecureMessageClientException.NotInitialized]
      * without an active key and
      * [SecureMessageTransportException.AuthenticationFailed] if the active
@@ -511,7 +528,7 @@ class SecureMessageClient(
      * (docs/device-authentication-rotation.md). Only runs when the
      * application calls it: nothing in the library calls it implicitly.
      *
-     * - A pending device recovery: returns
+     * - A pending device recovery or last-device recovery: returns
      *   [DeviceAuthenticationRotationResult.RecoveryInProgress], starts nothing.
      * - A pending routine rotation: completes it with its existing key
      *   (including the lost-response resolution of
@@ -543,11 +560,16 @@ class SecureMessageClient(
 
     private class AuthenticationTransitions(val rotation: Boolean, val recovery: Boolean)
 
-    /** Which device authentication transitions are pending locally. Wipes the loaded private keys. */
+    /**
+     * Which device authentication transitions are pending locally; `recovery`
+     * covers device recovery and last-device recovery. Wipes the loaded
+     * private keys.
+     */
     private suspend fun ClientStorage.localAuthenticationTransitions(): AuthenticationTransitions {
         val rotation = deviceAuthentication.pendingRotationKeyPair()?.also { it.privateKey.fill(0) } != null
         val recovery = deviceAuthentication.pendingRecoveryKeyPair()?.also { it.privateKey.fill(0) } != null
-        return AuthenticationTransitions(rotation, recovery)
+        val lastDevice = deviceAuthentication.pendingLastDeviceRecoveryKeyPair()?.also { it.privateKey.fill(0) } != null
+        return AuthenticationTransitions(rotation, recovery || lastDevice)
     }
 
     /**
@@ -601,6 +623,173 @@ class SecureMessageClient(
             throw SecureMessageClientException.InvalidDeviceAuthenticationRotation("The pending rotation key changed")
         }
         deviceAuthentication.promotePendingRotationKeyPair()
+    }
+
+    /**
+     * Creates a new offline last-device recovery key for this user
+     * (docs/last-device-recovery.md). Returns it to the application and
+     * stores nothing: the application backs it up offline (for example
+     * [LastDeviceRecoveryKey.encode] printed or in a password manager) and
+     * registers it with [registerLastDeviceRecoveryKey]. Whoever holds it can
+     * replace the server authentication key of every registered device of
+     * the user. No network I/O.
+     */
+    suspend fun createLastDeviceRecoveryKey(): LastDeviceRecoveryKey = protocol.createLastDeviceRecoveryKey()
+
+    /**
+     * Registers [key]'s public key as this user's last-device recovery key,
+     * in a request signed with this device's active device authentication
+     * key and with the recovery key's proof of possession. Only the public
+     * key is sent. Registering the same key again is harmless; the server
+     * never replaces a registered recovery key
+     * ([SecureMessageTransportException.LastDeviceRecoveryKeyRejected] with
+     * `CONFLICT`). Never called implicitly. Throws
+     * [SecureMessageClientException.NotInitialized] without an active key.
+     */
+    suspend fun registerLastDeviceRecoveryKey(key: LastDeviceRecoveryKey) {
+        val registration = LastDeviceRecovery.registerKey(key, localAddress.userId)
+        withRequestSigner { _, signer -> transport.registerLastDeviceRecoveryKey(localAddress, registration, signer) }
+    }
+
+    /**
+     * Starts or resumes a last-device recovery of this device
+     * (docs/last-device-recovery.md): for a device whose registered device
+     * authentication key is lost when no other registered device of the
+     * user can authorize a device recovery. Creates the replacement key pair
+     * once and keeps it as pending last-device recovery key, sealed at rest;
+     * later calls reuse it until the recovery completes or is cancelled. The
+     * active key (if any) is not touched. No network I/O: call
+     * [completeLastDeviceRecovery] with the offline recovery key.
+     *
+     * Recovers server authentication only. Needs the local messaging identity
+     * ([SecureMessageClientException.NotInitialized]); throws
+     * [SecureMessageClientException.DeviceAuthenticationRecoveryInProgress]
+     * or [SecureMessageClientException.DeviceAuthenticationRotationInProgress]
+     * while another transition is pending.
+     */
+    suspend fun prepareLastDeviceRecovery() {
+        deviceAuthenticationMutex.withLock { prepareLastDeviceRecoveryLocked() }
+    }
+
+    private suspend fun prepareLastDeviceRecoveryLocked() {
+        storage.transaction {
+            requireIdentity()
+            deviceAuthentication.pendingRecoveryKeyPair()?.let {
+                it.privateKey.fill(0)
+                throw SecureMessageClientException.DeviceAuthenticationRecoveryInProgress()
+            }
+            deviceAuthentication.pendingRotationKeyPair()?.let {
+                it.privateKey.fill(0)
+                throw SecureMessageClientException.DeviceAuthenticationRotationInProgress()
+            }
+            val pending = deviceAuthentication.pendingLastDeviceRecoveryKeyPair()
+                ?: protocol.createDeviceAuthenticationKey().also { deviceAuthentication.storePendingLastDeviceRecoveryKeyPair(it) }
+            pending.privateKey.fill(0)
+        }
+    }
+
+    /**
+     * Recovers this device's server authentication with the offline
+     * [recoveryKey] (docs/last-device-recovery.md): requests a challenge from
+     * the server, signs it together with the pending replacement key (with
+     * [recoveryKey] and, as proof of possession, with the replacement key),
+     * submits it, and once the server replaced the registered key makes the
+     * pending key the active device authentication key. [recoveryKey] is
+     * used only in memory and never stored.
+     *
+     * Safe to call again after a failure, a lost response or a crash before
+     * the local promotion: if the server rejects the recovery as conflicting,
+     * expired or for an invalid challenge, this asks the server whether the
+     * pending key is registered already ([resolveLastDeviceRecovery]) before
+     * failing. Other failures keep the pending key for another attempt.
+     * Throws [SecureMessageClientException.NoPendingLastDeviceRecovery],
+     * [SecureMessageClientException.InvalidLastDeviceRecovery] and
+     * [SecureMessageTransportException.LastDeviceRecoveryRejected].
+     */
+    suspend fun completeLastDeviceRecovery(recoveryKey: LastDeviceRecoveryKey) {
+        deviceAuthenticationMutex.withLock { completeLastDeviceRecoveryLocked(recoveryKey) }
+    }
+
+    /** [prepareLastDeviceRecovery] followed by [completeLastDeviceRecovery]. Resumes a pending recovery with its existing key. */
+    suspend fun recoverLastDevice(recoveryKey: LastDeviceRecoveryKey) {
+        deviceAuthenticationMutex.withLock {
+            prepareLastDeviceRecoveryLocked()
+            completeLastDeviceRecoveryLocked(recoveryKey)
+        }
+    }
+
+    private suspend fun completeLastDeviceRecoveryLocked(recoveryKey: LastDeviceRecoveryKey) {
+        val pending = storage.transaction { deviceAuthentication.pendingLastDeviceRecoveryKeyPair() }
+            ?: throw SecureMessageClientException.NoPendingLastDeviceRecovery()
+        val replacementKey = pending.publicKey
+        try {
+            val challenge = transport.lastDeviceRecoveryChallenge(localAddress)
+            if (challenge.target != localAddress) {
+                throw SecureMessageClientException.InvalidLastDeviceRecovery("The challenge is for another device")
+            }
+            val authorization = LastDeviceRecovery.authorize(recoveryKey, pending, challenge)
+            try {
+                transport.recoverLastDevice(authorization)
+            } catch (e: SecureMessageTransportException.LastDeviceRecoveryRejected) {
+                // A lost response, or an earlier attempt that won: the key may be registered already.
+                if (e.reason in RESOLVABLE_LAST_DEVICE_RECOVERY_FAILURES && resolveLastDeviceRecoveryLocked()) return
+                throw e
+            }
+        } finally {
+            pending.privateKey.fill(0)
+        }
+        promotePendingLastDeviceRecoveryKey(replacementKey)
+    }
+
+    /**
+     * Asks the server whether this device's pending last-device recovery
+     * key is its registered key, with a registration request signed by that
+     * key (a registration of exactly the registered key changes nothing). If
+     * it is, makes it the active key and returns `true`; if the server holds
+     * another key, returns `false` and keeps the pending key. Throws
+     * [SecureMessageClientException.NoPendingLastDeviceRecovery].
+     */
+    suspend fun resolveLastDeviceRecovery(): Boolean =
+        deviceAuthenticationMutex.withLock { resolveLastDeviceRecoveryLocked() }
+
+    private suspend fun resolveLastDeviceRecoveryLocked(): Boolean {
+        val pending = storage.transaction { deviceAuthentication.pendingLastDeviceRecoveryKeyPair() }
+            ?: throw SecureMessageClientException.NoPendingLastDeviceRecovery()
+        val publicKey = pending.publicKey
+        if (!probeRegistration(pending)) return false
+        promotePendingLastDeviceRecoveryKey(publicKey)
+        return true
+    }
+
+    /**
+     * Deletes the pending last-device recovery key; the active key and the
+     * other slots are not touched. Only for a recovery that will not be
+     * completed: call [resolveLastDeviceRecovery] first, because if the
+     * server already accepted it, the device has to be recovered again.
+     */
+    suspend fun cancelLastDeviceRecovery() {
+        deviceAuthenticationMutex.withLock {
+            storage.transaction { deviceAuthentication.removePendingLastDeviceRecoveryKeyPair() }
+        }
+    }
+
+    /**
+     * Promotes the pending last-device recovery key only if it is still the
+     * one the server accepted. If another client instance on the same storage
+     * promoted exactly this key already, there is nothing left to do.
+     */
+    private suspend fun promotePendingLastDeviceRecoveryKey(publicKey: ByteArray) = storage.transaction {
+        val pending = deviceAuthentication.pendingLastDeviceRecoveryKeyPair()
+        if (pending == null) {
+            val active = deviceAuthentication.keyPair()?.also { it.privateKey.fill(0) }
+            if (active != null && active.publicKey.contentEquals(publicKey)) return@transaction
+            throw SecureMessageClientException.NoPendingLastDeviceRecovery()
+        }
+        pending.privateKey.fill(0)
+        if (!pending.publicKey.contentEquals(publicKey)) {
+            throw SecureMessageClientException.InvalidLastDeviceRecovery("The pending last-device recovery key changed")
+        }
+        deviceAuthentication.promotePendingLastDeviceRecoveryKeyPair()
     }
 
     /** Promotes the pending key only if it is still the one the server accepted. */
@@ -1333,6 +1522,13 @@ class SecureMessageClient(
             SecureMessageTransportException.RecoveryFailure.CONFLICT,
             SecureMessageTransportException.RecoveryFailure.EXPIRED,
             SecureMessageTransportException.RecoveryFailure.REPLAY,
+        )
+
+        /** Last-device recovery rejections after which the pending key may be registered already. */
+        private val RESOLVABLE_LAST_DEVICE_RECOVERY_FAILURES = setOf(
+            SecureMessageTransportException.LastDeviceRecoveryFailure.CONFLICT,
+            SecureMessageTransportException.LastDeviceRecoveryFailure.EXPIRED,
+            SecureMessageTransportException.LastDeviceRecoveryFailure.CHALLENGE_INVALID,
         )
 
         /** Rotation rejections after which the pending key may be registered already. */

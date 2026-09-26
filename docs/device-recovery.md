@@ -77,8 +77,11 @@ registration stays trust on first registration.
 **Single-device limitation.** A user with only one registered device has no
 recovery path in M14 if that device loses its key. That is intentional:
 without another device there is nothing to authorize the replacement, and
-M14 does not weaken authentication to cover this case. Account-level or
-offline recovery (recovery keys, codes) can address it in a later milestone.
+M14 does not weaken authentication to cover this case. Milestone 18 adds a
+separate path for that case: last-device recovery with an offline recovery
+key the user registered beforehand (docs/last-device-recovery.md). It has
+its own domains, endpoints, challenge and pending-key slot; M14's formats
+and semantics are unchanged.
 
 ## Protocol
 
@@ -287,7 +290,10 @@ A pending recovery key and a pending routine rotation key (M16) never exist
 together: `prepareDeviceAuthenticationRecovery` throws
 `DeviceAuthenticationRotationInProgress` while a rotation is pending (resolve
 it first, then cancel it), and a rotation cannot start while a recovery is
-pending.
+pending. The same holds for the pending last-device recovery key (M18):
+`prepareDeviceAuthenticationRecovery` throws `LastDeviceRecoveryInProgress`
+while one is pending. A recovery also clears a `last_device_recovery_id`
+on the server.
 
 - The pending key is persisted before anything is sent, sealed at rest in
   `storage:client:sqldelight` (record type 8, table
@@ -390,8 +396,10 @@ laptop.receive()
 
 ## Limitations
 
-- Recovery needs another registered device of the same user; losing the only
-  (or last) device's key is not recoverable.
+- Recovery needs another registered device of the same user; for losing the
+  only (or last) device's key see last-device recovery (M18,
+  docs/last-device-recovery.md), which needs a recovery key registered in
+  advance.
 - Whoever controls another registered device of the user (a compromised or
   stolen device) can recover, and so take over, the user's other devices'
   server authentication. There is no human or account ownership proof.

@@ -187,12 +187,13 @@ the epoch unchanged; an idempotent retry does not increment it again.
 ### Transition metadata
 
 `device_registration` keeps the ID of the transition that installed the
-current key in one of two columns: `recovery_id` (a `DeviceRecoveryId`) or
-`rotation_id` (a `DeviceAuthenticationRotationId`); at most one is set, both
-are `NULL` after first registration. A recovery sets `recovery_id` and
-clears `rotation_id`, a rotation the reverse. The two ID kinds never match
-each other, so an older rotation or recovery is never mistaken for the one
-that is applied.
+current key in one of three columns: `recovery_id` (a `DeviceRecoveryId`),
+`rotation_id` (a `DeviceAuthenticationRotationId`) or, since milestone 18,
+`last_device_recovery_id` (a `LastDeviceRecoveryId`,
+docs/last-device-recovery.md); at most one is set, all are `NULL` after
+first registration. Each transition sets its own column and clears the
+other two. The ID kinds never match each other, so an older rotation or
+recovery is never mistaken for the one that is applied.
 
 ### Stale transitions
 
@@ -224,11 +225,18 @@ recovery is pending throws `DeviceAuthenticationRecoveryInProgress`, and
 preparing a recovery while a rotation is pending throws
 `DeviceAuthenticationRotationInProgress`; the storage enforces the same
 (`storePendingRotationKeyPair` / `storePendingRecoveryKeyPair` refuse).
+Milestone 18 adds a third slot, the pending last-device recovery key: while
+it is pending, preparing a rotation throws `LastDeviceRecoveryInProgress`,
+`rotateDeviceAuthenticationKeyIfNeeded` returns `RecoveryInProgress` and
+`DeviceAuthenticationRotationStatus.pendingRecovery` is `true`. A last-device
+recovery and a rotation from the same (key, epoch) have exactly one
+compare-and-set winner (docs/last-device-recovery.md).
 
 Escape path when K1 is lost during an unfinished rotation: call
 `resolveDeviceAuthenticationRotation()` first — if the server already holds
 K2 it is promoted and nothing else is needed; otherwise
-`cancelDeviceAuthenticationRotation()` and start a recovery. The client never
+`cancelDeviceAuthenticationRotation()` and start a recovery (M14, or M18
+with the offline recovery key when no other device exists). The client never
 promotes K2 just because K1 disappeared.
 
 ## Client state
@@ -529,6 +537,8 @@ minus the server's installation time:
 - The age policy relies on wall-clock time; there is no secure monotonic
   clock. Only age-based policy: no request-, message- or usage-count
   policy, and no server-side policy.
-- The active key K1 is required; a device that lost it uses recovery.
-- No last-device recovery, account recovery or recovery codes.
+- The active key K1 is required; a device that lost it uses recovery
+  (docs/device-recovery.md) or, as the last device, last-device recovery
+  (docs/last-device-recovery.md).
+- No account recovery, recovery codes or passwords.
 - No messaging identity rotation or recovery; no sealed sender.

@@ -7,7 +7,11 @@ import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationId
+import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryId
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallengeId
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryId
 import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
 import kotlin.time.Instant
 
@@ -141,7 +145,8 @@ interface DeviceRegistrationRepository {
      *    (the prune may commit);
      * 6. stores the replacement key, epoch + 1, the recovery ID and
      *    [RecoveryReplacement.installedAt] as installation time, and clears
-     *    the rotation ID: [RecoveryReplacementResult.REPLACED].
+     *    the rotation ID and the last-device recovery ID:
+     *    [RecoveryReplacementResult.REPLACED].
      *
      * Nothing else changes: prekeys, mailboxes and other nonces stay.
      * Concurrent calls behave as if they ran one after the other.
@@ -168,13 +173,50 @@ interface DeviceRegistrationRepository {
      *    (the prune may commit);
      * 6. stores the replacement key, epoch + 1, the rotation ID and
      *    [RotationReplacement.installedAt] as installation time, and clears
-     *    the recovery ID: [RotationReplacementResult.REPLACED].
+     *    the recovery ID and the last-device recovery ID:
+     *    [RotationReplacementResult.REPLACED].
      *
      * The same compare-and-set as [replaceForRecovery]: of a recovery and a
      * rotation from the same state, exactly one replaces the key. Nothing
      * else changes: prekeys, mailboxes and other nonces stay.
      */
     suspend fun replaceForRotation(replacement: RotationReplacement): RotationReplacementResult
+
+    /**
+     * Replaces the target's key by a last-device recovery
+     * (docs/last-device-recovery.md) in one atomic step, together with the
+     * consumption of its challenge ([LastDeviceRecoveryRepository]). No
+     * nonce is claimed: the server-issued challenge is the single-use value.
+     * In this order:
+     *
+     * 1. the target has no registration: [LastDeviceRecoveryReplacementResult.NOT_REGISTERED];
+     * 2. the target's current key was installed by the last-device recovery
+     *    with [LastDeviceRecoveryReplacement.recoveryId]:
+     *    [LastDeviceRecoveryReplacementResult.ALREADY_APPLIED], nothing written;
+     * 3. the target's user has no recovery key, or another one than
+     *    [LastDeviceRecoveryReplacement.expectedRecoveryPublicKey]:
+     *    [LastDeviceRecoveryReplacementResult.NOT_CONFIGURED], nothing written;
+     * 4. the target has no stored challenge with this ID and nonce:
+     *    [LastDeviceRecoveryReplacementResult.CHALLENGE_INVALID];
+     *    it has, but it expired before [LastDeviceRecoveryReplacement.now]:
+     *    [LastDeviceRecoveryReplacementResult.EXPIRED];
+     * 5. prunes every challenge that expired before `now`;
+     * 6. the target's key or epoch differ from the expected state or from
+     *    the challenge's, or the replacement key is the current key:
+     *    [LastDeviceRecoveryReplacementResult.CONFLICT];
+     * 7. the epoch is [Long.MAX_VALUE]: [LastDeviceRecoveryReplacementResult.EPOCH_EXHAUSTED];
+     * 8. deletes the challenge, stores the replacement key, epoch + 1, the
+     *    last-device recovery ID and `now` as installation time, and clears
+     *    the recovery and rotation IDs: [LastDeviceRecoveryReplacementResult.REPLACED].
+     *
+     * Every result except [LastDeviceRecoveryReplacementResult.REPLACED]
+     * leaves the registration and the challenge unchanged (pruning expired
+     * challenges may commit). The same compare-and-set as [replaceForRecovery]
+     * and [replaceForRotation]: of transitions from the same state, exactly
+     * one replaces the key. Nothing else changes: prekeys, mailboxes and
+     * nonces stay.
+     */
+    suspend fun replaceForLastDeviceRecovery(replacement: LastDeviceRecoveryReplacement): LastDeviceRecoveryReplacementResult
 
     /**
      * Registers [registration] if its address has none. Returns `true` if it
@@ -192,8 +234,8 @@ interface DeviceRegistrationRepository {
  * A stored registration: [registration] with its [authEpoch], the server time
  * [authKeyInstalledAt] its key was installed at, and the transition that
  * installed the key: [recoveryId] for a device recovery, [rotationId] for a
- * routine rotation, neither for a key from first registration. At most one
- * of them is set.
+ * routine rotation, [lastDeviceRecoveryId] for a last-device recovery, none
+ * for a key from first registration. At most one of them is set.
  */
 class DeviceRegistrationState(
     val registration: DeviceRegistration,
@@ -201,10 +243,13 @@ class DeviceRegistrationState(
     val authKeyInstalledAt: Instant,
     val recoveryId: DeviceRecoveryId?,
     val rotationId: DeviceAuthenticationRotationId? = null,
+    val lastDeviceRecoveryId: LastDeviceRecoveryId? = null,
 ) {
     init {
         require(authEpoch >= 1) { "Authentication epoch must be positive" }
-        require(recoveryId == null || rotationId == null) { "A key is installed by one transition only" }
+        require(listOfNotNull(recoveryId, rotationId, lastDeviceRecoveryId).size <= 1) {
+            "A key is installed by one transition only"
+        }
     }
 
     val address: DeviceAddress get() = registration.address
@@ -310,6 +355,69 @@ enum class RotationReplacementResult {
     EPOCH_EXHAUSTED,
 }
 
+/**
+ * A verified last-device recovery for
+ * [DeviceRegistrationRepository.replaceForLastDeviceRecovery]: replace the
+ * key of [expected] with [replacementPublicKey], authorized by the recovery
+ * key [expectedRecoveryPublicKey] over the challenge [challengeId] /
+ * [challengeNonce]. [expected] is the state the signatures were verified
+ * against. [now] is the server time: the challenge must not have expired
+ * before it, and it becomes the new key's installation time.
+ */
+class LastDeviceRecoveryReplacement(
+    val expected: DeviceRegistrationState,
+    expectedRecoveryPublicKey: ByteArray,
+    val challengeId: LastDeviceRecoveryChallengeId,
+    challengeNonce: ByteArray,
+    replacementPublicKey: ByteArray,
+    val recoveryId: LastDeviceRecoveryId,
+    val now: Instant,
+) {
+    private val recoveryKey: ByteArray = expectedRecoveryPublicKey.copyOf()
+    private val nonce: ByteArray = challengeNonce.copyOf()
+    private val key: ByteArray = replacementPublicKey.copyOf()
+
+    /** A copy of the recovery public key the recovery signature was verified with. */
+    val expectedRecoveryPublicKey: ByteArray get() = recoveryKey.copyOf()
+
+    /** A copy of the challenge nonce. */
+    val challengeNonce: ByteArray get() = nonce.copyOf()
+
+    /** A copy of the replacement key. */
+    val replacementPublicKey: ByteArray get() = key.copyOf()
+
+    val target: DeviceAddress get() = expected.address
+
+    override fun toString(): String = "LastDeviceRecoveryReplacement(target=$target, expectedAuthEpoch=${expected.authEpoch})"
+}
+
+/** Outcome of [DeviceRegistrationRepository.replaceForLastDeviceRecovery]. */
+enum class LastDeviceRecoveryReplacementResult {
+    /** The key was replaced, the epoch incremented and the challenge consumed. */
+    REPLACED,
+
+    /** This recovery installed the current key before; nothing changed. */
+    ALREADY_APPLIED,
+
+    /** The target has no registration; nothing changed. */
+    NOT_REGISTERED,
+
+    /** The user has no (or another) recovery key; nothing changed. */
+    NOT_CONFIGURED,
+
+    /** No such challenge for the target (unknown, consumed or replaced); nothing changed. */
+    CHALLENGE_INVALID,
+
+    /** The challenge expired; nothing changed. */
+    EXPIRED,
+
+    /** The registration is no longer the verified one or the challenge's; nothing changed. */
+    CONFLICT,
+
+    /** The epoch cannot grow any more; nothing changed. */
+    EPOCH_EXHAUSTED,
+}
+
 /** A rejected device registration. Nothing was stored. Messages never contain key bytes. */
 sealed class DeviceRegistrationException(message: String) : Exception(message) {
     /** The registration is malformed, for example a key of the wrong size. */
@@ -335,9 +443,108 @@ interface AuthenticationNonceRepository {
     suspend fun claim(address: DeviceAddress, nonce: ByteArray, timestamp: Instant, pruneBefore: Instant): Boolean
 }
 
+/**
+ * Last-device recovery state (docs/last-device-recovery.md): per user the
+ * public key of its offline recovery key, and per device at most one
+ * outstanding server-issued challenge. Shares its atomicity with
+ * [DeviceRegistrationRepository]: [DeviceRegistrationRepository.replaceForLastDeviceRecovery]
+ * consumes a challenge in the same step as it replaces the key. Never holds
+ * private key material.
+ */
+interface LastDeviceRecoveryRepository {
+    /** A copy of the recovery public key registered for [userId], or `null`. */
+    suspend fun recoveryKey(userId: UserId): ByteArray?
+
+    /**
+     * Registers [publicKey] (32 bytes) as [userId]'s recovery key if the user
+     * has none: returns `true`. Returns `false` if exactly this key is
+     * registered already (nothing changes). Throws
+     * [LastDeviceRecoveryKeyException.Conflict] and changes nothing if
+     * another key is registered: a recovery key is never replaced. Concurrent
+     * calls behave as if they ran one after the other.
+     */
+    suspend fun registerRecoveryKey(userId: UserId, publicKey: ByteArray, registeredAt: Instant): Boolean
+
+    /**
+     * In one atomic step: prunes every challenge that expired before
+     * [LastDeviceRecoveryChallengeRequest.now]; then
+     *
+     * - the target has no registration: [LastDeviceRecoveryChallengeIssue.NotRegistered];
+     * - its user has no recovery key: [LastDeviceRecoveryChallengeIssue.NotConfigured];
+     * - the target has an unexpired challenge issued for its current key and
+     *   epoch: returns that one unchanged;
+     * - otherwise stores the request's candidate ID and nonce with the
+     *   current key and epoch (replacing an outdated challenge of the target)
+     *   and returns it.
+     *
+     * So a target has at most one challenge, and requesting another one while
+     * it is valid returns the same challenge.
+     */
+    suspend fun issueChallenge(request: LastDeviceRecoveryChallengeRequest): LastDeviceRecoveryChallengeIssue
+
+    /** The stored challenge of [target], expired or not, or `null`. */
+    suspend fun challenge(target: DeviceAddress): StoredLastDeviceRecoveryChallenge?
+}
+
+/**
+ * A request for a challenge for [target]: the server-chosen random
+ * [candidateId] and [candidateNonce] (used only if a new challenge is
+ * stored), the server time [now] and the new challenge's [expiresAt].
+ */
+class LastDeviceRecoveryChallengeRequest(
+    val target: DeviceAddress,
+    val candidateId: LastDeviceRecoveryChallengeId,
+    candidateNonce: ByteArray,
+    val now: Instant,
+    val expiresAt: Instant,
+) {
+    private val nonce: ByteArray = candidateNonce.copyOf()
+
+    init {
+        require(nonce.size == LastDeviceRecoveryChallenge.NONCE_SIZE) { "Challenge nonce has an invalid size" }
+    }
+
+    /** A copy of the candidate nonce. */
+    val candidateNonce: ByteArray get() = nonce.copyOf()
+
+    override fun toString(): String = "LastDeviceRecoveryChallengeRequest(target=$target)"
+}
+
+/**
+ * A stored challenge: the public [challenge] and the registered key it was
+ * issued for ([authPublicKey], server-side only, never returned to clients).
+ */
+class StoredLastDeviceRecoveryChallenge(
+    val challenge: LastDeviceRecoveryChallenge,
+    authPublicKey: ByteArray,
+) {
+    private val key: ByteArray = authPublicKey.copyOf()
+
+    /** A copy of the device authentication key registered when the challenge was issued. */
+    val authPublicKey: ByteArray get() = key.copyOf()
+
+    override fun toString(): String = "StoredLastDeviceRecoveryChallenge($challenge)"
+}
+
+/** Outcome of [LastDeviceRecoveryRepository.issueChallenge]. */
+sealed interface LastDeviceRecoveryChallengeIssue {
+    class Issued(val challenge: StoredLastDeviceRecoveryChallenge) : LastDeviceRecoveryChallengeIssue
+
+    data object NotRegistered : LastDeviceRecoveryChallengeIssue
+
+    data object NotConfigured : LastDeviceRecoveryChallengeIssue
+}
+
+/** A rejected recovery key registration. Nothing was stored. Messages never contain key bytes. */
+sealed class LastDeviceRecoveryKeyException(message: String) : Exception(message) {
+    /** The user has a different recovery key. Milestone 18 never replaces it. */
+    class Conflict : LastDeviceRecoveryKeyException("A different last-device recovery key is registered")
+}
+
 interface ServerStorage {
     val preKeys: PreKeyRepository
     val mailboxes: MailboxRepository
     val devices: DeviceRegistrationRepository
     val authenticationNonces: AuthenticationNonceRepository
+    val lastDeviceRecovery: LastDeviceRecoveryRepository
 }

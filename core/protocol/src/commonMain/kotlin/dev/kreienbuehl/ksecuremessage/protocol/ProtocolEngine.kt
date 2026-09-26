@@ -24,6 +24,13 @@ interface ProtocolEngine {
      */
     suspend fun createDeviceAuthenticationKey(): DeviceAuthenticationKeyPair
 
+    /**
+     * Creates an offline last-device recovery key (docs/last-device-recovery.md).
+     * Separate from the messaging identity and from every device
+     * authentication key; the application keeps it offline.
+     */
+    suspend fun createLastDeviceRecoveryKey(): LastDeviceRecoveryKey
+
     suspend fun createSignedPreKey(identity: LocalIdentity, id: SignedPreKeyId): SignedPreKeyPair
 
     /** Creates [count] one-time prekeys with consecutive IDs starting at [firstId]. */

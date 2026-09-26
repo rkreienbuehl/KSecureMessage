@@ -59,6 +59,27 @@ internal object ProtocolConstants {
     const val DEVICE_AUTH_ROTATION_ID_DOMAIN = "KSecureMessage-DeviceAuthRotationId-v1"
 
     /**
+     * Domain separator of a last-device recovery authorization, signed by the
+     * user's offline recovery key ([LastDeviceRecovery]).
+     */
+    const val LAST_DEVICE_RECOVERY_DOMAIN = "KSecureMessage-LastDeviceRecovery-v1"
+
+    /**
+     * Domain separator of the proof of possession signed with the
+     * replacement key of a last-device recovery ([LastDeviceRecovery]).
+     */
+    const val LAST_DEVICE_RECOVERY_POP_DOMAIN = "KSecureMessage-LastDeviceRecovery-PoP-v1"
+
+    /** Domain separator of [LastDeviceRecoveryId]. Recorded by the server for idempotent retries. */
+    const val LAST_DEVICE_RECOVERY_ID_DOMAIN = "KSecureMessage-LastDeviceRecoveryId-v1"
+
+    /**
+     * Domain separator of the proof of possession a recovery key gives when
+     * it is registered ([LastDeviceRecovery.registerKey]).
+     */
+    const val LAST_DEVICE_RECOVERY_KEY_POP_DOMAIN = "KSecureMessage-LastDeviceRecoveryKey-PoP-v1"
+
+    /**
      * Domain separator of the safety number fingerprint ([SafetyNumber]).
      * Every safety number users compared and every verification payload
      * depend on it.

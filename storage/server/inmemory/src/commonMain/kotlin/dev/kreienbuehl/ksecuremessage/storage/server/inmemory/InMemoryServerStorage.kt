@@ -9,12 +9,21 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationId
+import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryId
-import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecovery
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryId
 import dev.kreienbuehl.ksecuremessage.storage.AuthenticationNonceRepository
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationRepository
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationState
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryChallengeIssue
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryChallengeRequest
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryKeyException
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryReplacement
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryReplacementResult
+import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryRepository
 import dev.kreienbuehl.ksecuremessage.storage.MailboxRepository
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyPublicationException
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyRepository
@@ -23,6 +32,7 @@ import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacementResult
 import dev.kreienbuehl.ksecuremessage.storage.RotationReplacement
 import dev.kreienbuehl.ksecuremessage.storage.RotationReplacementResult
 import dev.kreienbuehl.ksecuremessage.storage.ServerStorage
+import dev.kreienbuehl.ksecuremessage.storage.StoredLastDeviceRecoveryChallenge
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.time.Instant
@@ -38,7 +48,10 @@ import kotlin.time.Instant
  * stronger than the per (sender, recipient) order [MailboxRepository]
  * promises. Device registrations and authentication nonces share one more
  * [Mutex], so registration, nonce claims, device recovery and routine
- * rotation (key replacement together with its nonce claim) are atomic.
+ * rotation (key replacement together with its nonce claim) are atomic. The
+ * last-device recovery keys and challenges live under that mutex too, so a
+ * last-device recovery consumes its challenge in the same step as it replaces
+ * the key.
  */
 class InMemoryServerStorage : ServerStorage {
     override val preKeys: PreKeyRepository = InMemoryPreKeyRepository()
@@ -51,18 +64,21 @@ class InMemoryServerStorage : ServerStorage {
 
     override val authenticationNonces: AuthenticationNonceRepository = InMemoryAuthenticationNonceRepository(authentication)
 
+    override val lastDeviceRecovery: LastDeviceRecoveryRepository = InMemoryLastDeviceRecoveryRepository(authentication)
+
     /** Test support: sets a registered device's epoch, for the epoch exhaustion boundary. */
     internal suspend fun setAuthEpochForTesting(address: DeviceAddress, authEpoch: Long) = authentication.mutex.withLock {
         val registration = checkNotNull(authentication.registrations[address]) { "Device is not registered" }
         authentication.registrations = authentication.registrations +
-            (address to Registration(registration.publicKey, authEpoch, registration.installedAt, registration.recoveryId, registration.rotationId))
+            (address to registration.copy(authEpoch = authEpoch))
     }
 }
 
 /**
  * One stored registration with the server time its key was installed at and
- * the transition that installed it (at most one of [recoveryId] and
- * [rotationId]). The key is copied on the way in and out.
+ * the transition that installed it (at most one of [recoveryId],
+ * [rotationId] and [lastDeviceRecoveryId]). The key is copied on the way in
+ * and out.
  */
 private class Registration(
     val publicKey: ByteArray,
@@ -70,7 +86,13 @@ private class Registration(
     val installedAt: Instant,
     val recoveryId: DeviceRecoveryId?,
     val rotationId: DeviceAuthenticationRotationId?,
-)
+    val lastDeviceRecoveryId: LastDeviceRecoveryId? = null,
+) {
+    fun copy(authEpoch: Long) = Registration(publicKey, authEpoch, installedAt, recoveryId, rotationId, lastDeviceRecoveryId)
+}
+
+/** A stored last-device recovery challenge with the key and epoch it was issued for. */
+private class Challenge(val challenge: LastDeviceRecoveryChallenge, val authPublicKey: ByteArray)
 
 /**
  * Registrations and accepted nonces behind one [Mutex], so a recovery or a
@@ -85,26 +107,39 @@ private class AuthenticationState {
     var registrations = mapOf<DeviceAddress, Registration>()
     var nonces = mapOf<Pair<DeviceAddress, NonceKey>, Instant>()
 
+    /** Last-device recovery public key per user. */
+    var recoveryKeys = mapOf<UserId, ByteArray>()
+
+    /** At most one last-device recovery challenge per device. */
+    var challenges = mapOf<DeviceAddress, Challenge>()
+
+    /** Caller holds [mutex]. Removes every challenge that expired before [now]. */
+    fun pruneChallenges(now: Instant) {
+        challenges = challenges.filterValues { it.challenge.expiresAt >= now }
+    }
+
     /**
-     * The compare-and-set shared by recovery and rotation, after their own
-     * idempotency and expected-state checks passed. Caller holds [mutex].
-     * Checks epoch exhaustion, claims the nonce, then installs [newKey] with
-     * epoch + 1, [installedAt] and exactly one of [recoveryId] and [rotationId].
+     * The compare-and-set shared by recovery, rotation and last-device
+     * recovery, after their own idempotency and expected-state checks passed.
+     * Caller holds [mutex]. Checks epoch exhaustion, runs [claim] (the nonce
+     * claim, or the challenge consumption; `false` = replay), then installs
+     * [newKey] with epoch + 1, [installedAt] and exactly one of [recoveryId],
+     * [rotationId] and [lastDeviceRecoveryId].
      */
     fun replaceKey(
         address: DeviceAddress,
         current: Registration,
         newKey: ByteArray,
-        nonce: RequestNonce,
-        timestamp: Instant,
-        pruneBefore: Instant,
         installedAt: Instant,
         recoveryId: DeviceRecoveryId?,
         rotationId: DeviceAuthenticationRotationId?,
+        lastDeviceRecoveryId: LastDeviceRecoveryId?,
+        claim: () -> Boolean,
     ): KeyReplacement {
         if (current.authEpoch == Long.MAX_VALUE) return KeyReplacement.EPOCH_EXHAUSTED
-        if (!claim(address, nonce.bytes, timestamp, pruneBefore)) return KeyReplacement.REPLAY
-        registrations = registrations + (address to Registration(newKey, current.authEpoch + 1, installedAt, recoveryId, rotationId))
+        if (!claim()) return KeyReplacement.REPLAY
+        registrations = registrations +
+            (address to Registration(newKey, current.authEpoch + 1, installedAt, recoveryId, rotationId, lastDeviceRecoveryId))
         return KeyReplacement.REPLACED
     }
 
@@ -134,7 +169,9 @@ private class InMemoryDeviceRegistrationRepository(private val state: Authentica
 
     override suspend fun registrationState(address: DeviceAddress): DeviceRegistrationState? = state.mutex.withLock {
         state.registrations[address]?.let {
-            DeviceRegistrationState(DeviceRegistration(address, it.publicKey), it.authEpoch, it.installedAt, it.recoveryId, it.rotationId)
+            DeviceRegistrationState(
+                DeviceRegistration(address, it.publicKey), it.authEpoch, it.installedAt, it.recoveryId, it.rotationId, it.lastDeviceRecoveryId,
+            )
         }
     }
 
@@ -163,9 +200,9 @@ private class InMemoryDeviceRegistrationRepository(private val state: Authentica
             return@withLock RecoveryReplacementResult.CONFLICT
         }
         val result = state.replaceKey(
-            replacement.target, target, newKey, replacement.nonce, replacement.timestamp, replacement.pruneBefore,
-            replacement.installedAt, recoveryId = replacement.recoveryId, rotationId = null,
-        )
+            replacement.target, target, newKey, replacement.installedAt,
+            recoveryId = replacement.recoveryId, rotationId = null, lastDeviceRecoveryId = null,
+        ) { state.claim(replacement.target, replacement.nonce.bytes, replacement.timestamp, replacement.pruneBefore) }
         when (result) {
             AuthenticationState.KeyReplacement.REPLACED -> RecoveryReplacementResult.REPLACED
             AuthenticationState.KeyReplacement.REPLAY -> RecoveryReplacementResult.REPLAY
@@ -181,9 +218,9 @@ private class InMemoryDeviceRegistrationRepository(private val state: Authentica
             return@withLock RotationReplacementResult.CONFLICT
         }
         val result = state.replaceKey(
-            replacement.address, current, newKey, replacement.nonce, replacement.timestamp, replacement.pruneBefore,
-            replacement.installedAt, recoveryId = null, rotationId = replacement.rotationId,
-        )
+            replacement.address, current, newKey, replacement.installedAt,
+            recoveryId = null, rotationId = replacement.rotationId, lastDeviceRecoveryId = null,
+        ) { state.claim(replacement.address, replacement.nonce.bytes, replacement.timestamp, replacement.pruneBefore) }
         when (result) {
             AuthenticationState.KeyReplacement.REPLACED -> RotationReplacementResult.REPLACED
             AuthenticationState.KeyReplacement.REPLAY -> RotationReplacementResult.REPLAY
@@ -191,8 +228,95 @@ private class InMemoryDeviceRegistrationRepository(private val state: Authentica
         }
     }
 
+    override suspend fun replaceForLastDeviceRecovery(
+        replacement: LastDeviceRecoveryReplacement,
+    ): LastDeviceRecoveryReplacementResult = state.mutex.withLock {
+        val target = replacement.target
+        val current = state.registrations[target] ?: return@withLock LastDeviceRecoveryReplacementResult.NOT_REGISTERED
+        if (current.lastDeviceRecoveryId == replacement.recoveryId) return@withLock LastDeviceRecoveryReplacementResult.ALREADY_APPLIED
+        val recoveryKey = state.recoveryKeys[target.userId]
+        if (recoveryKey == null || !recoveryKey.contentEquals(replacement.expectedRecoveryPublicKey)) {
+            return@withLock LastDeviceRecoveryReplacementResult.NOT_CONFIGURED
+        }
+        val stored = state.challenges[target]
+        if (stored == null || stored.challenge.id != replacement.challengeId ||
+            !stored.challenge.nonce.contentEquals(replacement.challengeNonce)
+        ) {
+            state.pruneChallenges(replacement.now)
+            return@withLock LastDeviceRecoveryReplacementResult.CHALLENGE_INVALID
+        }
+        if (stored.challenge.expiresAt < replacement.now) {
+            state.pruneChallenges(replacement.now)
+            return@withLock LastDeviceRecoveryReplacementResult.EXPIRED
+        }
+        state.pruneChallenges(replacement.now)
+        val newKey = replacement.replacementPublicKey
+        if (!current.matches(replacement.expected) ||
+            stored.challenge.authEpoch != current.authEpoch || !stored.authPublicKey.contentEquals(current.publicKey) ||
+            current.publicKey.contentEquals(newKey)
+        ) {
+            return@withLock LastDeviceRecoveryReplacementResult.CONFLICT
+        }
+        val result = state.replaceKey(
+            target, current, newKey, replacement.now,
+            recoveryId = null, rotationId = null, lastDeviceRecoveryId = replacement.recoveryId,
+        ) {
+            state.challenges = state.challenges - target
+            true
+        }
+        when (result) {
+            AuthenticationState.KeyReplacement.REPLACED -> LastDeviceRecoveryReplacementResult.REPLACED
+            AuthenticationState.KeyReplacement.REPLAY -> error("A challenge consumption never replays")
+            AuthenticationState.KeyReplacement.EPOCH_EXHAUSTED -> LastDeviceRecoveryReplacementResult.EPOCH_EXHAUSTED
+        }
+    }
+
     private fun Registration.matches(expected: DeviceRegistrationState) =
         authEpoch == expected.authEpoch && publicKey.contentEquals(expected.registration.publicKey)
+}
+
+private class InMemoryLastDeviceRecoveryRepository(private val state: AuthenticationState) : LastDeviceRecoveryRepository {
+    override suspend fun recoveryKey(userId: UserId): ByteArray? = state.mutex.withLock { state.recoveryKeys[userId]?.copyOf() }
+
+    override suspend fun registerRecoveryKey(userId: UserId, publicKey: ByteArray, registeredAt: Instant): Boolean {
+        require(publicKey.size == LastDeviceRecovery.PUBLIC_KEY_SIZE) { "Recovery public key has an invalid size" }
+        return state.mutex.withLock {
+            val existing = state.recoveryKeys[userId]
+            when {
+                existing == null -> {
+                    state.recoveryKeys = state.recoveryKeys + (userId to publicKey.copyOf())
+                    true
+                }
+                existing.contentEquals(publicKey) -> false
+                else -> throw LastDeviceRecoveryKeyException.Conflict()
+            }
+        }
+    }
+
+    override suspend fun issueChallenge(request: LastDeviceRecoveryChallengeRequest): LastDeviceRecoveryChallengeIssue =
+        state.mutex.withLock {
+            state.pruneChallenges(request.now)
+            val target = request.target
+            val registration = state.registrations[target] ?: return@withLock LastDeviceRecoveryChallengeIssue.NotRegistered
+            if (target.userId !in state.recoveryKeys) return@withLock LastDeviceRecoveryChallengeIssue.NotConfigured
+            val existing = state.challenges[target]
+            if (existing != null && existing.challenge.authEpoch == registration.authEpoch &&
+                existing.authPublicKey.contentEquals(registration.publicKey)
+            ) {
+                return@withLock LastDeviceRecoveryChallengeIssue.Issued(existing.stored())
+            }
+            val challenge = Challenge(
+                LastDeviceRecoveryChallenge(target, request.candidateId, request.candidateNonce, registration.authEpoch, request.expiresAt),
+                registration.publicKey.copyOf(),
+            )
+            state.challenges = state.challenges + (target to challenge)
+            LastDeviceRecoveryChallengeIssue.Issued(challenge.stored())
+        }
+
+    override suspend fun challenge(target: DeviceAddress): StoredLastDeviceRecoveryChallenge? =
+        state.mutex.withLock { state.challenges[target]?.stored() }
+
+    private fun Challenge.stored() = StoredLastDeviceRecoveryChallenge(challenge, authPublicKey)
 }
 
 private class InMemoryAuthenticationNonceRepository(private val state: AuthenticationState) : AuthenticationNonceRepository {

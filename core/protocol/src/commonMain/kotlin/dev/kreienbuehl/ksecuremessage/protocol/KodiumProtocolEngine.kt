@@ -39,6 +39,15 @@ class KodiumProtocolEngine : ProtocolEngine {
 
     override suspend fun createDeviceAuthenticationKey(): DeviceAuthenticationKeyPair = Ed25519.generate()
 
+    override suspend fun createLastDeviceRecoveryKey(): LastDeviceRecoveryKey {
+        val generated = Ed25519.generate()
+        try {
+            return LastDeviceRecoveryKey(generated.privateKey, generated.publicKey)
+        } finally {
+            generated.privateKey.fill(0)
+        }
+    }
+
     override suspend fun createSignedPreKey(identity: LocalIdentity, id: SignedPreKeyId): SignedPreKeyPair {
         val identityKey = privateKey(identity.privateKey)
         val preKey = KodiumPrivateKey.generate()

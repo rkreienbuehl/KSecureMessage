@@ -1,4 +1,4 @@
--- Server state, schema version 4 (docs/server-storage.md). Independent of the
+-- Server state, schema version 5 (docs/server-storage.md). Independent of the
 -- client schema. Holds only public keys, opaque encrypted envelopes, routing
 -- metadata and replay metadata: never client private keys, session secrets
 -- or application plaintext. Timestamps are epoch milliseconds.
@@ -7,27 +7,28 @@
 -- Rows are never written with INSERT OR REPLACE: a conflict must never
 -- overwrite what is stored.
 
--- Single row that marks a database created with this schema. format 4 is
--- schema version 4 (migration 3.sqm); open() refuses a database without it
--- and a database still at format 1, 2 or 3 (not migrated).
+-- Single row that marks a database created with this schema. format 5 is
+-- schema version 5 (migration 4.sqm); open() refuses a database without it
+-- and a database still at format 1, 2, 3 or 4 (not migrated).
 CREATE TABLE server_storage (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
     format INTEGER NOT NULL
 );
 
-INSERT INTO server_storage (id, format) VALUES (0, 4);
+INSERT INTO server_storage (id, format) VALUES (0, 5);
 
 -- Device authentication public key per device. Added by registration,
--- replaced only by a device recovery (docs/device-recovery.md) or a routine
--- rotation (docs/device-authentication-rotation.md), never removed.
--- auth_epoch is 1 for a first registration and grows by one per recovery or
--- rotation; it never wraps. recovery_id / rotation_id identify the
--- transition that installed the current key: at most one is set, both are
--- NULL after first registration. auth_key_installed_at is the server time
--- (epoch milliseconds) the current key was installed at: set by first
--- registration, recovery and rotation, never by a retry. It is NULL only for
--- a registration migrated by 3.sqm until SqlDelightServerStorage.open stamps
--- it. The columns are declared as migrations 1.sqm, 2.sqm and 3.sqm add them.
+-- replaced only by a device recovery (docs/device-recovery.md), a routine
+-- rotation (docs/device-authentication-rotation.md) or a last-device recovery
+-- (docs/last-device-recovery.md), never removed. auth_epoch is 1 for a first
+-- registration and grows by one per replacement; it never wraps. recovery_id
+-- / rotation_id / last_device_recovery_id identify the transition that
+-- installed the current key: at most one is set, all are NULL after first
+-- registration. auth_key_installed_at is the server time (epoch milliseconds)
+-- the current key was installed at: set by first registration and every
+-- replacement, never by a retry. It is NULL only for a registration migrated
+-- by 3.sqm until SqlDelightServerStorage.open stamps it. The columns are
+-- declared as migrations 1.sqm to 4.sqm add them.
 CREATE TABLE device_registration (
     user_id TEXT NOT NULL,
     device_id TEXT NOT NULL,
@@ -36,6 +37,7 @@ CREATE TABLE device_registration (
     recovery_id BLOB,
     rotation_id BLOB,
     auth_key_installed_at INTEGER,
+    last_device_recovery_id BLOB,
     PRIMARY KEY (user_id, device_id)
 );
 
@@ -50,6 +52,33 @@ CREATE TABLE authentication_nonce (
 );
 
 CREATE INDEX authentication_nonce_timestamp ON authentication_nonce (request_timestamp);
+
+-- Last-device recovery public key per user (Ed25519, 32 bytes; never the
+-- private key). Registered once by an authenticated device of the user,
+-- never replaced or removed in schema version 5.
+CREATE TABLE last_device_recovery_key (
+    user_id TEXT NOT NULL PRIMARY KEY,
+    public_key BLOB NOT NULL,
+    registered_at INTEGER NOT NULL
+);
+
+-- At most one outstanding last-device recovery challenge per device, with
+-- the registered key and epoch it was issued for. Deleted when a recovery
+-- consumes it, replaced when the registration changed, pruned after
+-- expires_at (epoch milliseconds).
+CREATE TABLE last_device_recovery_challenge (
+    user_id TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    challenge_id BLOB NOT NULL UNIQUE,
+    challenge_nonce BLOB NOT NULL,
+    auth_epoch INTEGER NOT NULL,
+    auth_public_key BLOB NOT NULL,
+    issued_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, device_id)
+);
+
+CREATE INDEX last_device_recovery_challenge_expiry ON last_device_recovery_challenge (expires_at);
 
 -- Identity key and current signed prekey per device.
 CREATE TABLE device_prekey_state (
@@ -102,7 +131,8 @@ selectRegistration:
 SELECT auth_public_key FROM device_registration WHERE user_id = ? AND device_id = ?;
 
 selectRegistrationState:
-SELECT auth_public_key, auth_epoch, recovery_id, rotation_id, auth_key_installed_at FROM device_registration WHERE user_id = ? AND device_id = ?;
+SELECT auth_public_key, auth_epoch, recovery_id, rotation_id, auth_key_installed_at, last_device_recovery_id
+FROM device_registration WHERE user_id = ? AND device_id = ?;
 
 insertRegistration:
 INSERT OR IGNORE INTO device_registration (user_id, device_id, auth_public_key, auth_epoch, auth_key_installed_at) VALUES (?, ?, ?, 1, ?);
@@ -112,13 +142,14 @@ INSERT OR IGNORE INTO device_registration (user_id, device_id, auth_public_key, 
 stampMissingInstalledAt:
 UPDATE device_registration SET auth_key_installed_at = ? WHERE auth_key_installed_at IS NULL;
 
--- Compare-and-set shared by recovery and rotation: changes the row only
--- while it still has the expected key and epoch. Exactly one of recovery_id
--- and rotation_id is non-NULL.
+-- Compare-and-set shared by recovery, rotation and last-device recovery:
+-- changes the row only while it still has the expected key and epoch.
+-- Exactly one of recovery_id, rotation_id and last_device_recovery_id is
+-- non-NULL.
 replaceRegistrationKey:
 UPDATE device_registration
 SET auth_public_key = :replacement, auth_epoch = auth_epoch + 1, recovery_id = :recovery_id, rotation_id = :rotation_id,
-    auth_key_installed_at = :installed_at
+    last_device_recovery_id = :last_device_recovery_id, auth_key_installed_at = :installed_at
 WHERE user_id = :user_id AND device_id = :device_id AND auth_public_key = :expected_key AND auth_epoch = :expected_epoch;
 
 pruneNonces:
@@ -126,6 +157,28 @@ DELETE FROM authentication_nonce WHERE request_timestamp < ?;
 
 insertNonce:
 INSERT OR IGNORE INTO authentication_nonce (user_id, device_id, nonce, request_timestamp) VALUES (?, ?, ?, ?);
+
+selectRecoveryKey:
+SELECT public_key FROM last_device_recovery_key WHERE user_id = ?;
+
+insertRecoveryKey:
+INSERT INTO last_device_recovery_key (user_id, public_key, registered_at) VALUES (?, ?, ?);
+
+selectChallenge:
+SELECT challenge_id, challenge_nonce, auth_epoch, auth_public_key, expires_at
+FROM last_device_recovery_challenge WHERE user_id = ? AND device_id = ?;
+
+insertChallenge:
+INSERT INTO last_device_recovery_challenge
+    (user_id, device_id, challenge_id, challenge_nonce, auth_epoch, auth_public_key, issued_at, expires_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteChallenge:
+DELETE FROM last_device_recovery_challenge WHERE user_id = ? AND device_id = ?;
+
+-- Removes challenges that expired before the given time (epoch milliseconds).
+pruneChallenges:
+DELETE FROM last_device_recovery_challenge WHERE expires_at < ?;
 
 selectPreKeyState:
 SELECT identity_key, signed_pre_key_id, signed_pre_key, signed_pre_key_signature

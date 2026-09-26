@@ -93,18 +93,20 @@ storage/server/
 or `sqldelight-sqlite` / `sqldelight-postgresql` if SQLDelight dialect
 separation proves useful. None of this exists yet.
 
-## Schema (server schema version 4)
+## Schema (server schema version 5)
 
 Defined in `ServerState.sq`, independent of the client schema (client
 versions do not apply here). Migrations are `.sqm` files with server-own
 numbering: `1.sqm` migrates version 1 (M13) to 2 (M14), `2.sqm` version 2 to
-3 (M16), `3.sqm` version 3 to 4 (M17, below). Timestamps are epoch
+3 (M16), `3.sqm` version 3 to 4 (M17), `4.sqm` version 4 to 5 (M18, below). Timestamps are epoch
 milliseconds. Uniqueness is enforced by the database, not only by Kotlin:
 
 | Table | Key / constraint | Columns |
 |---|---|---|
-| `server_storage` | `id = 0` (single row) | `format` = 4 (1, 2, 3 = schema versions 1, 2, 3) |
-| `device_registration` | PK `(user_id, device_id)` | `auth_public_key`, `auth_epoch` (≥ 1, default 1, never wraps), `recovery_id` (32-byte `DeviceRecoveryId` or `NULL`), `rotation_id` (32-byte `DeviceAuthenticationRotationId` or `NULL`); at most one of the two IDs is set: the transition that installed the current key; `auth_key_installed_at` (server time the current key was installed at, epoch ms; nullable only for migrated rows until `open` stamps them) |
+| `server_storage` | `id = 0` (single row) | `format` = 5 (1–4 = schema versions 1–4) |
+| `device_registration` | PK `(user_id, device_id)` | `auth_public_key`, `auth_epoch` (≥ 1, default 1, never wraps), `recovery_id` (32-byte `DeviceRecoveryId` or `NULL`), `rotation_id` (32-byte `DeviceAuthenticationRotationId` or `NULL`), `auth_key_installed_at` (server time the current key was installed at, epoch ms; nullable only for migrated rows until `open` stamps them), `last_device_recovery_id` (32-byte `LastDeviceRecoveryId` or `NULL`, M18); at most one of the three IDs is set: the transition that installed the current key |
+| `last_device_recovery_key` | PK `user_id` | `public_key` (Ed25519, 32 bytes; never a private key), `registered_at`; registered once, never replaced (M18, docs/last-device-recovery.md) |
+| `last_device_recovery_challenge` | PK `(user_id, device_id)` (one per device), `challenge_id` UNIQUE, index on `expires_at` | `challenge_nonce`, `auth_epoch` and `auth_public_key` it was issued for, `issued_at`, `expires_at`; deleted when consumed, replaced when outdated, pruned after expiry |
 | `authentication_nonce` | PK `(user_id, device_id, nonce)`, index on `request_timestamp` | `request_timestamp` |
 | `device_prekey_state` | PK `(user_id, device_id)` | `identity_key`, `signed_pre_key_id`, `signed_pre_key`, `signed_pre_key_signature` |
 | `available_one_time_prekey` | PK `(user_id, device_id, pre_key_id)` | `public_key` |
@@ -164,6 +166,21 @@ database migrated to 3 has its shape), the one-time stamping with an
 injected clock, that a restart with another clock keeps it, that all other
 data is unchanged, and that the migrated schema equals a new one.
 
+### Migration from schema version 4 (M17)
+
+`4.sqm` (milestone 18, docs/last-device-recovery.md) adds
+`device_registration.last_device_recovery_id BLOB` with `ALTER TABLE … ADD
+COLUMN`, creates the empty `last_device_recovery_key` and
+`last_device_recovery_challenge` tables (with the expiry index) and sets
+`server_storage.format = 5`. Existing registrations keep key, epoch,
+installation time and recovery/rotation IDs and get no last-device recovery
+ID; nonces, prekey state, available one-time prekeys, tombstones, mailbox
+rows and the mailbox sequence are untouched. `open` refuses format 4 until
+the host migrated it. `SqlDelightServerMigrationTest` checks v4 → v5 (and v1,
+v2, v3 → v5) against the frozen fixture `ServerVersion4Schema` (and that a
+version 3 database migrated to 4 has its shape), that the new tables start
+empty, and that the migrated schema equals a new one.
+
 ## Transaction semantics
 
 Every repository call is exactly one SQLite transaction. If it throws, all of
@@ -195,8 +212,27 @@ mutex.
   `Long.MAX_VALUE` (for recovery too: SQLite would otherwise turn
   `auth_epoch + 1` into a REAL), then prunes and claims the nonce under the
   device and runs the guarded `UPDATE` setting `rotation_id` and clearing
-  `recovery_id`. Of a rotation and a recovery verified against the same
-  state, exactly one changes the row.
+  `recovery_id` (and `last_device_recovery_id`). Of a rotation and a
+  recovery verified against the same state, exactly one changes the row.
+- **Last-device recovery** (M18, docs/last-device-recovery.md): the same
+  compare-and-set helper; its "claim" step deletes the challenge instead of
+  claiming a nonce. One transaction: registration loaded, "already applied"
+  if `last_device_recovery_id` is this recovery's, "not configured" unless
+  the user's recovery key is the verified one, the target's challenge row
+  must match ID and nonce ("challenge invalid") and not be expired
+  ("expired"), expired challenges are pruned, key and epoch must equal both
+  the verified state and the challenge's ("conflict"), epoch exhaustion,
+  then `DELETE` of the challenge and the guarded `UPDATE` setting
+  `last_device_recovery_id` and clearing the other two IDs. A failure rolls
+  back the challenge deletion too. No nonce row is written.
+- **Recovery key registration**: one transaction selects the user's key and
+  inserts it only if there is none (plain `INSERT`, the primary key rejects a
+  second row); equal = idempotent, different =
+  `LastDeviceRecoveryKeyException.Conflict`, nothing written.
+- **Challenge issue**: one transaction prunes expired challenges, checks the
+  registration and the user's recovery key, returns the device's existing
+  challenge if it is still for the current key and epoch, and otherwise
+  deletes it and inserts the new one.
 - **Nonce claim**: `DELETE ... WHERE request_timestamp < pruneBefore`, then
   `INSERT OR IGNORE` of the nonce, in one transaction. `true` only if the row
   was inserted. The prune commits also when the claim returns `false`, like
@@ -274,7 +310,8 @@ tables or statements) into the response.
 
 ## What the database contains
 
-It contains public device authentication keys, public identity keys and
+It contains public device authentication keys, public last-device recovery
+keys and their challenges (random IDs and nonces, never secret), public identity keys and
 prekeys with signatures, opaque encrypted envelopes with routing metadata
 (sender and recipient addresses, envelope ID, protocol version) and nonce
 replay metadata (nonce, request timestamp). It does not contain client
@@ -295,7 +332,7 @@ is not encrypted; that is out of scope, like backups.
 - `SqlDelightServerRollbackTest`: failure injection through a delegating
   driver (`TestDriver`), one test per operation.
 - `SqlDelightServerStorageOpenTest`: driver injection, schema marker (refuses
-  formats 1–3), driver ownership, database-level uniqueness, open never
+  formats 1–4), driver ownership, database-level uniqueness, open never
   rewrites a stored installation time, a missing one fails closed.
 - `SqlDelight*DeviceRecoveryRepositoryTest` / `FileBackedDeviceRecoveryRepositoryTest`:
   the recovery contract (`DeviceRecoveryRepositoryContractTest`).
@@ -308,7 +345,15 @@ is not encrypted; that is out of scope, like backups.
 - `SqlDelightServerRotationTest`: rotation across restarts, stale K1 → K2
   after K2 → K3 across restarts, preserved prekeys/tombstones/mailbox,
   rollback before and after the nonce claim and the compare-and-set.
-- `SqlDelightServerMigrationTest`: schema version 1 → 4, 2 → 4 and 3 → 4,
+- `SqlDelight*LastDeviceRecoveryRepositoryTest` /
+  `FileBackedLastDeviceRecoveryRepositoryTest`: the last-device recovery
+  contract (`LastDeviceRecoveryRepositoryContractTest`), including races with
+  recovery and rotation and the epoch exhaustion boundary.
+- `SqlDelightServerLastDeviceRecoveryTest`: recovery keys and challenges
+  across restarts, retries and stale replays after restarts, preserved
+  prekeys/tombstones/mailbox/nonces, rollback around the challenge
+  consumption and the compare-and-set.
+- `SqlDelightServerMigrationTest`: schema version 1, 2, 3 and 4 → 5,
   one-time legacy stamping of key installation times.
 
 ## Limitations
@@ -318,6 +363,9 @@ is not encrypted; that is out of scope, like backups.
 - No server database encryption, backup, mailbox expiry, quotas or background
   cleanup jobs (nonces are pruned only by claims).
 - Auth-key replacement only by recovery through another device of the same
-  user (docs/device-recovery.md) or by routine rotation with the current key
-  (docs/device-authentication-rotation.md); no device reset or deletion; no
-  sealed sender.
+  user (docs/device-recovery.md), by routine rotation with the current key
+  (docs/device-authentication-rotation.md) or by last-device recovery with
+  the user's offline recovery key (docs/last-device-recovery.md); no device
+  reset or deletion; no recovery key rotation; no sealed sender.
+- Expired last-device recovery challenges are pruned only when a challenge is
+  issued or a recovery reaches storage.

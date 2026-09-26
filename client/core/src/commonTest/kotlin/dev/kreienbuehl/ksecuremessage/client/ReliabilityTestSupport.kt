@@ -1,5 +1,8 @@
 package dev.kreienbuehl.ksecuremessage.client
 
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
+import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
@@ -65,6 +68,25 @@ internal class FlakyNetwork(val fake: FakeNetwork = FakeNetwork()) : SecureMessa
     override suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization) {
         checkNoTransaction()
         fake.rotateDeviceAuthenticationKey(authorization)
+    }
+
+    override suspend fun registerLastDeviceRecoveryKey(
+        address: DeviceAddress,
+        registration: LastDeviceRecoveryKeyRegistration,
+        signer: ServerRequestSigner,
+    ) {
+        checkNoTransaction()
+        fake.registerLastDeviceRecoveryKey(address, registration, signer)
+    }
+
+    override suspend fun lastDeviceRecoveryChallenge(target: DeviceAddress): LastDeviceRecoveryChallenge {
+        checkNoTransaction()
+        return fake.lastDeviceRecoveryChallenge(target)
+    }
+
+    override suspend fun recoverLastDevice(authorization: LastDeviceRecoveryAuthorization) {
+        checkNoTransaction()
+        fake.recoverLastDevice(authorization)
     }
 
     override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) {

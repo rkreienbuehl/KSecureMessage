@@ -112,6 +112,15 @@ object ServerApiPaths {
     /** Routine device authentication key rotation (docs/device-authentication-rotation.md). Not a ServerAuth-signed endpoint. */
     const val REGISTRATION_ROTATION: String = "registration/rotation"
 
+    /** Last-device recovery (docs/last-device-recovery.md). Not a ServerAuth-signed endpoint. */
+    const val LAST_DEVICE_RECOVERY: String = "last-device-recovery"
+
+    /** Issues a last-device recovery challenge. Public, not ServerAuth-signed. */
+    const val LAST_DEVICE_RECOVERY_CHALLENGE: String = "last-device-recovery/challenge"
+
+    /** Registers the user's last-device recovery key. ServerAuth-signed. */
+    const val LAST_DEVICE_RECOVERY_KEY: String = "last-device-recovery/key"
+
     /** `/v1/devices/{user}/{device}/{endpoint}`. */
     fun device(address: DeviceAddress, endpoint: String): String =
         "/v1/devices/${encodeSegment(address.userId.value)}/${encodeSegment(address.deviceId.value)}/$endpoint"
@@ -226,6 +235,17 @@ internal object Ed25519 {
         try {
             return Kodium.signDetached(KodiumPrivateKey.fromRaw(copy), data)
                 .getOrElse { throw IllegalStateException("Signing failed", it) }
+        } finally {
+            copy.fill(0)
+        }
+    }
+
+    /** The public key of [seed]. */
+    fun publicKey(seed: ByteArray): ByteArray {
+        require(seed.size == SEED_SIZE) { "Private key has an invalid size" }
+        val copy = seed.copyOf()
+        try {
+            return KodiumPrivateKey.fromRaw(copy).getPublicKey().signingKey.copyOf()
         } finally {
             copy.fill(0)
         }
