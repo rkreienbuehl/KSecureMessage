@@ -1,0 +1,9 @@
+-- Server schema version 2 to 3 (milestone 16): routine device authentication
+-- key rotation (docs/device-authentication-rotation.md). Adds the ID of the
+-- rotation that installed the current key. Existing registrations get no
+-- rotation ID; their epochs and recovery IDs stay. No table is rebuilt:
+-- nonces, prekeys, one-time prekey tombstones, mailbox rows and the mailbox
+-- sequence stay as they are.
+ALTER TABLE device_registration ADD COLUMN rotation_id BLOB;
+
+UPDATE server_storage SET format = 3;

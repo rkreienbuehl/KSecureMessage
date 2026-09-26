@@ -40,6 +40,9 @@ sealed class DeviceRecoveryException(message: String) : Exception(message) {
      * the target's key from another recovery.
      */
     class Conflict : DeviceRecoveryException("Device registration changed, recovery not applied")
+
+    /** The target's authentication epoch cannot grow any more. */
+    class EpochExhausted : DeviceRecoveryException("Authentication epoch is exhausted")
 }
 
 /** A successful device recovery. */
@@ -112,6 +115,7 @@ internal class DeviceRecoveryService(
             RecoveryReplacementResult.CONFLICT -> throw DeviceRecoveryException.Conflict()
             RecoveryReplacementResult.REPLAY -> throw DeviceRecoveryException.Replay()
             RecoveryReplacementResult.TARGET_NOT_REGISTERED -> throw DeviceRecoveryException.TargetNotRegistered()
+            RecoveryReplacementResult.EPOCH_EXHAUSTED -> throw DeviceRecoveryException.EpochExhausted()
         }
     }
 }

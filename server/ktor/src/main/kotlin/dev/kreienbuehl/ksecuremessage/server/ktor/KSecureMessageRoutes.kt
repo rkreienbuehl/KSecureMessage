@@ -8,6 +8,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.RequestAuthentication
 import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
 import dev.kreienbuehl.ksecuremessage.server.DeviceAuthenticationException
+import dev.kreienbuehl.ksecuremessage.server.DeviceAuthenticationRotationException
 import dev.kreienbuehl.ksecuremessage.server.DeviceRecoveryException
 import dev.kreienbuehl.ksecuremessage.server.ProtectedEndpoint
 import dev.kreienbuehl.ksecuremessage.server.SecureMessageServer
@@ -33,8 +34,9 @@ import kotlin.time.Instant
  * [SecureMessageServer]; authentication, validation, conflicts and atomicity
  * live behind it.
  *
- * Device recovery carries its own two signatures in the body
- * (docs/device-recovery.md).
+ * Device recovery (docs/device-recovery.md) and routine device
+ * authentication key rotation (docs/device-authentication-rotation.md) carry
+ * their own two signatures in the body and no authentication headers.
  *
  * Registration, prekey publication and mailbox drain are authenticated by
  * the device: the signature covers the exact body bytes, so those routes read
@@ -96,9 +98,64 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
                 is DeviceRecoveryException.InvalidProof -> HttpStatusCode.Unauthorized to "invalid_recovery_proof"
                 is DeviceRecoveryException.Replay -> HttpStatusCode.Unauthorized to "authentication_replay"
                 is DeviceRecoveryException.Conflict -> HttpStatusCode.Conflict to "recovery_conflict"
+                is DeviceRecoveryException.EpochExhausted -> HttpStatusCode.Conflict to EPOCH_EXHAUSTED
             }
             // Addresses and the failure category only: never keys, signatures or the body.
             call.application.log.info("Device recovery of $target authorized by $authorizer rejected: $error")
+            call.respondError(status, error)
+        } catch (e: Exception) {
+            call.respondInternalError(e)
+        }
+    }
+
+    // The device's own registration state, for building a rotation statement.
+    get("/v1/devices/{user}/{device}/registration") {
+        val address = call.deviceAddress()
+        val body = call.receive<ByteArray>()
+        val device = try {
+            server.authenticate(address, ProtectedEndpoint.READ_REGISTRATION, body, call.authentication())
+        } catch (e: DeviceAuthenticationException) {
+            return@get call.respondAuthenticationError(e)
+        } catch (e: Exception) {
+            return@get call.respondInternalError(e)
+        }
+        val epoch = try {
+            server.authenticationEpoch(device)
+        } catch (e: Exception) {
+            return@get call.respondInternalError(e)
+        }
+        call.respond(DeviceRegistrationStateResponse(epoch))
+    }
+
+    // Routine device authentication key rotation
+    // (docs/device-authentication-rotation.md): not ServerAuth-signed. The
+    // body carries the current key's authorization and the replacement key's
+    // proof of possession over the binary rotation statement; the server
+    // verifies both before anything is changed.
+    put("/v1/devices/{user}/{device}/registration/rotation") {
+        val address = call.deviceAddress()
+        val authorization = try {
+            Json.decodeFromString<DeviceAuthenticationRotationRequestDto>(call.receive<ByteArray>().decodeToString()).toAuthorization(address)
+        } catch (e: IllegalArgumentException) {
+            // Malformed JSON (SerializationException), non-canonical Base64, sizes, epoch, timestamp, same key.
+            return@put call.respondError(HttpStatusCode.BadRequest, INVALID_ROTATION)
+        }
+        try {
+            val outcome = server.rotateDeviceAuthenticationKey(address, authorization)
+            call.application.log.info("Device authentication rotation of $address: ${outcome.name.lowercase()}")
+            call.respond(HttpStatusCode.NoContent)
+        } catch (e: DeviceAuthenticationRotationException) {
+            val (status, error) = when (e) {
+                is DeviceAuthenticationRotationException.InvalidRotation -> HttpStatusCode.BadRequest to INVALID_ROTATION
+                is DeviceAuthenticationRotationException.NotRegistered -> HttpStatusCode.NotFound to "device_auth_rotation_not_registered"
+                is DeviceAuthenticationRotationException.Expired -> HttpStatusCode.Unauthorized to "expired_authentication"
+                is DeviceAuthenticationRotationException.InvalidProof -> HttpStatusCode.Unauthorized to "invalid_device_auth_rotation_proof"
+                is DeviceAuthenticationRotationException.Replay -> HttpStatusCode.Unauthorized to "authentication_replay"
+                is DeviceAuthenticationRotationException.Conflict -> HttpStatusCode.Conflict to "device_auth_rotation_conflict"
+                is DeviceAuthenticationRotationException.EpochExhausted -> HttpStatusCode.Conflict to EPOCH_EXHAUSTED
+            }
+            // Address and the failure category only: never keys, signatures or the body.
+            call.application.log.info("Device authentication rotation of $address rejected: $error")
             call.respondError(status, error)
         } catch (e: Exception) {
             call.respondInternalError(e)
@@ -180,6 +237,8 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
 private const val INVALID_PUBLICATION = "invalid_publication"
 private const val INVALID_REGISTRATION = "invalid_registration"
 private const val INVALID_RECOVERY = "invalid_recovery"
+private const val INVALID_ROTATION = "invalid_device_auth_rotation"
+private const val EPOCH_EXHAUSTED = "device_auth_epoch_exhausted"
 
 private suspend fun ApplicationCall.respondError(status: HttpStatusCode, error: String) =
     respond(status, ErrorResponse(error))

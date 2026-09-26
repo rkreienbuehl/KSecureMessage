@@ -8,7 +8,9 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationId
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryId
+import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
 import dev.kreienbuehl.ksecuremessage.storage.AuthenticationNonceRepository
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationRepository
@@ -18,6 +20,8 @@ import dev.kreienbuehl.ksecuremessage.storage.PreKeyPublicationException
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyRepository
 import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacement
 import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacementResult
+import dev.kreienbuehl.ksecuremessage.storage.RotationReplacement
+import dev.kreienbuehl.ksecuremessage.storage.RotationReplacementResult
 import dev.kreienbuehl.ksecuremessage.storage.ServerStorage
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -33,8 +37,8 @@ import kotlin.time.Instant
  * are serialized too and each recipient's queue is in enqueue order. That is
  * stronger than the per (sender, recipient) order [MailboxRepository]
  * promises. Device registrations and authentication nonces share one more
- * [Mutex], so registration, nonce claims and device recovery (key
- * replacement together with its nonce claim) are atomic.
+ * [Mutex], so registration, nonce claims, device recovery and routine
+ * rotation (key replacement together with its nonce claim) are atomic.
  */
 class InMemoryServerStorage : ServerStorage {
     override val preKeys: PreKeyRepository = InMemoryPreKeyRepository()
@@ -46,15 +50,32 @@ class InMemoryServerStorage : ServerStorage {
     override val devices: DeviceRegistrationRepository = InMemoryDeviceRegistrationRepository(authentication)
 
     override val authenticationNonces: AuthenticationNonceRepository = InMemoryAuthenticationNonceRepository(authentication)
+
+    /** Test support: sets a registered device's epoch, for the epoch exhaustion boundary. */
+    internal suspend fun setAuthEpochForTesting(address: DeviceAddress, authEpoch: Long) = authentication.mutex.withLock {
+        val registration = checkNotNull(authentication.registrations[address]) { "Device is not registered" }
+        authentication.registrations = authentication.registrations +
+            (address to Registration(registration.publicKey, authEpoch, registration.recoveryId, registration.rotationId))
+    }
 }
 
-/** One stored registration. The key is copied on the way in and out. */
-private class Registration(val publicKey: ByteArray, val authEpoch: Long, val recoveryId: DeviceRecoveryId?)
+/**
+ * One stored registration with the transition that installed its key (at
+ * most one of [recoveryId] and [rotationId]). The key is copied on the way in
+ * and out.
+ */
+private class Registration(
+    val publicKey: ByteArray,
+    val authEpoch: Long,
+    val recoveryId: DeviceRecoveryId?,
+    val rotationId: DeviceAuthenticationRotationId?,
+)
 
 /**
- * Registrations and accepted nonces behind one [Mutex], so a recovery
- * replaces a key and claims its nonce in one atomic step
- * ([DeviceRegistrationRepository.replaceForRecovery]). Nonces are kept with
+ * Registrations and accepted nonces behind one [Mutex], so a recovery or a
+ * rotation replaces a key and claims its nonce in one atomic step
+ * ([DeviceRegistrationRepository.replaceForRecovery],
+ * [DeviceRegistrationRepository.replaceForRotation]). Nonces are kept with
  * their request timestamps; pruning runs inside every claim, under the same
  * lock, so the state never outgrows the nonces of the validity window.
  */
@@ -62,6 +83,30 @@ private class AuthenticationState {
     val mutex = Mutex()
     var registrations = mapOf<DeviceAddress, Registration>()
     var nonces = mapOf<Pair<DeviceAddress, NonceKey>, Instant>()
+
+    /**
+     * The compare-and-set shared by recovery and rotation, after their own
+     * idempotency and expected-state checks passed. Caller holds [mutex].
+     * Checks epoch exhaustion, claims the nonce, then installs [newKey] with
+     * epoch + 1 and exactly one of [recoveryId] and [rotationId].
+     */
+    fun replaceKey(
+        address: DeviceAddress,
+        current: Registration,
+        newKey: ByteArray,
+        nonce: RequestNonce,
+        timestamp: Instant,
+        pruneBefore: Instant,
+        recoveryId: DeviceRecoveryId?,
+        rotationId: DeviceAuthenticationRotationId?,
+    ): KeyReplacement {
+        if (current.authEpoch == Long.MAX_VALUE) return KeyReplacement.EPOCH_EXHAUSTED
+        if (!claim(address, nonce.bytes, timestamp, pruneBefore)) return KeyReplacement.REPLAY
+        registrations = registrations + (address to Registration(newKey, current.authEpoch + 1, recoveryId, rotationId))
+        return KeyReplacement.REPLACED
+    }
+
+    enum class KeyReplacement { REPLACED, REPLAY, EPOCH_EXHAUSTED }
 
     /** Caller holds [mutex]. */
     fun claim(address: DeviceAddress, nonce: ByteArray, timestamp: Instant, pruneBefore: Instant): Boolean {
@@ -86,14 +131,14 @@ private class InMemoryDeviceRegistrationRepository(private val state: Authentica
         state.mutex.withLock { state.registrations[address]?.let { DeviceRegistration(address, it.publicKey) } }
 
     override suspend fun registrationState(address: DeviceAddress): DeviceRegistrationState? = state.mutex.withLock {
-        state.registrations[address]?.let { DeviceRegistrationState(DeviceRegistration(address, it.publicKey), it.authEpoch, it.recoveryId) }
+        state.registrations[address]?.let { DeviceRegistrationState(DeviceRegistration(address, it.publicKey), it.authEpoch, it.recoveryId, it.rotationId) }
     }
 
     override suspend fun register(registration: DeviceRegistration): Boolean = state.mutex.withLock {
         val existing = state.registrations[registration.address]
         when {
             existing == null -> {
-                state.registrations = state.registrations + (registration.address to Registration(registration.publicKey, 1, null))
+                state.registrations = state.registrations + (registration.address to Registration(registration.publicKey, 1, null, null))
                 true
             }
             existing.publicKey.contentEquals(registration.publicKey) -> false
@@ -112,12 +157,33 @@ private class InMemoryDeviceRegistrationRepository(private val state: Authentica
         ) {
             return@withLock RecoveryReplacementResult.CONFLICT
         }
-        if (!state.claim(replacement.target, replacement.nonce.bytes, replacement.timestamp, replacement.pruneBefore)) {
-            return@withLock RecoveryReplacementResult.REPLAY
+        val result = state.replaceKey(
+            replacement.target, target, newKey, replacement.nonce, replacement.timestamp, replacement.pruneBefore,
+            recoveryId = replacement.recoveryId, rotationId = null,
+        )
+        when (result) {
+            AuthenticationState.KeyReplacement.REPLACED -> RecoveryReplacementResult.REPLACED
+            AuthenticationState.KeyReplacement.REPLAY -> RecoveryReplacementResult.REPLAY
+            AuthenticationState.KeyReplacement.EPOCH_EXHAUSTED -> RecoveryReplacementResult.EPOCH_EXHAUSTED
         }
-        state.registrations = state.registrations +
-            (replacement.target to Registration(newKey, target.authEpoch + 1, replacement.recoveryId))
-        RecoveryReplacementResult.REPLACED
+    }
+
+    override suspend fun replaceForRotation(replacement: RotationReplacement): RotationReplacementResult = state.mutex.withLock {
+        val current = state.registrations[replacement.address] ?: return@withLock RotationReplacementResult.NOT_REGISTERED
+        if (current.rotationId == replacement.rotationId) return@withLock RotationReplacementResult.ALREADY_APPLIED
+        val newKey = replacement.replacementPublicKey
+        if (!current.matches(replacement.expected) || current.publicKey.contentEquals(newKey)) {
+            return@withLock RotationReplacementResult.CONFLICT
+        }
+        val result = state.replaceKey(
+            replacement.address, current, newKey, replacement.nonce, replacement.timestamp, replacement.pruneBefore,
+            recoveryId = null, rotationId = replacement.rotationId,
+        )
+        when (result) {
+            AuthenticationState.KeyReplacement.REPLACED -> RotationReplacementResult.REPLACED
+            AuthenticationState.KeyReplacement.REPLAY -> RotationReplacementResult.REPLAY
+            AuthenticationState.KeyReplacement.EPOCH_EXHAUSTED -> RotationReplacementResult.EPOCH_EXHAUSTED
+        }
     }
 
     private fun Registration.matches(expected: DeviceRegistrationState) =

@@ -25,14 +25,18 @@ Safety numbers, verification and acceptance concern the **messaging identity
 key** (the X3DH identity key in bundles and `PreKeyMessage`s). They do not
 touch, and are not touched by:
 
-- the device authentication key and its registration or recovery
-  ([server-authentication.md](server-authentication.md),
-  [device-recovery.md](device-recovery.md));
+- the device authentication key and its registration, recovery or routine
+  rotation ([server-authentication.md](server-authentication.md),
+  [device-recovery.md](device-recovery.md),
+  [device-authentication-rotation.md](device-authentication-rotation.md));
 - the storage encryption key and its rotation;
 - signed prekeys, one-time prekeys and ratchet session keys.
 
-A device authentication recovery changes neither side's safety number nor
-any verification state (tested in `DeviceAuthenticationRecoveryTest`).
+A device authentication recovery or routine rotation changes neither side's
+safety number nor any verification state (tested in
+`DeviceAuthenticationRecoveryTest`, `DeviceAuthenticationRotationTest`,
+`DeviceAuthenticationRotationRoutesTest` and
+`DeviceAuthenticationRotationStorageTest`).
 
 ## Safety number, version 1
 

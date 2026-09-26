@@ -1,5 +1,6 @@
 package dev.kreienbuehl.ksecuremessage.client
 
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
@@ -53,6 +54,16 @@ internal class FlakyNetwork(val fake: FakeNetwork = FakeNetwork()) : SecureMessa
     override suspend fun recoverDevice(authorization: DeviceRecoveryAuthorization) {
         checkNoTransaction()
         fake.recoverDevice(authorization)
+    }
+
+    override suspend fun authenticationEpoch(address: DeviceAddress, signer: ServerRequestSigner): Long {
+        checkNoTransaction()
+        return fake.authenticationEpoch(address, signer)
+    }
+
+    override suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization) {
+        checkNoTransaction()
+        fake.rotateDeviceAuthenticationKey(authorization)
     }
 
     override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) {

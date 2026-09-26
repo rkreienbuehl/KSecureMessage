@@ -95,6 +95,30 @@ class ClientRecordCipherTest {
     }
 
     @Test
+    fun deviceAuthenticationRotationKeyIsItsOwnRecordType() = runTest {
+        // Same plaintext layout as the active and the recovery key; only the record type differs.
+        val keyPair = DeviceAuthenticationKeyPair(bytes(1), bytes(2))
+        val rotation = cipher.sealDeviceAuthenticationRotationKey(keyPair)
+        val active = cipher.sealDeviceAuthenticationKey(keyPair)
+        val recovery = cipher.sealDeviceAuthenticationRecoveryKey(keyPair)
+        val opened = cipher.openDeviceAuthenticationRotationKey(rotation)
+        assertContentEquals(bytes(1), opened.publicKey)
+        assertContentEquals(bytes(2), opened.privateKey)
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openDeviceAuthenticationKey(rotation) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openDeviceAuthenticationRecoveryKey(rotation) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openDeviceAuthenticationRotationKey(active) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openDeviceAuthenticationRotationKey(recovery) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openDeviceAuthenticationRotationKey(rotation.flipped(rotation.size - 1)) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> {
+            ClientRecordCipher(testKey(1, 100)).openDeviceAuthenticationRotationKey(rotation)
+        }
+        val privateKey = ByteArray(32) { 0x5A }
+        assertFalse(
+            cipher.sealDeviceAuthenticationRotationKey(DeviceAuthenticationKeyPair(bytes(1), privateKey)).toHex().contains(privateKey.toHex()),
+        )
+    }
+
+    @Test
     fun sealedRecordsDoNotContainPlaintext() = runTest {
         val secret = "super-secret-pending-message".encodeToByteArray()
         val sealed = cipher.sealPendingFrame(BOB, m1, secret)

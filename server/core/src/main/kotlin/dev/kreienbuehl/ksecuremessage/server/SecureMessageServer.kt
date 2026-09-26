@@ -5,6 +5,7 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.RequestAuthentication
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
@@ -32,6 +33,7 @@ class SecureMessageServer(
     private val preKeys = PreKeyService(storage.preKeys)
     private val authenticator = DeviceAuthenticator(storage.devices, storage.authenticationNonces, clock)
     private val recovery = DeviceRecoveryService(storage.devices, clock)
+    private val rotation = DeviceAuthenticationRotationService(storage.devices, clock)
 
     /**
      * Registers the device authentication key of [registration]'s address.
@@ -47,7 +49,8 @@ class SecureMessageServer(
      *
      * First registration is trust on first registration: whoever registers
      * an unregistered address first owns it. There is no reset; only
-     * [recoverDevice] replaces a registered key.
+     * [recoverDevice] and [rotateDeviceAuthenticationKey] replace a
+     * registered key.
      */
     suspend fun registerDevice(
         registration: DeviceRegistration,
@@ -75,6 +78,35 @@ class SecureMessageServer(
      */
     suspend fun recoverDevice(authorization: DeviceRecoveryAuthorization): DeviceRecoveryOutcome =
         recovery.recover(authorization)
+
+    /**
+     * Replaces [address]'s registered device authentication key K1 with the
+     * statement's replacement key K2 in a routine rotation
+     * (docs/device-authentication-rotation.md): authorized by K1 (the
+     * registered key at the statement's epoch) and proven by K2. The
+     * statement is the request's authentication; no other device takes part.
+     * Throws [DeviceAuthenticationRotationException] and changes nothing if
+     * any check fails.
+     *
+     * From the moment this returns [DeviceAuthenticationRotationOutcome.ROTATED],
+     * only K2 authenticates the device and the epoch is one higher. The
+     * messaging identity, prekeys and mailbox are not touched. A retry of the
+     * same rotation returns [DeviceAuthenticationRotationOutcome.ALREADY_APPLIED].
+     */
+    suspend fun rotateDeviceAuthenticationKey(
+        address: DeviceAddress,
+        authorization: DeviceAuthenticationRotationAuthorization,
+    ): DeviceAuthenticationRotationOutcome = rotation.rotate(address, authorization)
+
+    /**
+     * The authenticated [device]'s current authentication epoch, which a
+     * routine rotation statement has to name.
+     */
+    suspend fun authenticationEpoch(device: AuthenticatedDevice): Long {
+        require(device.endpoint == ProtectedEndpoint.READ_REGISTRATION) { "Not authenticated for the registration" }
+        // The device authenticated with its registered key, so the registration exists.
+        return checkNotNull(storage.devices.registrationState(device.address)) { "Registration disappeared" }.authEpoch
+    }
 
     /** See [DeviceAuthenticator.authenticate]. */
     suspend fun authenticate(

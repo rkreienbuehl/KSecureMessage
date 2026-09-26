@@ -109,6 +109,9 @@ object ServerApiPaths {
     /** Device recovery (docs/device-recovery.md). Not a ServerAuth-signed endpoint. */
     const val REGISTRATION_RECOVERY: String = "registration/recovery"
 
+    /** Routine device authentication key rotation (docs/device-authentication-rotation.md). Not a ServerAuth-signed endpoint. */
+    const val REGISTRATION_ROTATION: String = "registration/rotation"
+
     /** `/v1/devices/{user}/{device}/{endpoint}`. */
     fun device(address: DeviceAddress, endpoint: String): String =
         "/v1/devices/${encodeSegment(address.userId.value)}/${encodeSegment(address.deviceId.value)}/$endpoint"

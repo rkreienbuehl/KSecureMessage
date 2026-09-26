@@ -186,7 +186,7 @@ be opened again. As before, use one `SqlDelightClientStorage` per database.
 
 Order (fixed, for reproducible progress, not for security): local identity,
 device authentication key, pending device recovery key (milestone 14),
-signed prekeys by ID (current and grace period), one-time prekeys by ID,
+pending device authentication rotation key (milestone 16), signed prekeys by ID (current and grace period), one-time prekeys by ID,
 sessions by remote address, pending outbound frames by sequence. The key
 checks are not re-encrypted: activation writes a new one and retirement drops
 the old one.
@@ -230,6 +230,8 @@ The authoritative check before a key is retired is a scan, not a counter.
 - `device_authentication_key.sealed_key_pair` (milestone 12)
 - `device_authentication_recovery_key.sealed_key_pair` (milestone 14, the
   pending device recovery key; docs/device-recovery.md)
+- `device_authentication_rotation_key.sealed_key_pair` (milestone 16, the
+  pending routine rotation key; docs/device-authentication-rotation.md)
 - `signed_pre_key.sealed_key_pair`
 - `one_time_pre_key.sealed_key_pair`
 - `session.sealed_state`

@@ -18,7 +18,8 @@ sealed class SecureMessageTransportException(message: String) : Exception(messag
     /**
      * The server holds a different device authentication key for this
      * address. Registration never replaces a registered key; only a device
-     * recovery does (docs/device-recovery.md).
+     * recovery (docs/device-recovery.md) or a routine rotation
+     * (docs/device-authentication-rotation.md) does.
      */
     class DeviceRegistrationConflict : SecureMessageTransportException("Device is registered with a different authentication key")
 
@@ -29,6 +30,13 @@ sealed class SecureMessageTransportException(message: String) : Exception(messag
     /** The server rejected a device recovery (docs/device-recovery.md); nothing was changed. */
     class DeviceRecoveryRejected(val reason: RecoveryFailure) :
         SecureMessageTransportException("Device recovery rejected: $reason")
+
+    /**
+     * The server rejected a routine device authentication key rotation
+     * (docs/device-authentication-rotation.md); nothing was changed.
+     */
+    class DeviceAuthenticationRotationRejected(val reason: RotationFailure) :
+        SecureMessageTransportException("Device authentication rotation rejected: $reason")
 
     /** Any other unexpected server response. */
     class UnexpectedResponse(val status: Int) :
@@ -92,5 +100,34 @@ sealed class SecureMessageTransportException(message: String) : Exception(messag
 
         /** The registration changed since the request was made (another recovery won), or the key is already registered. */
         CONFLICT,
+
+        /** The target's authentication epoch cannot grow any more. */
+        EPOCH_EXHAUSTED,
+    }
+
+    enum class RotationFailure {
+        /** The request was malformed, or did not change the key. */
+        INVALID_REQUEST,
+
+        /** The device is not registered: use first registration. */
+        NOT_REGISTERED,
+
+        /** The statement time is outside the server's validity window. */
+        EXPIRED,
+
+        /** The current key's authorization or the replacement key's proof of possession does not verify. */
+        INVALID_PROOF,
+
+        /** The statement's nonce was used before. */
+        REPLAY,
+
+        /**
+         * The registered key or epoch is not the one the statement names: an
+         * earlier attempt, another rotation or a recovery changed it.
+         */
+        CONFLICT,
+
+        /** The authentication epoch cannot grow any more. */
+        EPOCH_EXHAUSTED,
     }
 }

@@ -60,6 +60,7 @@ Not protected:
 |---|---|---|---|---|---|
 | Device authentication key (`device_authentication_key`, milestone 12) | Ed25519 private key | whole key pair (public + private) | row ID 0 | record type | Like the identity; see [server-authentication.md](server-authentication.md). The non-secret `device_authentication_state.awaits_upgrade_key` stays plaintext. |
 | Pending recovery key (`device_authentication_recovery_key`, milestone 14) | Ed25519 private key of the replacement key | whole key pair (public + private), same content layout as record type 7 | row ID 0 | record type 8 | Its own record type, so it never opens as the active key or the other way round; promotion reseals it as type 7. See [device-recovery.md](device-recovery.md). |
+| Pending rotation key (`device_authentication_rotation_key`, milestone 16) | Ed25519 private key of the routine rotation's replacement key | whole key pair (public + private), same content layout as record types 7 and 8 | row ID 0 | record type 9 | Its own record type, so it never opens as the active or the recovery key or the other way round; promotion reseals it as type 7. See [device-authentication-rotation.md](device-authentication-rotation.md). |
 | Local identity (`local_identity`) | private key | whole key pair (public + private) | row ID 0 | record type | Sealing the pair keeps public and private halves consistent; the public key is not needed for lookup. |
 | Signed prekeys (`signed_pre_key`) | private key | public key, signature, private key | ID, `created_at`, `replaced_at` | record type, ID | Lifecycle SQL (rotation, stamping, expiry) works on the plaintext timestamps. |
 | One-time prekeys (`one_time_pre_key`) | private key | public key, private key | ID | record type, ID | Publication reads and authenticates every record, so a tampered public key is never published silently. |
@@ -142,6 +143,7 @@ the associated data, so version, algorithm and key ID are authenticated.
 | key check | 6 | none |
 | device authentication key | 7 | none (there is one; milestone 12) |
 | pending device recovery key | 8 | none (there is at most one; milestone 14) |
+| pending device authentication rotation key | 9 | none (there is at most one; milestone 16) |
 
 The IDs and the domain string must never change. Because the record type is
 authenticated, a record moved to another type fails even when the plaintext
@@ -153,7 +155,12 @@ another row of the same type fails.
 
 - Identity: `u8 version = 1 | bytes(publicKey) | bytes(privateKey)`
 - Device authentication key: `u8 version = 1 | bytes(publicKey) | bytes(privateKey)`
-  (frozen vector in `StorageCipherTest.deviceAuthenticationKeyVector`)
+  (frozen vector in `StorageCipherTest.deviceAuthenticationKeyVector`);
+  the pending recovery key (type 8) and the pending rotation key (type 9)
+  use the same layout (frozen vectors `deviceAuthenticationRecoveryKeyVector`,
+  `deviceAuthenticationRotationKeyVector`, the latter with its own fixed
+  nonce `b0 … bb`, computed independently with Python `cryptography` after
+  reproducing the type 7 and 8 vectors)
 - Signed prekey: `u8 version = 1 | bytes(publicKey) | bytes(signature) | bytes(privateKey)`
 - One-time prekey: `u8 version = 1 | bytes(publicKey) | bytes(privateKey)`
 - Session: `SecureSession.state` as is (versioned inside)

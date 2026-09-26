@@ -1,5 +1,6 @@
 package dev.kreienbuehl.ksecuremessage.storage.client.sqldelight
 
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.client.PreKeyConfiguration
 import dev.kreienbuehl.ksecuremessage.client.ReceiveResult
@@ -651,6 +652,12 @@ class SqlDelightPersistenceTest {
             error("These tests set bundles directly, see publish")
 
         override suspend fun recoverDevice(authorization: DeviceRecoveryAuthorization) = error("These tests set bundles directly, see publish")
+
+        override suspend fun authenticationEpoch(address: DeviceAddress, signer: ServerRequestSigner): Long =
+            error("These tests set bundles directly, see publish")
+
+        override suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization) =
+            error("These tests set bundles directly, see publish")
 
         override suspend fun fetchPreKeyBundle(address: DeviceAddress) = bundles.getValue(address)
 

@@ -118,3 +118,12 @@ internal fun SqlDriver.schemaShape(): Map<String, List<String>> =
     tables().associateWith { table ->
         strings("SELECT name || ':' || type || ':' || \"notnull\" || ':' || coalesce(dflt_value, '') || ':' || pk FROM pragma_table_info('$table') ORDER BY cid")
     } + ("indexes" to strings("SELECT tbl_name || ':' || name FROM sqlite_master WHERE type = 'index' ORDER BY 1"))
+
+/** Test support: sets a registration's epoch directly, for the epoch exhaustion boundary. */
+internal fun SqlDriver.setAuthEpoch(address: dev.kreienbuehl.ksecuremessage.model.DeviceAddress, authEpoch: Long) {
+    execute(null, "UPDATE device_registration SET auth_epoch = ? WHERE user_id = ? AND device_id = ?", 3) {
+        bindLong(0, authEpoch)
+        bindString(1, address.userId.value)
+        bindString(2, address.deviceId.value)
+    }
+}

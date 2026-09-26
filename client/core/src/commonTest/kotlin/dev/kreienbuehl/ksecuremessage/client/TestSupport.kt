@@ -11,6 +11,8 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotation
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecovery
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
@@ -31,6 +33,8 @@ import dev.kreienbuehl.ksecuremessage.storage.SessionStore
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
 import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacement
 import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacementResult
+import dev.kreienbuehl.ksecuremessage.storage.RotationReplacement
+import dev.kreienbuehl.ksecuremessage.storage.RotationReplacementResult
 import dev.kreienbuehl.ksecuremessage.storage.server.inmemory.InMemoryServerStorage
 import kotlinx.coroutines.CompletableDeferred
 import kotlin.time.Clock
@@ -59,6 +63,18 @@ internal class FakeNetwork : SecureMessageTransport {
     /** Only records, without checking anything. */
     override suspend fun recoverDevice(authorization: DeviceRecoveryAuthorization) {
         recoveries += authorization
+    }
+
+    val rotations = mutableListOf<DeviceAuthenticationRotationAuthorization>()
+
+    /** Returned by [authenticationEpoch] without checking authentication. */
+    var authenticationEpoch = 1L
+
+    override suspend fun authenticationEpoch(address: DeviceAddress, signer: ServerRequestSigner): Long = authenticationEpoch
+
+    /** Only records, without checking anything. */
+    override suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization) {
+        rotations += authorization
     }
 
     /** Only records: these tests set [bundles] by hand, see [publish]. */
@@ -164,8 +180,69 @@ internal class ServerBackedNetwork(
             RecoveryReplacementResult.CONFLICT -> reject(SecureMessageTransportException.RecoveryFailure.CONFLICT)
             RecoveryReplacementResult.REPLAY -> reject(SecureMessageTransportException.RecoveryFailure.REPLAY)
             RecoveryReplacementResult.TARGET_NOT_REGISTERED -> reject(SecureMessageTransportException.RecoveryFailure.TARGET_NOT_REGISTERED)
+            RecoveryReplacementResult.EPOCH_EXHAUSTED -> reject(SecureMessageTransportException.RecoveryFailure.EPOCH_EXHAUSTED)
         }
         afterRecovery()
+    }
+
+    override suspend fun authenticationEpoch(address: DeviceAddress, signer: ServerRequestSigner): Long {
+        beforeNetworkCall()
+        authenticate(address, "GET", ServerApiPaths.REGISTRATION, ByteArray(0), signer)
+        return checkNotNull(server.devices.registrationState(address)).authEpoch
+    }
+
+    /** Rotation requests that reached the server, in order. */
+    val rotationAttempts = mutableListOf<DeviceAuthenticationRotationAuthorization>()
+
+    /**
+     * Runs after the server committed a rotation (or recognized a retry),
+     * before the response: throwing here stands for a lost response.
+     */
+    var afterRotation: () -> Unit = {}
+
+    /**
+     * The checks of server:core's routine rotation, without the time window:
+     * registered, exact retry, current key and epoch, authorization with the
+     * registered key, proof of possession, then the atomic replacement.
+     */
+    override suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization) {
+        beforeNetworkCall()
+        rotationAttempts += authorization
+        val statement = authorization.statement
+        fun reject(failure: SecureMessageTransportException.RotationFailure): Nothing =
+            throw SecureMessageTransportException.DeviceAuthenticationRotationRejected(failure)
+        val state = server.devices.registrationState(statement.address)
+            ?: reject(SecureMessageTransportException.RotationFailure.NOT_REGISTERED)
+        val rotationId = DeviceAuthenticationRotation.rotationId(statement)
+        val registered = state.registration.publicKey
+        if (state.rotationId == rotationId && registered.contentEquals(statement.replacementPublicKey)) {
+            if (!DeviceAuthenticationRotation.verifyAuthorization(statement.currentPublicKey, authorization) ||
+                !DeviceAuthenticationRotation.verifyProofOfPossession(authorization)
+            ) {
+                reject(SecureMessageTransportException.RotationFailure.INVALID_PROOF)
+            }
+            afterRotation()
+            return
+        }
+        if (!registered.contentEquals(statement.currentPublicKey) || state.authEpoch != statement.expectedAuthEpoch) {
+            reject(SecureMessageTransportException.RotationFailure.CONFLICT)
+        }
+        if (!DeviceAuthenticationRotation.verifyAuthorization(registered, authorization) ||
+            !DeviceAuthenticationRotation.verifyProofOfPossession(authorization)
+        ) {
+            reject(SecureMessageTransportException.RotationFailure.INVALID_PROOF)
+        }
+        val result = server.devices.replaceForRotation(
+            RotationReplacement(state, statement.replacementPublicKey, rotationId, statement.nonce, statement.timestamp, Instant.DISTANT_PAST),
+        )
+        when (result) {
+            RotationReplacementResult.REPLACED, RotationReplacementResult.ALREADY_APPLIED -> Unit
+            RotationReplacementResult.CONFLICT -> reject(SecureMessageTransportException.RotationFailure.CONFLICT)
+            RotationReplacementResult.REPLAY -> reject(SecureMessageTransportException.RotationFailure.REPLAY)
+            RotationReplacementResult.NOT_REGISTERED -> reject(SecureMessageTransportException.RotationFailure.NOT_REGISTERED)
+            RotationReplacementResult.EPOCH_EXHAUSTED -> reject(SecureMessageTransportException.RotationFailure.EPOCH_EXHAUSTED)
+        }
+        afterRotation()
     }
 
     override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) {
@@ -258,6 +335,8 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
     var failDeviceAuthenticationKeyStore = false
     var failPendingRecoveryKeyStore = false
     var failRecoveryKeyPromotion = false
+    var failPendingRotationKeyStore = false
+    var failRotationKeyPromotion = false
     var failSignedPreKeyRemoval = false
     var failLegacyStamp = false
     var failPendingStore = false
@@ -296,6 +375,16 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
             override suspend fun promotePendingRecoveryKeyPair() {
                 if (failRecoveryKeyPromotion) throw StorageFailure()
                 tx.deviceAuthentication.promotePendingRecoveryKeyPair()
+            }
+
+            override suspend fun storePendingRotationKeyPair(keyPair: DeviceAuthenticationKeyPair) {
+                if (failPendingRotationKeyStore) throw StorageFailure()
+                tx.deviceAuthentication.storePendingRotationKeyPair(keyPair)
+            }
+
+            override suspend fun promotePendingRotationKeyPair() {
+                if (failRotationKeyPromotion) throw StorageFailure()
+                tx.deviceAuthentication.promotePendingRotationKeyPair()
             }
         }
 

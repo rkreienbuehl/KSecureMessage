@@ -15,7 +15,9 @@ import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.model.UserId
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationId
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryId
+import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
 import dev.kreienbuehl.ksecuremessage.storage.AuthenticationNonceRepository
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationRepository
@@ -25,6 +27,8 @@ import dev.kreienbuehl.ksecuremessage.storage.PreKeyPublicationException
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyRepository
 import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacement
 import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacementResult
+import dev.kreienbuehl.ksecuremessage.storage.RotationReplacement
+import dev.kreienbuehl.ksecuremessage.storage.RotationReplacementResult
 import dev.kreienbuehl.ksecuremessage.storage.ServerStorage
 import dev.kreienbuehl.ksecuremessage.storage.server.sqldelight.db.ServerDatabase
 import dev.kreienbuehl.ksecuremessage.storage.server.sqldelight.db.ServerStateQueries
@@ -105,12 +109,11 @@ class SqlDelightServerStorage private constructor(
 
         // Checks, nonce claim and the guarded UPDATE in one transaction. The
         // UPDATE's WHERE clause repeats the key and epoch check, so only one
-        // of two recoveries verified against the same state can change the row.
+        // of two replacements (recoveries or rotations) verified against the
+        // same state can change the row.
         override suspend fun replaceForRecovery(replacement: RecoveryReplacement): RecoveryReplacementResult {
             val target = replacement.target
             val newKey = replacement.replacementPublicKey
-            val recoveryId = replacement.recoveryId.bytes
-            val nonce = replacement.nonce.bytes
             return transaction {
                 val current = loadState(target) ?: return@transaction RecoveryReplacementResult.TARGET_NOT_REGISTERED
                 if (current.recoveryId == replacement.recoveryId) return@transaction RecoveryReplacementResult.ALREADY_APPLIED
@@ -121,22 +124,74 @@ class SqlDelightServerStorage private constructor(
                 ) {
                     return@transaction RecoveryReplacementResult.CONFLICT
                 }
-                pruneNonces(replacement.pruneBefore.toEpochMilliseconds())
-                if (insertNonce(target.user, target.device, nonce, replacement.timestamp.toEpochMilliseconds()).value != 1L) {
-                    return@transaction RecoveryReplacementResult.REPLAY
+                when (
+                    replaceKey(
+                        current, newKey, replacement.nonce, replacement.timestamp, replacement.pruneBefore,
+                        recoveryId = replacement.recoveryId, rotationId = null,
+                    )
+                ) {
+                    KeyReplacement.REPLACED -> RecoveryReplacementResult.REPLACED
+                    KeyReplacement.REPLAY -> RecoveryReplacementResult.REPLAY
+                    KeyReplacement.EPOCH_EXHAUSTED -> RecoveryReplacementResult.EPOCH_EXHAUSTED
                 }
-                val updated = replaceRegistrationKey(
-                    replacement = newKey,
-                    recovery_id = recoveryId,
-                    user_id = target.user,
-                    device_id = target.device,
-                    expected_key = replacement.expectedTarget.registration.publicKey,
-                    expected_epoch = replacement.expectedTarget.authEpoch,
-                ).value
-                // Cannot happen after the checks above in this transaction; never commit a half recovery.
-                check(updated == 1L) { "Registration changed during recovery" }
-                RecoveryReplacementResult.REPLACED
             }
+        }
+
+        override suspend fun replaceForRotation(replacement: RotationReplacement): RotationReplacementResult {
+            val newKey = replacement.replacementPublicKey
+            return transaction {
+                val current = loadState(replacement.address) ?: return@transaction RotationReplacementResult.NOT_REGISTERED
+                if (current.rotationId == replacement.rotationId) return@transaction RotationReplacementResult.ALREADY_APPLIED
+                if (!current.matches(replacement.expected) || current.registration.publicKey.contentEquals(newKey)) {
+                    return@transaction RotationReplacementResult.CONFLICT
+                }
+                when (
+                    replaceKey(
+                        current, newKey, replacement.nonce, replacement.timestamp, replacement.pruneBefore,
+                        recoveryId = null, rotationId = replacement.rotationId,
+                    )
+                ) {
+                    KeyReplacement.REPLACED -> RotationReplacementResult.REPLACED
+                    KeyReplacement.REPLAY -> RotationReplacementResult.REPLAY
+                    KeyReplacement.EPOCH_EXHAUSTED -> RotationReplacementResult.EPOCH_EXHAUSTED
+                }
+            }
+        }
+
+        /**
+         * The compare-and-set shared by recovery and rotation, inside their
+         * transaction after their own idempotency and expected-state checks:
+         * epoch exhaustion, nonce prune + claim under the device, then the
+         * guarded UPDATE with exactly one transition ID.
+         */
+        private fun ServerStateQueries.replaceKey(
+            current: DeviceRegistrationState,
+            newKey: ByteArray,
+            nonce: RequestNonce,
+            timestamp: Instant,
+            pruneBefore: Instant,
+            recoveryId: DeviceRecoveryId?,
+            rotationId: DeviceAuthenticationRotationId?,
+        ): KeyReplacement {
+            val address = current.address
+            // Never let SQLite turn auth_epoch + 1 into a REAL: epochs do not wrap.
+            if (current.authEpoch == Long.MAX_VALUE) return KeyReplacement.EPOCH_EXHAUSTED
+            pruneNonces(pruneBefore.toEpochMilliseconds())
+            if (insertNonce(address.user, address.device, nonce.bytes, timestamp.toEpochMilliseconds()).value != 1L) {
+                return KeyReplacement.REPLAY
+            }
+            val updated = replaceRegistrationKey(
+                replacement = newKey,
+                recovery_id = recoveryId?.bytes,
+                rotation_id = rotationId?.bytes,
+                user_id = address.user,
+                device_id = address.device,
+                expected_key = current.registration.publicKey,
+                expected_epoch = current.authEpoch,
+            ).value
+            // Cannot happen after the checks above in this transaction; never commit a half replacement.
+            check(updated == 1L) { "Registration changed during key replacement" }
+            return KeyReplacement.REPLACED
         }
 
         private fun ServerStateQueries.loadState(address: DeviceAddress): DeviceRegistrationState? =
@@ -145,6 +200,7 @@ class SqlDelightServerStorage private constructor(
                     DeviceRegistration(address, it.auth_public_key),
                     it.auth_epoch,
                     it.recovery_id?.let(::DeviceRecoveryId),
+                    it.rotation_id?.let(::DeviceAuthenticationRotationId),
                 )
             }
 
@@ -286,21 +342,23 @@ class SqlDelightServerStorage private constructor(
 
     companion object {
         /**
-         * Server database schema, version 2. Independent of the client
-         * schema. `Schema.migrate(driver, 1, 2)` migrates a milestone 13
-         * database (docs/server-storage.md).
+         * Server database schema, version 3. Independent of the client
+         * schema. `Schema.migrate(driver, 1, 3)` migrates a milestone 13
+         * database, `Schema.migrate(driver, 2, 3)` a milestone 14/15 one
+         * (docs/server-storage.md).
          */
         val Schema: SqlSchema<QueryResult.Value<Unit>> get() = ServerDatabase.Schema
 
         private const val FORMAT_V1 = 1L
         private const val FORMAT_V2 = 2L
+        private const val FORMAT_V3 = 3L
 
         /**
          * Opens the server storage on [driver], whose database must already
          * have the current schema ([Schema]). Creates and migrates nothing
          * and never closes [driver]: the caller keeps owning it. Throws
          * [IllegalStateException] if the database was not created with this
-         * schema, or is still at schema version 1 (migrate it with
+         * schema, or is still at schema version 1 or 2 (migrate it with
          * [Schema] first). Blocking database calls run on [dispatcher].
          */
         suspend fun open(driver: SqlDriver, dispatcher: CoroutineDispatcher = Dispatchers.IO): SqlDelightServerStorage {
@@ -315,11 +373,14 @@ class SqlDelightServerStorage private constructor(
                 }
             }
             check(format != FORMAT_V1) { "Database has server storage schema version 1; migrate it with SqlDelightServerStorage.Schema" }
-            check(format == FORMAT_V2) { "Database has no supported server storage schema" }
+            check(format != FORMAT_V2) { "Database has server storage schema version 2; migrate it with SqlDelightServerStorage.Schema" }
+            check(format == FORMAT_V3) { "Database has no supported server storage schema" }
             return SqlDelightServerStorage(driver, dispatcher)
         }
     }
 }
+
+private enum class KeyReplacement { REPLACED, REPLAY, EPOCH_EXHAUSTED }
 
 private val DeviceAddress.user get() = userId.value
 private val DeviceAddress.device get() = deviceId.value

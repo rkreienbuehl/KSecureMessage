@@ -13,6 +13,7 @@ internal enum class StorageRecordType(val id: Byte) {
     KEY_CHECK(6),
     DEVICE_AUTHENTICATION_KEY(7),
     DEVICE_AUTHENTICATION_RECOVERY_KEY(8),
+    DEVICE_AUTHENTICATION_ROTATION_KEY(9),
 }
 
 /**

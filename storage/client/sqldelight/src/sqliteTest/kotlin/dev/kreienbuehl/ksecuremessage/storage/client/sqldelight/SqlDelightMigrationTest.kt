@@ -386,16 +386,22 @@ class SqlDelightMigrationTest {
 
         val storage = reopen()
         assertEquals(StorageKeyRotationStatus(StorageKeyRotationPhase.STABLE, StorageKeyId(1), null, null, 0), storage.storageKeyRotationStatus())
-        assertEquals(listOf(10L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(11L), driver.longs("PRAGMA user_version"))
         // Every row is unchanged; storage_encryption only gained the rotation columns, the
         // device authentication tables of schema version 8 mark the identity as awaiting its key,
-        // and the recovery table of schema version 9 is empty.
+        // and the recovery table of schema version 9 and the rotation table of version 11 are empty.
         val after = driver.dump()
-        val authTables = setOf("device_authentication_key", "device_authentication_state", "device_authentication_recovery_key")
+        val authTables = setOf(
+            "device_authentication_key",
+            "device_authentication_state",
+            "device_authentication_recovery_key",
+            "device_authentication_rotation_key",
+        )
         assertEquals(before.withUnverifiedPins() - "storage_encryption", after - "storage_encryption" - authTables)
         assertEquals(listOf("'alice'|'phone'|X'${ByteArray(32) { 8 }.toHex().uppercase()}'|0"), after.getValue("remote_identity"), "the pin is kept, unverified")
         assertEquals(emptyList(), after.getValue("device_authentication_key"))
         assertEquals(emptyList(), after.getValue("device_authentication_recovery_key"))
+        assertEquals(emptyList(), after.getValue("device_authentication_rotation_key"))
         assertEquals(listOf("0|1"), after.getValue("device_authentication_state"))
         assertEquals(before.getValue("storage_encryption").single() + "|1|0|NULL|NULL|NULL", after.getValue("storage_encryption").single())
 

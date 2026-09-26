@@ -209,9 +209,16 @@ try { client.decrypt(envelope) } catch (e: SecureMessageClientException.Identity
 }
 ```
 
+Milestone 16 done: routine device authentication key rotation. A device that still holds its registered key K1 replaces it with K2 without another device: `prepareDeviceAuthenticationRotation()` creates K2 once and keeps it as pending rotation key (sealed at rest as record type 9, kept across restarts and storage key rotation, never pending together with a recovery key); `completeDeviceAuthenticationRotation()` reads the current authentication epoch (`GET …/registration`, signed by K1) and sends a frozen binary statement (domains `KSecureMessage-DeviceAuthRotation-v1` / `-PoP-v1`: address, K1, K2, expected epoch, timestamp, nonce) signed by K1 and by K2 to `PUT …/registration/rotation`. The server checks freshness (±5 minutes), the registered key and epoch, both signatures and the nonce, and replaces the key by the same compare-and-set as recovery: `(K1, epoch N) → (K2, N+1)`; K1 stops working at once. An exact retry is recognized by its `DeviceAuthenticationRotationId`; a lost response or a crash before the local promotion is resolved by a registration probe with K2. Stale, replayed, same-key and competing rotations are rejected, a rotation and a recovery racing from the same state have one winner, and epochs never wrap. Only server authentication changes. Nothing rotates automatically. Server schema version 3 (`2.sqm`), client schema version 11 (`10.sqm`). See [docs/device-authentication-rotation.md](docs/device-authentication-rotation.md).
+
+```kotlin
+client.rotateDeviceAuthenticationKey()       // prepare + complete; safe to call again after a failure
+client.resolveDeviceAuthenticationRotation() // after a crash or lost response: promotes K2 if the server has it
+```
+
 ## Next implementation steps
 
-1. Account-level recovery for the last device (recovery key or code) and routine device authentication key rotation; a PostgreSQL server adapter if multi-node deployment is needed.
+1. A device authentication key rotation policy (for example rotate after a configurable age, triggered explicitly by the application) on top of the M16 mechanism; account-level recovery for the last device (recovery key or code); a PostgreSQL server adapter if multi-node deployment is needed.
 2. An application commit boundary for received messages and bounded dedup retention.
 3. Sealed sender.
 

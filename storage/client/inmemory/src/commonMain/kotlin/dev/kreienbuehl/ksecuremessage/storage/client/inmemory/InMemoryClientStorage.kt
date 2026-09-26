@@ -59,6 +59,11 @@ class InMemoryClientStorage : ClientStorage {
             transaction { deviceAuthentication.storePendingRecoveryKeyPair(keyPair) }
         override suspend fun removePendingRecoveryKeyPair() = transaction { deviceAuthentication.removePendingRecoveryKeyPair() }
         override suspend fun promotePendingRecoveryKeyPair() = transaction { deviceAuthentication.promotePendingRecoveryKeyPair() }
+        override suspend fun pendingRotationKeyPair() = transaction { deviceAuthentication.pendingRotationKeyPair() }
+        override suspend fun storePendingRotationKeyPair(keyPair: DeviceAuthenticationKeyPair) =
+            transaction { deviceAuthentication.storePendingRotationKeyPair(keyPair) }
+        override suspend fun removePendingRotationKeyPair() = transaction { deviceAuthentication.removePendingRotationKeyPair() }
+        override suspend fun promotePendingRotationKeyPair() = transaction { deviceAuthentication.promotePendingRotationKeyPair() }
     }
 
     override val remoteIdentities: RemoteIdentityStore = object : RemoteIdentityStore {
@@ -152,6 +157,7 @@ private data class State(
     val identity: LocalIdentity? = null,
     val deviceAuthenticationKey: DeviceAuthenticationKeyPair? = null,
     val pendingRecoveryKey: DeviceAuthenticationKeyPair? = null,
+    val pendingRotationKey: DeviceAuthenticationKeyPair? = null,
     /** Pinned keys with their verification state; the key arrays are never shared with callers. */
     val remoteIdentities: Map<DeviceAddress, PinnedIdentity> = emptyMap(),
     val sessions: Map<DeviceAddress, SecureSession> = emptyMap(),
@@ -234,6 +240,7 @@ private class TransactionView(var state: State) : ClientStorage {
 
         override suspend fun storePendingRecoveryKeyPair(keyPair: DeviceAuthenticationKeyPair) {
             check(state.pendingRecoveryKey == null) { "A pending recovery key is already stored" }
+            check(state.pendingRotationKey == null) { "A device authentication rotation is pending" }
             state = state.copy(pendingRecoveryKey = keyPair.copy())
         }
 
@@ -244,6 +251,23 @@ private class TransactionView(var state: State) : ClientStorage {
         override suspend fun promotePendingRecoveryKeyPair() {
             val pending = checkNotNull(state.pendingRecoveryKey) { "No pending recovery key" }
             state = state.copy(deviceAuthenticationKey = pending, pendingRecoveryKey = null)
+        }
+
+        override suspend fun pendingRotationKeyPair() = state.pendingRotationKey?.copy()
+
+        override suspend fun storePendingRotationKeyPair(keyPair: DeviceAuthenticationKeyPair) {
+            check(state.pendingRotationKey == null) { "A pending rotation key is already stored" }
+            check(state.pendingRecoveryKey == null) { "A device recovery is pending" }
+            state = state.copy(pendingRotationKey = keyPair.copy())
+        }
+
+        override suspend fun removePendingRotationKeyPair() {
+            state = state.copy(pendingRotationKey = null)
+        }
+
+        override suspend fun promotePendingRotationKeyPair() {
+            val pending = checkNotNull(state.pendingRotationKey) { "No pending rotation key" }
+            state = state.copy(deviceAuthenticationKey = pending, pendingRotationKey = null)
         }
     }
 

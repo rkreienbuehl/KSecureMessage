@@ -117,4 +117,29 @@ sealed class SecureMessageClientException(message: String, cause: Throwable? = n
 
     /** There is no pending device recovery: call [SecureMessageClient.prepareDeviceAuthenticationRecovery]. */
     class NoPendingDeviceRecovery : SecureMessageClientException("No device recovery is pending")
+
+    /**
+     * A device recovery cannot start while a routine device authentication
+     * key rotation is pending (docs/device-authentication-rotation.md). First
+     * try [SecureMessageClient.resolveDeviceAuthenticationRotation]; if the
+     * rotation did not happen, [SecureMessageClient.cancelDeviceAuthenticationRotation].
+     * Nothing was changed.
+     */
+    class DeviceAuthenticationRotationInProgress :
+        SecureMessageClientException("A device authentication rotation is pending")
+
+    /**
+     * A routine device authentication key rotation cannot start while a
+     * device recovery is pending (docs/device-recovery.md). Complete or
+     * cancel the recovery first. Nothing was changed.
+     */
+    class DeviceAuthenticationRecoveryInProgress :
+        SecureMessageClientException("A device authentication recovery is pending")
+
+    /** There is no pending rotation: call [SecureMessageClient.prepareDeviceAuthenticationRotation]. */
+    class NoPendingDeviceAuthenticationRotation :
+        SecureMessageClientException("No device authentication rotation is pending")
+
+    /** The pending rotation key changed while the rotation was submitted. Nothing was promoted. */
+    class InvalidDeviceAuthenticationRotation(message: String) : SecureMessageClientException(message)
 }

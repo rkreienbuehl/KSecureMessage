@@ -22,6 +22,9 @@ enum class ProtectedEndpoint(val method: String, val endpoint: String) {
 
     /** `GET /v1/devices/{user}/{device}/messages` */
     DRAIN_MAILBOX("GET", ServerApiPaths.MESSAGES),
+
+    /** `GET /v1/devices/{user}/{device}/registration`: the device's own registration state. */
+    READ_REGISTRATION("GET", ServerApiPaths.REGISTRATION),
 }
 
 /**

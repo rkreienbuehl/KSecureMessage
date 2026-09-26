@@ -76,6 +76,33 @@ class StorageCipherTest {
         assertEquals(7, StorageRecordType.DEVICE_AUTHENTICATION_KEY.id.toInt())
     }
 
+    /**
+     * Record type 9 (milestone 16): the pending replacement key pair of a
+     * routine device authentication key rotation, same content layout as
+     * types 7 and 8. Computed independently (Python `cryptography`, AESGCM;
+     * the same script first reproduced the type 7 and 8 vectors). Frozen.
+     * Its own fixed nonce: the JVM refuses to reuse a GCM nonce with the same
+     * key in consecutive encryptions.
+     */
+    @Test
+    fun deviceAuthenticationRotationKeyVector() = runTest {
+        val header = EncryptedRecordFormat.header(StorageKeyId(7))
+        assertEquals(
+            "4b534d52010100000007000000194b5365637572654d6573736167652d53746f726167652d76310900",
+            EncryptedRecordFormat.associatedData(header, StorageRecordType.DEVICE_AUTHENTICATION_ROTATION_KEY, emptyList()).toHex(),
+        )
+        val keyPair = DeviceAuthenticationKeyPair(ByteArray(32) { 0x11 }, ByteArray(32) { 0x22 })
+        val vector = "4b534d52010100000007b0b1b2b3b4b5b6b7b8b9babb98555aabccdcaa4e56e986b3dc4c99d3952d58c3043f9e244fdf93e04d93e307145a" +
+            "322b72dea6b8857982681e9ba0970f4f35e5391960d26fa84e1226b902dd90ca1c96289e44f83b6e036706fe2757bb87b5b7661d8f79bd"
+        val cipher = StorageCipher(key) { ByteArray(12) { (0xB0 + it).toByte() } }
+        assertEquals(vector, AeadClientRecordCipher(cipher).sealDeviceAuthenticationRotationKey(keyPair).toHex())
+        val opened = ClientRecordCipher(key).openDeviceAuthenticationRotationKey(hex(vector))
+        assertContentEquals(keyPair.publicKey, opened.publicKey)
+        assertContentEquals(keyPair.privateKey, opened.privateKey)
+        assertEquals(9, StorageRecordType.DEVICE_AUTHENTICATION_ROTATION_KEY.id.toInt())
+        assertEquals(StorageRecordType.entries.size, StorageRecordType.entries.map { it.id }.toSet().size)
+    }
+
     @Test
     fun roundtripAndLayout() = runTest {
         val record = cipher.seal(StorageRecordType.SESSION, fields, plaintext)
@@ -214,6 +241,6 @@ class StorageCipherTest {
             EncryptedRecordFormat.associatedData(EncryptedRecordFormat.header(StorageKeyId(2)), StorageRecordType.KEY_CHECK, emptyList()).toHex(),
         )
         assertEquals(all.size, all.toSet().size)
-        assertEquals(listOf<Byte>(1, 2, 3, 4, 5, 6, 7, 8), StorageRecordType.entries.map { it.id })
+        assertEquals(listOf<Byte>(1, 2, 3, 4, 5, 6, 7, 8, 9), StorageRecordType.entries.map { it.id })
     }
 }

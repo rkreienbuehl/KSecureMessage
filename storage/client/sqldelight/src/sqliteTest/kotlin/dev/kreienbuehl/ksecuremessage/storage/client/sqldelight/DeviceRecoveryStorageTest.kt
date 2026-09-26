@@ -15,6 +15,7 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecovery
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.KodiumProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
@@ -205,10 +206,15 @@ class DeviceRecoveryStorageTest {
         database.closeOpenDrivers()
 
         val storage = reopen()
-        assertEquals(listOf(10L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(11L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
-        assertEquals(before.withUnverifiedPins(), after - "device_authentication_recovery_key", "no existing row changes")
+        assertEquals(
+            before.withUnverifiedPins(),
+            after - "device_authentication_recovery_key" - "device_authentication_rotation_key",
+            "no existing row changes",
+        )
         assertEquals(emptyList(), after.getValue("device_authentication_recovery_key"))
+        assertEquals(emptyList(), after.getValue("device_authentication_rotation_key"))
         assertNull(storage.deviceAuthentication.pendingRecoveryKeyPair())
     }
 
@@ -216,6 +222,7 @@ class DeviceRecoveryStorageTest {
     fun downgradedDatabaseMatchesTheVersion8Fixture() = runTest {
         laptop(reopen()).initialize()
         driver.exec("DROP TABLE device_authentication_recovery_key")
+        driver.exec("DROP TABLE device_authentication_rotation_key")
         driver.exec("ALTER TABLE remote_identity DROP COLUMN verification")
         driver.exec("PRAGMA user_version = 8")
         val downgraded = driver.tables().associateWith { driver.columns(it) }
@@ -261,6 +268,10 @@ class DeviceRecoveryStorageTest {
             verify(address, ServerApiPaths.MESSAGES, "GET", ByteArray(0), keys.getValue(address), signer)
             return emptyList()
         }
+
+        override suspend fun authenticationEpoch(address: DeviceAddress, signer: ServerRequestSigner): Long = error("not used")
+
+        override suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization) = error("not used")
 
         override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) = error("not used")
 

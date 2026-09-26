@@ -60,7 +60,7 @@ database on open. A host that manages the schema itself calls
 `open` creates and migrates nothing: it reads the single-row
 `server_storage` marker and throws `IllegalStateException` (without SQL
 details) if the database has no server schema, is still at schema version 1
-(format 1: migrate it first), or has an unknown format.
+or 2 (format 1 or 2: migrate it first), or has an unknown format.
 
 `open(driver, dispatcher)` takes an optional `CoroutineDispatcher`
 (default `Dispatchers.IO`) for the blocking driver calls.
@@ -90,17 +90,18 @@ storage/server/
 or `sqldelight-sqlite` / `sqldelight-postgresql` if SQLDelight dialect
 separation proves useful. None of this exists yet.
 
-## Schema (server schema version 2)
+## Schema (server schema version 3)
 
 Defined in `ServerState.sq`, independent of the client schema (client
 versions do not apply here). Migrations are `.sqm` files with server-own
-numbering: `1.sqm` migrates version 1 (M13) to 2 (M14, below). Timestamps are epoch
+numbering: `1.sqm` migrates version 1 (M13) to 2 (M14), `2.sqm` version 2 to
+3 (M16, below). Timestamps are epoch
 milliseconds. Uniqueness is enforced by the database, not only by Kotlin:
 
 | Table | Key / constraint | Columns |
 |---|---|---|
-| `server_storage` | `id = 0` (single row) | `format` = 2 (1 = schema version 1) |
-| `device_registration` | PK `(user_id, device_id)` | `auth_public_key`, `auth_epoch` (≥ 1, default 1), `recovery_id` (32-byte `DeviceRecoveryId` or `NULL`) |
+| `server_storage` | `id = 0` (single row) | `format` = 3 (1, 2 = schema versions 1, 2) |
+| `device_registration` | PK `(user_id, device_id)` | `auth_public_key`, `auth_epoch` (≥ 1, default 1, never wraps), `recovery_id` (32-byte `DeviceRecoveryId` or `NULL`), `rotation_id` (32-byte `DeviceAuthenticationRotationId` or `NULL`); at most one of the two IDs is set: the transition that installed the current key |
 | `authentication_nonce` | PK `(user_id, device_id, nonce)`, index on `request_timestamp` | `request_timestamp` |
 | `device_prekey_state` | PK `(user_id, device_id)` | `identity_key`, `signed_pre_key_id`, `signed_pre_key`, `signed_pre_key_signature` |
 | `available_one_time_prekey` | PK `(user_id, device_id, pre_key_id)` | `public_key` |
@@ -120,6 +121,19 @@ available one-time prekeys, tombstones, mailbox rows and the mailbox
 `AUTOINCREMENT` sequence are untouched. `SqlDelightServerMigrationTest`
 checks this against a frozen copy of the version 1 schema
 (`ServerVersion1Schema`) and that the migrated schema equals a new one.
+
+### Migration from schema version 2 (M14/M15)
+
+`2.sqm` (milestone 16, docs/device-authentication-rotation.md) adds
+`device_registration.rotation_id BLOB` with `ALTER TABLE … ADD COLUMN` and
+sets `server_storage.format = 3`. Existing registrations keep their key,
+epoch and recovery ID and get no rotation ID; nonces, prekey state,
+available one-time prekeys, tombstones, mailbox rows and the mailbox
+sequence are untouched. A version 1 database migrates through both files.
+`SqlDelightServerMigrationTest` checks v1 → v3 and v2 → v3 against the
+frozen fixtures `ServerVersion1Schema` and `ServerVersion2Schema`, that a
+version 1 database migrated to 2 has the fixture's shape, and that the
+migrated schema equals a new one.
 
 ## Transaction semantics
 
@@ -142,7 +156,18 @@ mutex.
   Nothing else changes: prekeys, tombstones, mailbox rows and other nonces
   stay. A failure rolls back the nonce claim too. Unlike ordinary
   authenticated requests, the recovery's nonce claim and its write share
-  one transaction.
+  one transaction. The update also clears `rotation_id`.
+- **Routine rotation** (M16, docs/device-authentication-rotation.md): the
+  same compare-and-set primitive as recovery (a private helper shared by
+  both), with rotation's own checks in front: one transaction loads the
+  registration, returns "already applied" if `rotation_id` is this
+  rotation's, "conflict" if key or epoch differ from the verified state or
+  the replacement is the current key, "epoch exhausted" at
+  `Long.MAX_VALUE` (for recovery too: SQLite would otherwise turn
+  `auth_epoch + 1` into a REAL), then prunes and claims the nonce under the
+  device and runs the guarded `UPDATE` setting `rotation_id` and clearing
+  `recovery_id`. Of a rotation and a recovery verified against the same
+  state, exactly one changes the row.
 - **Nonce claim**: `DELETE ... WHERE request_timestamp < pruneBefore`, then
   `INSERT OR IGNORE` of the nonce, in one transaction. `true` only if the row
   was inserted. The prune commits also when the claim returns `false`, like
@@ -245,7 +270,14 @@ is not encrypted; that is out of scope, like backups.
   the recovery contract (`DeviceRecoveryRepositoryContractTest`).
 - `SqlDelightServerRecoveryTest`: recovery across restarts, stale recovery
   after restarts, preserved prekeys/tombstones/mailbox, rollback.
-- `SqlDelightServerMigrationTest`: schema version 1 → 2.
+- `SqlDelight*DeviceAuthenticationRotationRepositoryTest` /
+  `FileBackedDeviceAuthenticationRotationRepositoryTest`: the rotation
+  contract (`DeviceAuthenticationRotationRepositoryContractTest`), including
+  rotation-vs-recovery races and the epoch exhaustion boundary.
+- `SqlDelightServerRotationTest`: rotation across restarts, stale K1 → K2
+  after K2 → K3 across restarts, preserved prekeys/tombstones/mailbox,
+  rollback before and after the nonce claim and the compare-and-set.
+- `SqlDelightServerMigrationTest`: schema version 1 → 3 and 2 → 3.
 
 ## Limitations
 
@@ -253,5 +285,7 @@ is not encrypted; that is out of scope, like backups.
   clustering, HA or distributed locking.
 - No server database encryption, backup, mailbox expiry, quotas or background
   cleanup jobs (nonces are pruned only by claims).
-- Auth-key recovery only through another device of the same user
-  (docs/device-recovery.md); no device reset or deletion; no sealed sender.
+- Auth-key replacement only by recovery through another device of the same
+  user (docs/device-recovery.md) or by routine rotation with the current key
+  (docs/device-authentication-rotation.md); no device reset or deletion; no
+  sealed sender.

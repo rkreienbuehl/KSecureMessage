@@ -6,6 +6,7 @@ import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationId
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryId
 import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
 import kotlin.time.Instant
@@ -97,16 +98,18 @@ interface MailboxRepository {
 /**
  * Device authentication public keys, one per [DeviceAddress]
  * (docs/server-authentication.md). A registration is added by [register]
- * and replaced only by [replaceForRecovery] (docs/device-recovery.md); it is
- * never removed. Atomic; byte arrays are copied at the boundary.
+ * and replaced only by [replaceForRecovery] (docs/device-recovery.md) or
+ * [replaceForRotation] (docs/device-authentication-rotation.md); it is never
+ * removed. Atomic; byte arrays are copied at the boundary.
  *
  * Every registration has an authentication epoch: 1 for the first
- * registration, one more for each recovery. Epochs only grow.
+ * registration, one more for each recovery or rotation. Epochs only grow and
+ * never wrap: at [Long.MAX_VALUE] no further replacement is possible.
  */
 interface DeviceRegistrationRepository {
     suspend fun registration(address: DeviceAddress): DeviceRegistration?
 
-    /** The registration of [address] with its epoch and the recovery that installed its key, or `null`. */
+    /** The registration of [address] with its epoch and the transition that installed its key, or `null`. */
     suspend fun registrationState(address: DeviceAddress): DeviceRegistrationState?
 
     /**
@@ -121,16 +124,45 @@ interface DeviceRegistrationRepository {
      * 3. the target's or the authorizer's key or epoch differ from the
      *    expected state, or the replacement key is the target's current key:
      *    [RecoveryReplacementResult.CONFLICT], nothing written;
-     * 4. prunes nonces older than [RecoveryReplacement.pruneBefore] and
+     * 4. the target's epoch is [Long.MAX_VALUE]:
+     *    [RecoveryReplacementResult.EPOCH_EXHAUSTED], nothing written;
+     * 5. prunes nonces older than [RecoveryReplacement.pruneBefore] and
      *    claims the nonce; already claimed: [RecoveryReplacementResult.REPLAY]
      *    (the prune may commit);
-     * 5. stores the replacement key, epoch + 1 and the recovery ID:
-     *    [RecoveryReplacementResult.REPLACED].
+     * 6. stores the replacement key, epoch + 1 and the recovery ID, and
+     *    clears the rotation ID: [RecoveryReplacementResult.REPLACED].
      *
      * Nothing else changes: prekeys, mailboxes and other nonces stay.
      * Concurrent calls behave as if they ran one after the other.
      */
     suspend fun replaceForRecovery(replacement: RecoveryReplacement): RecoveryReplacementResult
+
+    /**
+     * Replaces the device's key by a routine rotation
+     * (docs/device-authentication-rotation.md) in one atomic step, together
+     * with the claim of the rotation's nonce ([AuthenticationNonceRepository],
+     * same nonces, under the device's address). In this order:
+     *
+     * 1. the device has no registration: [RotationReplacementResult.NOT_REGISTERED];
+     * 2. the device's current key was installed by the rotation with
+     *    [RotationReplacement.rotationId]: [RotationReplacementResult.ALREADY_APPLIED],
+     *    nothing written;
+     * 3. the key or epoch differ from [RotationReplacement.expected], or the
+     *    replacement key is the current key: [RotationReplacementResult.CONFLICT],
+     *    nothing written;
+     * 4. the epoch is [Long.MAX_VALUE]: [RotationReplacementResult.EPOCH_EXHAUSTED],
+     *    nothing written;
+     * 5. prunes nonces older than [RotationReplacement.pruneBefore] and
+     *    claims the nonce; already claimed: [RotationReplacementResult.REPLAY]
+     *    (the prune may commit);
+     * 6. stores the replacement key, epoch + 1 and the rotation ID, and
+     *    clears the recovery ID: [RotationReplacementResult.REPLACED].
+     *
+     * The same compare-and-set as [replaceForRecovery]: of a recovery and a
+     * rotation from the same state, exactly one replaces the key. Nothing
+     * else changes: prekeys, mailboxes and other nonces stay.
+     */
+    suspend fun replaceForRotation(replacement: RotationReplacement): RotationReplacementResult
 
     /**
      * Registers [registration] if its address has none. Returns `true` if it
@@ -145,16 +177,19 @@ interface DeviceRegistrationRepository {
 
 /**
  * A stored registration: [registration] with its [authEpoch] and the
- * [recoveryId] of the recovery that installed the key (`null` for a key from
- * first registration).
+ * transition that installed the key: [recoveryId] for a device recovery,
+ * [rotationId] for a routine rotation, neither for a key from first
+ * registration. At most one of them is set.
  */
 class DeviceRegistrationState(
     val registration: DeviceRegistration,
     val authEpoch: Long,
     val recoveryId: DeviceRecoveryId?,
+    val rotationId: DeviceAuthenticationRotationId? = null,
 ) {
     init {
         require(authEpoch >= 1) { "Authentication epoch must be positive" }
+        require(recoveryId == null || rotationId == null) { "A key is installed by one transition only" }
     }
 
     val address: DeviceAddress get() = registration.address
@@ -203,6 +238,54 @@ enum class RecoveryReplacementResult {
 
     /** The target has no registration; nothing changed. */
     TARGET_NOT_REGISTERED,
+
+    /** The target's epoch cannot grow any more; nothing changed. */
+    EPOCH_EXHAUSTED,
+}
+
+/**
+ * A verified routine rotation for [DeviceRegistrationRepository.replaceForRotation]:
+ * replace the key of [expected] with [replacementPublicKey]. [expected] is
+ * the state the signatures were verified against; the replacement only
+ * happens if it is still current.
+ */
+class RotationReplacement(
+    val expected: DeviceRegistrationState,
+    replacementPublicKey: ByteArray,
+    val rotationId: DeviceAuthenticationRotationId,
+    val nonce: RequestNonce,
+    val timestamp: Instant,
+    val pruneBefore: Instant,
+) {
+    private val key: ByteArray = replacementPublicKey.copyOf()
+
+    /** A copy of the replacement key. */
+    val replacementPublicKey: ByteArray get() = key.copyOf()
+
+    val address: DeviceAddress get() = expected.address
+
+    override fun toString(): String = "RotationReplacement(address=$address, expectedAuthEpoch=${expected.authEpoch})"
+}
+
+/** Outcome of [DeviceRegistrationRepository.replaceForRotation]. */
+enum class RotationReplacementResult {
+    /** The key was replaced and the epoch incremented. */
+    REPLACED,
+
+    /** This rotation installed the current key before; nothing changed. */
+    ALREADY_APPLIED,
+
+    /** The registration is no longer the verified one; nothing changed. */
+    CONFLICT,
+
+    /** The nonce was claimed before; the registration is unchanged. */
+    REPLAY,
+
+    /** The device has no registration; nothing changed. */
+    NOT_REGISTERED,
+
+    /** The epoch cannot grow any more; nothing changed. */
+    EPOCH_EXHAUSTED,
 }
 
 /** A rejected device registration. Nothing was stored. Messages never contain key bytes. */
@@ -210,7 +293,7 @@ sealed class DeviceRegistrationException(message: String) : Exception(message) {
     /** The registration is malformed, for example a key of the wrong size. */
     class InvalidRegistration(message: String) : DeviceRegistrationException(message)
 
-    /** The address is registered with a different key. Only a recovery replaces it (docs/device-recovery.md). */
+    /** The address is registered with a different key. Only a recovery or a rotation replaces it. */
     class Conflict : DeviceRegistrationException("Device is registered with a different authentication key")
 }
 

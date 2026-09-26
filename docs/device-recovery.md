@@ -65,8 +65,10 @@ folding or normalization). The authorizer is verified with its **currently
 registered** key, never one from the request.
 
 Self-recovery is forbidden: a device that still has its key does not need
-recovery (routine auth-key rotation would be a separate, future operation),
-and a device that lost its key cannot authenticate.
+recovery (it rotates its key itself, M16,
+docs/device-authentication-rotation.md), and a device that lost its key
+cannot authenticate. Recovery signatures never verify as rotation signatures
+or the other way round: other domains, other statement, other endpoint.
 
 The target must be registered already (`recovery_target_not_registered`
 otherwise): recovery is never a second way to register an address. First
@@ -214,8 +216,11 @@ the last step:
      (`204`, no write, no nonce claim);
    - target or authorizer key/epoch changed, or the replacement key is the
      target's current key → `409 recovery_conflict`, no write;
+   - target's epoch is `Long.MAX_VALUE` → `409 device_auth_epoch_exhausted`
+     (M16; epochs never wrap), no write;
    - prune nonces, claim the nonce under the target → `401 authentication_replay`;
-   - store the replacement key, `auth_epoch + 1`, `recovery_id` → `204`.
+   - store the replacement key, `auth_epoch + 1`, `recovery_id` (and clear a
+     `rotation_id`, M16) → `204`.
 
 Success is `204 No Content` for both a replacement and an already applied
 retry. Any other failure is `500 {"error":"internal_error"}` without
@@ -225,7 +230,7 @@ category only, never keys, signatures or the body.
 ### Authentication epoch
 
 Every registration has an `authEpoch`: 1 at first registration, +1 per
-recovery, never decremented or reused. The compare-and-set is on key **and**
+recovery or routine rotation (M16), never decremented, reused or wrapped. The compare-and-set is on key **and**
 epoch, so a key that comes back later (K1 → K2 → K1) is still a new state.
 The epoch is server state only; it is not part of any signature. Existing
 (M13) registrations are migrated to epoch 1.
@@ -233,7 +238,8 @@ The epoch is server state only; it is not part of any signature. Existing
 ### Idempotency and lost responses
 
 The server records on the registration the `DeviceRecoveryId` of the
-recovery that installed the current key. A retry of exactly that statement
+recovery that installed the current key (since M16 either this or the
+`DeviceAuthenticationRotationId` of a routine rotation; at most one is set). A retry of exactly that statement
 succeeds without changes, so a client whose response was lost can resend the
 same authorization. This does not weaken the compare-and-set: only the
 statement that installed the current key matches; any other statement for
@@ -257,7 +263,9 @@ asks the server directly (see [lost response](#lost-response)).
 `storage:server:inmemory` runs the recovery under the one mutex shared by
 registrations and nonces. `storage:server:sqldelight` runs it in one
 database transaction: the checks, the nonce claim and a guarded
-`UPDATE … WHERE key = expected AND epoch = expected`. A crash before the
+`UPDATE … WHERE key = expected AND epoch = expected`. Routine rotation (M16)
+uses the same compare-and-set, so a recovery and a rotation verified
+against the same state never both apply. A crash before the
 commit leaves the old registration authoritative; after it, the new one. A
 failure inside the transaction rolls back the nonce claim too. (Unlike
 ordinary authenticated requests, whose nonce claim is its own transaction,
@@ -274,6 +282,12 @@ the recovery's claim is part of the recovery transaction.)
 | `completeDeviceAuthenticationRecovery(authorization)` | after the server accepted: pending → active in one transaction (`promotePendingRecoveryKeyPair`) |
 | `resolveDeviceAuthenticationRecovery()` | same promotion, if the server confirms the pending key |
 | `cancelDeviceAuthenticationRecovery()` | removes the pending key |
+
+A pending recovery key and a pending routine rotation key (M16) never exist
+together: `prepareDeviceAuthenticationRecovery` throws
+`DeviceAuthenticationRotationInProgress` while a rotation is pending (resolve
+it first, then cancel it), and a rotation cannot start while a recovery is
+pending.
 
 - The pending key is persisted before anything is sent, sealed at rest in
   `storage:client:sqldelight` (record type 8, table
@@ -385,5 +399,6 @@ laptop.receive()
   peer can accept a new messaging identity only explicitly
   (docs/identity-verification.md); device recovery never does that.
 - No admin override, no password/OAuth/e-mail/SMS/recovery-phrase recovery.
-- No routine auth-key rotation, no device deletion.
+- No device deletion. Routine rotation of a key that is still available is
+  its own protocol (M16, docs/device-authentication-rotation.md).
 - No sealed sender; the server still sees routing metadata.

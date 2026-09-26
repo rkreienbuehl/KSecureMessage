@@ -14,6 +14,7 @@ import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
 import dev.kreienbuehl.ksecuremessage.model.RatchetMessage
 import dev.kreienbuehl.ksecuremessage.protocol.CiphertextMessageCodec
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotation
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecovery
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryCodec
@@ -120,6 +121,12 @@ import kotlin.uuid.Uuid
  * [completeDeviceAuthenticationRecovery] on the lost device again. This
  * replaces the server authentication key only, never the messaging identity.
  *
+ * A device that still holds its key can replace it itself with a routine
+ * rotation (docs/device-authentication-rotation.md):
+ * [rotateDeviceAuthenticationKey], or [prepareDeviceAuthenticationRotation]
+ * and [completeDeviceAuthenticationRotation]. The current key authorizes the
+ * new one; no other device takes part. Nothing rotates automatically.
+ *
  * Identities can be verified manually and changes accepted explicitly
  * (docs/identity-verification.md): [safetyNumber] gives a value both devices
  * derive alike for the user to compare, [markRemoteIdentityVerified] records
@@ -203,7 +210,9 @@ class SecureMessageClient(
      * sessions and identity pins are not changed. Needs the local identity
      * ([SecureMessageClientException.NotInitialized]); throws
      * [SecureMessageClientException.InvalidDeviceRecovery] if [authorizer] is
-     * this device or belongs to another user.
+     * this device or belongs to another user, and
+     * [SecureMessageClientException.DeviceAuthenticationRotationInProgress]
+     * while a routine rotation is pending.
      */
     suspend fun prepareDeviceAuthenticationRecovery(authorizer: DeviceAddress): DeviceRecoveryRequest {
         if (authorizer == localAddress) throw SecureMessageClientException.InvalidDeviceRecovery("A device cannot authorize its own recovery")
@@ -212,6 +221,10 @@ class SecureMessageClient(
         }
         val keyPair = storage.transaction {
             requireIdentity()
+            deviceAuthentication.pendingRotationKeyPair()?.let {
+                it.privateKey.fill(0)
+                throw SecureMessageClientException.DeviceAuthenticationRotationInProgress()
+            }
             deviceAuthentication.pendingRecoveryKeyPair()
                 ?: protocol.createDeviceAuthenticationKey().also { deviceAuthentication.storePendingRecoveryKeyPair(it) }
         }
@@ -301,13 +314,7 @@ class SecureMessageClient(
         val pending = storage.transaction { deviceAuthentication.pendingRecoveryKeyPair() }
             ?: throw SecureMessageClientException.NoPendingDeviceRecovery()
         val publicKey = pending.publicKey
-        try {
-            withRequestSigner(pending) { keyPair, signer ->
-                transport.registerDevice(DeviceRegistration(localAddress, keyPair.publicKey), signer)
-            }
-        } catch (e: SecureMessageTransportException.DeviceRegistrationConflict) {
-            return false
-        }
+        if (!probeRegistration(pending)) return false
         promotePendingRecoveryKey(publicKey)
         return true
     }
@@ -319,6 +326,160 @@ class SecureMessageClient(
      */
     suspend fun cancelDeviceAuthenticationRecovery() {
         storage.transaction { deviceAuthentication.removePendingRecoveryKeyPair() }
+    }
+
+    /**
+     * Asks the server whether [keyPair]'s public key is this device's
+     * registered key, with a registration request signed by it: registering
+     * exactly the registered key changes nothing. `false` if the server holds
+     * another key. Wipes [keyPair]'s private key.
+     */
+    private suspend fun probeRegistration(keyPair: DeviceAuthenticationKeyPair): Boolean = try {
+        withRequestSigner(keyPair) { pending, signer ->
+            transport.registerDevice(DeviceRegistration(localAddress, pending.publicKey), signer)
+        }
+        true
+    } catch (e: SecureMessageTransportException.DeviceRegistrationConflict) {
+        false
+    }
+
+    /**
+     * Starts or resumes a routine rotation of this device's authentication
+     * key (docs/device-authentication-rotation.md), for a device that still
+     * holds its registered key K1. Creates the replacement key pair K2 once
+     * and keeps it as pending rotation key, sealed at rest; later calls reuse
+     * it until the rotation completes or is cancelled. K1 stays the active
+     * key and keeps signing every request. No network I/O: call
+     * [completeDeviceAuthenticationRotation].
+     *
+     * Rotates server authentication only. The messaging identity, prekeys,
+     * sessions, identity pins and their verification are not changed. Needs
+     * the local identity and K1 ([SecureMessageClientException.NotInitialized]
+     * if either is missing); throws
+     * [SecureMessageClientException.DeviceAuthenticationRecoveryInProgress]
+     * while a device recovery is pending. A device that lost K1 uses device
+     * recovery instead (docs/device-recovery.md).
+     */
+    suspend fun prepareDeviceAuthenticationRotation() {
+        storage.transaction {
+            requireDeviceAuthenticationKey().privateKey.fill(0)
+            deviceAuthentication.pendingRecoveryKeyPair()?.let {
+                it.privateKey.fill(0)
+                throw SecureMessageClientException.DeviceAuthenticationRecoveryInProgress()
+            }
+            val pending = deviceAuthentication.pendingRotationKeyPair()
+                ?: protocol.createDeviceAuthenticationKey().also { deviceAuthentication.storePendingRotationKeyPair(it) }
+            pending.privateKey.fill(0)
+        }
+    }
+
+    /**
+     * Submits the pending rotation and, once the server replaced the
+     * registered key, makes the pending key K2 the active device
+     * authentication key (docs/device-authentication-rotation.md). From then
+     * on every request is signed with K2; K1 no longer works.
+     *
+     * Reads the current authentication epoch from the server with a request
+     * signed by K1, then sends the rotation statement for (K1, epoch) → K2,
+     * signed by K1 (authorization) and K2 (proof of possession), with the
+     * current time and a fresh nonce.
+     *
+     * Safe to call again after a failure, a lost response or a crash before
+     * the local promotion: if the server rejects K1 or the rotation as
+     * conflicting, expired or replayed, this asks the server whether K2 is
+     * registered already ([resolveDeviceAuthenticationRotation]) before
+     * failing. Other failures leave both keys as they are for another
+     * attempt. Throws
+     * [SecureMessageClientException.NoPendingDeviceAuthenticationRotation],
+     * [SecureMessageTransportException.AuthenticationFailed] and
+     * [SecureMessageTransportException.DeviceAuthenticationRotationRejected].
+     */
+    suspend fun completeDeviceAuthenticationRotation() {
+        val (active, pending) = storage.transaction {
+            val active = requireDeviceAuthenticationKey()
+            val pending = deviceAuthentication.pendingRotationKeyPair()
+            if (pending == null) {
+                active.privateKey.fill(0)
+                throw SecureMessageClientException.NoPendingDeviceAuthenticationRotation()
+            }
+            active to pending
+        }
+        val replacementKey = pending.publicKey
+        try {
+            val signer = ServerRequestSigner { request ->
+                require(request.address == localAddress) { "Request is not for this device" }
+                ServerRequestAuthentication.sign(active, request, clock.now())
+            }
+            val epoch = try {
+                transport.authenticationEpoch(localAddress, signer)
+            } catch (e: SecureMessageTransportException.AuthenticationFailed) {
+                // K1 is no longer the registered key: an earlier attempt may have installed K2.
+                if (e.failure == SecureMessageTransportException.AuthenticationFailure.INVALID && resolveDeviceAuthenticationRotation()) return
+                throw e
+            }
+            val authorization = DeviceAuthenticationRotation.create(active, pending, localAddress, epoch, clock.now())
+            try {
+                transport.rotateDeviceAuthenticationKey(authorization)
+            } catch (e: SecureMessageTransportException.DeviceAuthenticationRotationRejected) {
+                // A lost response, or an earlier attempt that won: K2 may be registered already.
+                if (e.reason in RESOLVABLE_ROTATION_FAILURES && resolveDeviceAuthenticationRotation()) return
+                throw e
+            }
+        } finally {
+            active.privateKey.fill(0)
+            pending.privateKey.fill(0)
+        }
+        promotePendingRotationKey(replacementKey)
+    }
+
+    /**
+     * [prepareDeviceAuthenticationRotation] followed by
+     * [completeDeviceAuthenticationRotation]. Resumes a pending rotation
+     * with its existing key.
+     */
+    suspend fun rotateDeviceAuthenticationKey() {
+        prepareDeviceAuthenticationRotation()
+        completeDeviceAuthenticationRotation()
+    }
+
+    /**
+     * Asks the server whether this device's pending rotation key is its
+     * registered key, with a registration request signed by that key. If it
+     * is, makes it the active key and returns `true`; if the server holds
+     * another key, returns `false` and keeps both keys. For a rotation whose
+     * response was lost, or that the server applied before the local
+     * promotion failed. Throws
+     * [SecureMessageClientException.NoPendingDeviceAuthenticationRotation].
+     */
+    suspend fun resolveDeviceAuthenticationRotation(): Boolean {
+        val pending = storage.transaction { deviceAuthentication.pendingRotationKeyPair() }
+            ?: throw SecureMessageClientException.NoPendingDeviceAuthenticationRotation()
+        val publicKey = pending.publicKey
+        if (!probeRegistration(pending)) return false
+        promotePendingRotationKey(publicKey)
+        return true
+    }
+
+    /**
+     * Deletes the pending rotation key; the active key and a pending recovery
+     * key are not touched. Only for a rotation that will not be completed:
+     * call [resolveDeviceAuthenticationRotation] first, because if the server
+     * already accepted it, only the deleted key authenticates this device and
+     * it has to be recovered (docs/device-recovery.md).
+     */
+    suspend fun cancelDeviceAuthenticationRotation() {
+        storage.transaction { deviceAuthentication.removePendingRotationKeyPair() }
+    }
+
+    /** Promotes the pending rotation key only if it is still the one the server accepted. */
+    private suspend fun promotePendingRotationKey(publicKey: ByteArray) = storage.transaction {
+        val pending = deviceAuthentication.pendingRotationKeyPair()
+            ?: throw SecureMessageClientException.NoPendingDeviceAuthenticationRotation()
+        pending.privateKey.fill(0)
+        if (!pending.publicKey.contentEquals(publicKey)) {
+            throw SecureMessageClientException.InvalidDeviceAuthenticationRotation("The pending rotation key changed")
+        }
+        deviceAuthentication.promotePendingRotationKeyPair()
     }
 
     /** Promotes the pending key only if it is still the one the server accepted. */
@@ -1051,6 +1212,13 @@ class SecureMessageClient(
             SecureMessageTransportException.RecoveryFailure.CONFLICT,
             SecureMessageTransportException.RecoveryFailure.EXPIRED,
             SecureMessageTransportException.RecoveryFailure.REPLAY,
+        )
+
+        /** Rotation rejections after which the pending key may be registered already. */
+        private val RESOLVABLE_ROTATION_FAILURES = setOf(
+            SecureMessageTransportException.RotationFailure.CONFLICT,
+            SecureMessageTransportException.RotationFailure.EXPIRED,
+            SecureMessageTransportException.RotationFailure.REPLAY,
         )
     }
 }

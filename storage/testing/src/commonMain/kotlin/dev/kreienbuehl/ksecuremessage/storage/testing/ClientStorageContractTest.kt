@@ -128,6 +128,78 @@ abstract class ClientStorageContractTest {
     }
 
     @Test
+    fun pendingRotationKeyIsSeparateFromTheActiveAndTheRecoveryKey() = runTest {
+        val storage = newStorage()
+        assertNull(storage.deviceAuthentication.pendingRotationKeyPair())
+        storage.deviceAuthentication.store(DeviceAuthenticationKeyPair(bytes(3), bytes(-3)))
+        storage.deviceAuthentication.storePendingRotationKeyPair(DeviceAuthenticationKeyPair(bytes(7), bytes(-7)))
+        assertContentEquals(bytes(-7), storage.deviceAuthentication.pendingRotationKeyPair()?.privateKey)
+        assertNull(storage.deviceAuthentication.pendingRecoveryKeyPair(), "never readable as a recovery key")
+        assertContentEquals(bytes(-3), storage.deviceAuthentication.keyPair()?.privateKey, "the active key is untouched")
+        assertFailsWith<IllegalStateException> {
+            storage.deviceAuthentication.storePendingRotationKeyPair(DeviceAuthenticationKeyPair(bytes(8), bytes(-8)))
+        }
+        assertContentEquals(bytes(-7), storage.deviceAuthentication.pendingRotationKeyPair()?.privateKey, "never replaced silently")
+        assertFailsWith<IllegalStateException>("no recovery while a rotation is pending") {
+            storage.deviceAuthentication.storePendingRecoveryKeyPair(DeviceAuthenticationKeyPair(bytes(5), bytes(-5)))
+        }
+        assertNull(storage.deviceAuthentication.pendingRecoveryKeyPair())
+
+        storage.deviceAuthentication.removePendingRotationKeyPair()
+        assertNull(storage.deviceAuthentication.pendingRotationKeyPair())
+        assertContentEquals(bytes(-3), storage.deviceAuthentication.keyPair()?.privateKey)
+        storage.deviceAuthentication.removePendingRotationKeyPair() // nothing to remove: harmless
+
+        storage.deviceAuthentication.storePendingRecoveryKeyPair(DeviceAuthenticationKeyPair(bytes(5), bytes(-5)))
+        assertFailsWith<IllegalStateException>("no rotation while a recovery is pending") {
+            storage.deviceAuthentication.storePendingRotationKeyPair(DeviceAuthenticationKeyPair(bytes(7), bytes(-7)))
+        }
+        assertNull(storage.deviceAuthentication.pendingRotationKeyPair())
+        storage.deviceAuthentication.removePendingRotationKeyPair()
+        assertContentEquals(bytes(-5), storage.deviceAuthentication.pendingRecoveryKeyPair()?.privateKey, "removing a rotation keeps a recovery")
+    }
+
+    @Test
+    fun rotationPromotionReplacesTheActiveKeyAtomically() = runTest {
+        val storage = newStorage()
+        assertFailsWith<IllegalStateException> { storage.deviceAuthentication.promotePendingRotationKeyPair() }
+        storage.deviceAuthentication.store(DeviceAuthenticationKeyPair(bytes(3), bytes(-3)))
+        storage.deviceAuthentication.storePendingRotationKeyPair(DeviceAuthenticationKeyPair(bytes(7), bytes(-7)))
+
+        assertFailsWith<Failure> {
+            storage.transaction {
+                deviceAuthentication.promotePendingRotationKeyPair()
+                assertContentEquals(bytes(-7), deviceAuthentication.keyPair()?.privateKey, "visible inside the transaction")
+                assertNull(deviceAuthentication.pendingRotationKeyPair())
+                throw Failure()
+            }
+        }
+        assertContentEquals(bytes(-3), storage.deviceAuthentication.keyPair()?.privateKey, "rolled back")
+        assertContentEquals(bytes(-7), storage.deviceAuthentication.pendingRotationKeyPair()?.privateKey, "rolled back")
+
+        storage.deviceAuthentication.promotePendingRotationKeyPair()
+        assertContentEquals(bytes(7), storage.deviceAuthentication.keyPair()?.publicKey)
+        assertContentEquals(bytes(-7), storage.deviceAuthentication.keyPair()?.privateKey)
+        assertNull(storage.deviceAuthentication.pendingRotationKeyPair())
+        assertNull(storage.deviceAuthentication.pendingRecoveryKeyPair())
+        assertFalse(storage.deviceAuthentication.awaitsUpgradeKey())
+        assertFailsWith<IllegalStateException> { storage.deviceAuthentication.promotePendingRotationKeyPair() }
+        assertFailsWith<IllegalStateException> { storage.deviceAuthentication.promotePendingRecoveryKeyPair() }
+    }
+
+    @Test
+    fun pendingRotationKeyIsCopied() = runTest {
+        val storage = newStorage()
+        storage.identity.store(identity(1))
+        val pending = DeviceAuthenticationKeyPair(bytes(7), bytes(-7))
+        storage.deviceAuthentication.storePendingRotationKeyPair(pending)
+        pending.privateKey.fill(0)
+        storage.deviceAuthentication.pendingRotationKeyPair()!!.privateKey.fill(0)
+        storage.deviceAuthentication.promotePendingRotationKeyPair()
+        assertContentEquals(bytes(-7), storage.deviceAuthentication.keyPair()?.privateKey, "stored bytes are not aliased")
+    }
+
+    @Test
     fun deviceAuthenticationKeyIsCopiedAndRolledBack() = runTest {
         val storage = newStorage()
         val keyPair = DeviceAuthenticationKeyPair(bytes(3), bytes(-3))

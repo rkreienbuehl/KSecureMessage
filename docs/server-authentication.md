@@ -77,7 +77,9 @@ key for it. Since M14 the explicit way back is device recovery
 (docs/device-recovery.md): another registered device of the same user
 authorizes a replacement key, which the device keeps as a pending recovery
 key until the server accepted it. A user without another registered device
-still has no way back and needs a new `DeviceAddress`.
+still has no way back and needs a new `DeviceAddress`. A device that still
+holds its key can replace it itself with a routine rotation (M16,
+docs/device-authentication-rotation.md).
 
 `DeviceAuthenticationKeyStore.store` refuses a second key, also an identical
 one (existence check only, so a damaged record never looks absent).
@@ -117,9 +119,11 @@ The server binds `DeviceAddress → device authentication public key`:
 | same address, same key | idempotent success (`204 No Content`) |
 | same address, other key | `DeviceRegistrationException.Conflict` (`409`); registration never replaces the registered key |
 
-Only device recovery (M14, docs/device-recovery.md) replaces a registered
-key, authorized by another registered device of the same user and proven by
-the new key. Registration semantics are unchanged by it.
+Only device recovery (M14, docs/device-recovery.md), authorized by another
+registered device of the same user, and routine rotation (M16,
+docs/device-authentication-rotation.md), authorized by the registered key
+itself, replace a registered key; both are proven by the new key.
+Registration semantics are unchanged by them.
 
 **First registration is trust-on-first-registration at the server layer. M12
 prevents later unauthorized replacement but does not authenticate ownership
@@ -239,6 +243,12 @@ request that fails steps 1–4 consumes nothing.
   the target's nonces: old-key requests fail verification against the new
   key anyway, and keeping an earlier recovery's nonce claimed is what rejects
   its replay (docs/device-recovery.md).
+- **Routine rotation** (M16) does the same with its statement nonce, under
+  the device's own address: it shares the namespace with the device's
+  ServerAuth nonces (a nonce used for an ordinary request is a replay as a
+  rotation nonce), is claimed inside the rotation's compare-and-set
+  transaction, and a rotation clears no nonces
+  (docs/device-authentication-rotation.md).
 - **Clock**: the window assumes the server clock does not jump back by more
   than the window; after such a jump a pruned nonce could be accepted again
   until the clock catches up.
@@ -268,7 +278,9 @@ request that fails steps 1–4 consumes nothing.
 | `GET /v1/devices/{u}/{d}/prekey-bundle` | public | `200` | `404 device_not_found` |
 | `POST /v1/messages` | public | `202` | – |
 | `GET /v1/devices/{u}/{d}/messages` | registered device | `200` | `401` |
-| `PUT /v1/devices/{u}/{d}/registration/recovery` (M14) | authorizer signature + proof of possession in the body (docs/device-recovery.md) | `204` | `400 invalid_recovery`, `401`, `403`, `404`, `409 recovery_conflict` |
+| `PUT /v1/devices/{u}/{d}/registration/recovery` (M14) | authorizer signature + proof of possession in the body (docs/device-recovery.md) | `204` | `400 invalid_recovery`, `401`, `403`, `404`, `409 recovery_conflict`, `409 device_auth_epoch_exhausted` |
+| `GET /v1/devices/{u}/{d}/registration` (M16) | registered device (`ProtectedEndpoint.READ_REGISTRATION`, empty body) | `200 {"authEpoch": N}` | `401` |
+| `PUT /v1/devices/{u}/{d}/registration/rotation` (M16) | current-key authorization + proof of possession in the body, no headers (docs/device-authentication-rotation.md) | `204` | `400 invalid_device_auth_rotation`, `401`, `404`, `409 device_auth_rotation_conflict`, `409 device_auth_epoch_exhausted` |
 
 `401` bodies: `missing_authentication`, `invalid_authentication`,
 `expired_authentication`, `authentication_replay`, `device_not_registered`.
@@ -306,8 +318,10 @@ requests for another address. Applications never build signatures.
 
 - First registration is not proof of human or account ownership.
 - Auth-key recovery only through another registered device of the same
-  user (M14, docs/device-recovery.md); no reset, routine rotation, deletion
-  or multiple active keys per device.
+  user (M14, docs/device-recovery.md); routine rotation needs the current
+  key and is explicit, without a policy (M16,
+  docs/device-authentication-rotation.md); no reset, deletion or multiple
+  active keys per device.
 - Persistent server storage (`storage:server:sqldelight`, M13) is SQLite
   only, single node, unencrypted (docs/server-storage.md).
 - The server still sees sender and recipient metadata; `POST /v1/messages`

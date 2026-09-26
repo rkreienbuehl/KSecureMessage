@@ -5,12 +5,14 @@ import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.AuthenticationFailure
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.Reason
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RecoveryFailure
+import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RotationFailure
 import dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
@@ -80,9 +82,43 @@ class KtorSecureMessageTransport(
             "invalid_recovery_proof" -> RecoveryFailure.INVALID_PROOF
             "authentication_replay" -> RecoveryFailure.REPLAY
             "recovery_conflict" -> RecoveryFailure.CONFLICT
+            "device_auth_epoch_exhausted" -> RecoveryFailure.EPOCH_EXHAUSTED
             else -> throw SecureMessageTransportException.UnexpectedResponse(response.status.value)
         }
         throw SecureMessageTransportException.DeviceRecoveryRejected(failure)
+    }
+
+    override suspend fun authenticationEpoch(address: DeviceAddress, signer: ServerRequestSigner): Long {
+        val response = authenticated(HttpMethod.Get, address, ServerApiPaths.REGISTRATION, body = null, signer)
+        if (response.status != HttpStatusCode.OK) throw response.unexpected()
+        val epoch = try {
+            response.body<DeviceRegistrationStateResponse>().authEpoch
+        } catch (e: IllegalArgumentException) {
+            throw SecureMessageTransportException.UnexpectedResponse(response.status.value)
+        }
+        if (epoch < 1) throw SecureMessageTransportException.UnexpectedResponse(response.status.value)
+        return epoch
+    }
+
+    override suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization) {
+        val address = authorization.statement.address
+        val body = Json.encodeToString(authorization.toRequest()).encodeToByteArray()
+        val response = client.request(baseUrl + ServerApiPaths.device(address, ServerApiPaths.REGISTRATION_ROTATION)) {
+            method = HttpMethod.Put
+            setBody(ByteArrayContent(body, ContentType.Application.Json))
+        }
+        if (response.status.isSuccess()) return
+        val failure = when (runCatching { response.body<ErrorResponse>().error }.getOrNull()) {
+            "invalid_device_auth_rotation" -> RotationFailure.INVALID_REQUEST
+            "device_auth_rotation_not_registered" -> RotationFailure.NOT_REGISTERED
+            "expired_authentication" -> RotationFailure.EXPIRED
+            "invalid_device_auth_rotation_proof" -> RotationFailure.INVALID_PROOF
+            "authentication_replay" -> RotationFailure.REPLAY
+            "device_auth_rotation_conflict" -> RotationFailure.CONFLICT
+            "device_auth_epoch_exhausted" -> RotationFailure.EPOCH_EXHAUSTED
+            else -> throw SecureMessageTransportException.UnexpectedResponse(response.status.value)
+        }
+        throw SecureMessageTransportException.DeviceAuthenticationRotationRejected(failure)
     }
 
     override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) {

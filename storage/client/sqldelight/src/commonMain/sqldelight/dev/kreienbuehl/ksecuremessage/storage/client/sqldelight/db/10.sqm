@@ -1,0 +1,9 @@
+-- Schema version 10 to 11 (milestone 16): pending replacement key of a
+-- routine device authentication key rotation
+-- (docs/device-authentication-rotation.md). A new, empty table; the
+-- migration creates no key material and changes no existing row. The record
+-- is sealed (record type 9) like every key pair.
+CREATE TABLE device_authentication_rotation_key (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    sealed_key_pair BLOB NOT NULL
+);

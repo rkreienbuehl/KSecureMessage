@@ -41,8 +41,11 @@ interface IdentityStore {
 /**
  * The local device's authentication key pair (docs/server-authentication.md),
  * separate from the messaging identity. There is at most one active key. It
- * is replaced only by promoting a pending recovery key after the server
- * accepted a device recovery (docs/device-recovery.md).
+ * is replaced only by promoting a pending key after the server accepted it:
+ * the pending recovery key of a device recovery (docs/device-recovery.md) or
+ * the pending rotation key of a routine rotation
+ * (docs/device-authentication-rotation.md). The two pending slots are
+ * separate, and at most one of them is filled at a time.
  */
 interface DeviceAuthenticationKeyStore {
     suspend fun keyPair(): DeviceAuthenticationKeyPair?
@@ -72,8 +75,9 @@ interface DeviceAuthenticationKeyStore {
 
     /**
      * Stores the replacement key pair of a device recovery. Throws
-     * [IllegalStateException] if one exists already: a pending key is never
-     * replaced silently. The active key is not touched.
+     * [IllegalStateException] if one exists already (a pending key is never
+     * replaced silently) or if a routine rotation is pending. The active key
+     * is not touched.
      */
     suspend fun storePendingRecoveryKeyPair(keyPair: DeviceAuthenticationKeyPair)
 
@@ -88,6 +92,33 @@ interface DeviceAuthenticationKeyStore {
      * [IllegalStateException] and changes nothing if there is no pending key.
      */
     suspend fun promotePendingRecoveryKeyPair()
+
+    /**
+     * The replacement key pair of a routine rotation in progress
+     * (docs/device-authentication-rotation.md), or `null`. Never used to
+     * sign ordinary requests.
+     */
+    suspend fun pendingRotationKeyPair(): DeviceAuthenticationKeyPair?
+
+    /**
+     * Stores the replacement key pair of a routine rotation. Throws
+     * [IllegalStateException] if one exists already (a pending key is never
+     * replaced silently) or if a device recovery is pending. The active key
+     * is not touched.
+     */
+    suspend fun storePendingRotationKeyPair(keyPair: DeviceAuthenticationKeyPair)
+
+    /** Removes the pending rotation key pair, if any. The active key and a pending recovery key are not touched. */
+    suspend fun removePendingRotationKeyPair()
+
+    /**
+     * In one atomic step: makes the pending rotation key pair the active key
+     * (replacing the active key, or installing it if the active key was
+     * lost), removes the pending key and makes [awaitsUpgradeKey] `false`.
+     * Only for a pending key the server accepted. Throws
+     * [IllegalStateException] and changes nothing if there is no pending key.
+     */
+    suspend fun promotePendingRotationKeyPair()
 }
 
 /**

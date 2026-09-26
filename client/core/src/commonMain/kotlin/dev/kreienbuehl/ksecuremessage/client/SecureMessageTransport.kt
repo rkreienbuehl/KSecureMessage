@@ -5,6 +5,7 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.RequestAuthentication
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
@@ -13,8 +14,8 @@ import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
  * Network boundary of [SecureMessageClient]. Implementations report server
  * rejections as [SecureMessageTransportException].
  *
- * Device-scoped requests (registration, prekey publication, mailbox drain)
- * are authenticated with the device authentication key
+ * Device-scoped requests (registration, registration state, prekey
+ * publication, mailbox drain) are authenticated with the device authentication key
  * (docs/server-authentication.md). The client passes a [ServerRequestSigner];
  * the transport describes the exact request it sends as a [ServerRequest]
  * (method, canonical path, exact body bytes), has it signed once per attempt
@@ -39,6 +40,28 @@ interface SecureMessageTransport {
      * Throws [SecureMessageTransportException.DeviceRecoveryRejected].
      */
     suspend fun recoverDevice(authorization: DeviceRecoveryAuthorization)
+
+    /**
+     * The current authentication epoch of [address]'s registration:
+     * `GET /v1/devices/{user}/{device}/registration`, signed with the
+     * registered key. Needed to build a routine rotation statement
+     * (docs/device-authentication-rotation.md). Throws
+     * [SecureMessageTransportException.AuthenticationFailed] if the key is
+     * not the registered one.
+     */
+    suspend fun authenticationEpoch(address: DeviceAddress, signer: ServerRequestSigner): Long
+
+    /**
+     * Submits a routine device authentication key rotation
+     * (docs/device-authentication-rotation.md):
+     * `PUT /v1/devices/{user}/{device}/registration/rotation` for the
+     * statement's device. Not signed with a [ServerRequestSigner]: the
+     * authorization carries the current key's signature and the replacement
+     * key's proof of possession. Returns once the server replaced the key, or
+     * recognized a retry of the rotation that did. Throws
+     * [SecureMessageTransportException.DeviceAuthenticationRotationRejected].
+     */
+    suspend fun rotateDeviceAuthenticationKey(authorization: DeviceAuthenticationRotationAuthorization)
 
     /**
      * Uploads public prekey material. The server applies it atomically and

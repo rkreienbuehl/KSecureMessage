@@ -10,6 +10,8 @@ import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.model.UserId
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationStatement
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryRequest
 import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
@@ -67,6 +69,27 @@ internal class DeviceRecoveryRequestDto(
     val authorizerSignature: String,
 )
 
+/**
+ * Body of `PUT /v1/devices/{user}/{device}/registration/rotation`
+ * (docs/device-authentication-rotation.md). The device is in the path.
+ * [timestamp] is epoch milliseconds; the signatures cover the binary rotation
+ * statement, never this JSON.
+ */
+@Serializable
+internal class DeviceAuthenticationRotationRequestDto(
+    val currentPublicKey: String,
+    val replacementPublicKey: String,
+    val authEpoch: Long,
+    val timestamp: Long,
+    val nonce: String,
+    val authorizationSignature: String,
+    val proofOfPossession: String,
+)
+
+/** Body of the `200` response of `GET /v1/devices/{user}/{device}/registration`. */
+@Serializable
+internal class DeviceRegistrationStateResponse(val authEpoch: Long)
+
 /** Body of 4xx responses. */
 @Serializable
 internal class ErrorResponse(val error: String)
@@ -103,6 +126,24 @@ internal fun DeviceRecoveryRequestDto.toAuthorization(target: DeviceAddress) = D
         proofOfPossession = decodeCanonicalBase64(proofOfPossession),
     ),
     decodeCanonicalBase64(authorizerSignature),
+)
+
+/**
+ * Throws [IllegalArgumentException] for non-canonical Base64, wrong key,
+ * nonce or signature sizes, a non-positive epoch, a negative timestamp, or
+ * the same key twice.
+ */
+internal fun DeviceAuthenticationRotationRequestDto.toAuthorization(address: DeviceAddress) = DeviceAuthenticationRotationAuthorization(
+    DeviceAuthenticationRotationStatement(
+        address = address,
+        currentPublicKey = decodeCanonicalBase64(currentPublicKey),
+        replacementPublicKey = decodeCanonicalBase64(replacementPublicKey),
+        expectedAuthEpoch = authEpoch,
+        timestamp = Instant.fromEpochMilliseconds(timestamp),
+        nonce = RequestNonce(decodeCanonicalBase64(nonce)),
+    ),
+    decodeCanonicalBase64(authorizationSignature),
+    decodeCanonicalBase64(proofOfPossession),
 )
 
 /** Standard Base64 with padding, canonical only. */

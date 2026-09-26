@@ -1,0 +1,343 @@
+# Routine device authentication key rotation
+
+Milestone 16. Explains how a healthy device replaces its device
+authentication key (docs/server-authentication.md) while it still holds the
+current one: the current key K1 authorizes the replacement K2, and K2 proves
+possession. No other device takes part.
+
+Code:
+
+- Rotation statement, signatures, rotation ID:
+  `core/protocol/.../protocol/DeviceAuthenticationRotation.kt`
+  (`DeviceAuthenticationRotation`, `DeviceAuthenticationRotationStatement`,
+  `DeviceAuthenticationRotationAuthorization`, `DeviceAuthenticationRotationId`)
+- Server contract: `storage/core/.../storage/ServerStorage.kt`
+  (`DeviceRegistrationRepository.replaceForRotation`, `RotationReplacement`,
+  `RotationReplacementResult`, `DeviceRegistrationState.rotationId`)
+- Server logic: `server/core/.../server/DeviceAuthenticationRotationService.kt`
+  (`DeviceAuthenticationRotationException`, `DeviceAuthenticationRotationOutcome`),
+  `SecureMessageServer.rotateDeviceAuthenticationKey`,
+  `SecureMessageServer.authenticationEpoch`, `ProtectedEndpoint.READ_REGISTRATION`
+- HTTP: `server/ktor/.../KSecureMessageRoutes.kt`,
+  `client/ktor/.../KtorSecureMessageTransport.rotateDeviceAuthenticationKey` /
+  `authenticationEpoch`
+- Client: `SecureMessageClient.prepareDeviceAuthenticationRotation`,
+  `completeDeviceAuthenticationRotation`, `rotateDeviceAuthenticationKey`,
+  `resolveDeviceAuthenticationRotation`, `cancelDeviceAuthenticationRotation`;
+  pending key in `DeviceAuthenticationKeyStore`
+
+## Rotation versus recovery
+
+```text
+ROUTINE ROTATION (M16)                 RECOVERY (M14, docs/device-recovery.md)
+current key K1 available               current key unavailable
+K1 authorizes K2                       another registered same-user device authorizes
+same DeviceAddress, no other device    two devices involved
+PUT …/registration/rotation            PUT …/registration/recovery
+KSecureMessage-DeviceAuthRotation-*    KSecureMessage-DeviceRecovery-*
+```
+
+The two are separate protocols: different domains, statements, endpoints,
+services, client APIs and pending-key slots. A recovery signature never
+verifies as a rotation signature and the other way round (domain
+separation, tested in `DeviceAuthenticationRotationTest`). They share only
+the server's storage compare-and-set on (key, epoch), so they compose and
+race safely (see "Interaction with recovery").
+
+Like recovery, rotation changes exactly one server binding,
+`DeviceAddress → device authentication public key`, and never the messaging
+identity, TOFU pins, verification state, safety numbers, sessions, signed or
+one-time prekeys, tombstones, mailboxes, pending outbound messages or
+processed logical IDs.
+
+## Protocol
+
+```text
+K1 active
+  ↓ prepareDeviceAuthenticationRotation (local, no network)
+persist pending K2 (sealed, record type 9)
+  ↓ completeDeviceAuthenticationRotation
+GET  /v1/devices/{u}/{d}/registration   (ServerAuth v1, signed by K1) → {"authEpoch": N}
+PUT  /v1/devices/{u}/{d}/registration/rotation
+     statement (K1, K2, epoch N, timestamp, nonce)
+     + authorization signed by K1 + proof of possession signed by K2
+  ↓
+server CAS (K1, epoch N) → (K2, epoch N+1), rotation ID recorded, nonce claimed
+  ↓ 204
+client promotes K2 (one transaction), pending cleared
+```
+
+## Cryptographic format v1 (frozen)
+
+Rotation statement (all integers big-endian):
+
+```text
+u32 length | userId (UTF-8)
+u32 length | deviceId (UTF-8)
+current public key K1 (32, Ed25519)
+replacement public key K2 (32, Ed25519)
+expected authentication epoch: i64 (>= 1, so identical to a u64)
+timestamp: i64, epoch milliseconds (>= 0)
+nonce (16)
+```
+
+Each construction prefixes `u32 length | domain (UTF-8)`:
+
+| Construction | Domain | Algorithm |
+| --- | --- | --- |
+| authorization | `KSecureMessage-DeviceAuthRotation-v1` | Ed25519 by K1 |
+| proof of possession | `KSecureMessage-DeviceAuthRotation-PoP-v1` | Ed25519 by K2 |
+| `DeviceAuthenticationRotationId` | `KSecureMessage-DeviceAuthRotationId-v1` | SHA-256, 32 bytes |
+
+The statement binds the device, both keys and the expected epoch, so the
+transition `(K1, epoch N) → K2` is explicit in what K1 signs, even though
+the server knows K1 and N. K1 = K2 cannot be expressed
+(`DeviceAuthenticationRotationStatement` rejects it). The rotation ID is
+never an authorization: it identifies the transition for idempotent retries
+and as the server's record of which transition installed the current key.
+
+Vectors in `core:protocol` `DeviceAuthenticationRotationTest` are frozen and
+were computed independently (Python `struct`, `hashlib`, `cryptography`
+Ed25519; the same script first reproduced the frozen M14 recovery vectors):
+base statement, authorization and PoP signatures, rotation ID, and variants
+for another device, current key, replacement key, epoch (also
+`Long.MAX_VALUE`), timestamp, nonce and a UTF-8 address.
+
+No domain is shared with ServerAuth v1, DeviceRecovery v1 or SafetyNumber v1.
+
+## Request authentication and nonces
+
+The rotation endpoint carries **no ServerAuth headers**. The K1 authorization
+over the statement is the request's authentication: it is fresh (timestamp
+window), single-use (nonce), bound to the device, to the current key and
+epoch and to the exact replacement. Adding ServerAuth by K1 would add a
+second nonce claimed in another transaction and would make an exact retry
+after a lost response fail, because K1 is no longer registered once the
+server committed.
+
+There is one nonce: the statement nonce, bound into both signatures. It is
+claimed under the device's address in the same `authentication_nonce` table
+as ServerAuth nonces (16 random bytes; one namespace per device), inside the
+compare-and-set transaction, like M14. A nonce the device already used for
+an ordinary request is a replay. Nonces are never cleared by a rotation (or
+recovery); they are pruned only by timestamp, as for every request.
+
+The epoch read (`GET …/registration`) is an ordinary ServerAuth v1 request
+with its own nonce, claimed by `DeviceAuthenticator` as for every protected
+endpoint.
+
+## Freshness
+
+`now - 5 min <= timestamp <= now + 5 min`, bounds included, millisecond
+precision, the server's injected `Clock` — the same window as ServerAuth and
+recovery (`DeviceAuthenticationRotation.VALIDITY_WINDOW`).
+
+## Server semantics
+
+`DeviceAuthenticationRotationService` checks, in this order; an earlier
+failure changes nothing:
+
+1. the statement names the route's device (the route builds the statement
+   from the path, so the signatures cover the path's address); sizes, a
+   positive epoch and K1 ≠ K2 are enforced when the body is decoded
+   (`400 invalid_device_auth_rotation`);
+2. the device is registered (`404 device_auth_rotation_not_registered`);
+3. the timestamp is within the window (`401 expired_authentication`);
+4. **exact retry**: if the registered key was installed by the rotation with
+   this statement's ID and equals K2, both proofs are verified (K1's with the
+   statement's current key, which the stored ID binds; K2's with the
+   registered key) and the result is `ALREADY_APPLIED` (`204`), without any
+   write or nonce claim;
+5. the registered key is K1 and the epoch is the expected one
+   (`409 device_auth_rotation_conflict`);
+6. the authorization verifies with the **registered** key
+   (`401 invalid_device_auth_rotation_proof`);
+7. the proof of possession verifies with K2 (same error);
+8. `DeviceRegistrationRepository.replaceForRotation`, one transaction:
+   not registered → same rotation ID already installed (`ALREADY_APPLIED`) →
+   key/epoch differ from the verified state or K2 is the current key
+   (`CONFLICT`) → epoch is `Long.MAX_VALUE` (`EPOCH_EXHAUSTED`,
+   `409 device_auth_epoch_exhausted`) → prune + claim the nonce (`REPLAY`,
+   `401 authentication_replay`) → K2, epoch + 1, `rotation_id` set,
+   `recovery_id` cleared (`REPLACED`, `204`).
+
+Unexpected failures are `500 {"error":"internal_error"}`; logs name the
+address and the failure category only, never keys, signatures or the body.
+
+### Authentication epoch
+
+Epochs start at 1 on first registration and grow by exactly one per
+recovery or rotation. They never wrap: at `Long.MAX_VALUE` both recovery and
+rotation fail closed with `EPOCH_EXHAUSTED` and nothing changes (SQLite
+would otherwise turn `auth_epoch + 1` into a REAL). A failed rotation leaves
+the epoch unchanged; an idempotent retry does not increment it again.
+
+### Transition metadata
+
+`device_registration` keeps the ID of the transition that installed the
+current key in one of two columns: `recovery_id` (a `DeviceRecoveryId`) or
+`rotation_id` (a `DeviceAuthenticationRotationId`); at most one is set, both
+are `NULL` after first registration. A recovery sets `recovery_id` and
+clears `rotation_id`, a rotation the reverse. The two ID kinds never match
+each other, so an older rotation or recovery is never mistaken for the one
+that is applied.
+
+### Stale transitions
+
+After K1 → K2 and K2 → K3, a replay of the K1 → K2 statement fails: its
+current key and epoch are no longer registered (`CONFLICT`), and with a
+statement rewritten against the current state its nonce is still claimed
+(`REPLAY`). K3 stays authoritative, also across server restarts
+(`SqlDelightServerRotationTest`, `DeviceAuthenticationRotationRoutesTest`).
+
+### After a successful rotation
+
+From the commit on, only K2 authenticates the device: every ServerAuth
+request signed with K1 fails with `401 invalid_authentication`, requests
+signed with K2 are accepted at once. First registration is unchanged:
+registering K2 again is idempotent, registering K1 conflicts.
+
+## Interaction with recovery
+
+- Rotation then recovery: K1 → K2 by rotation, K2 lost, another device
+  recovers K2 → K3; epochs 1 → 2 → 3.
+- Recovery then rotation: K1 → K2 by recovery, then K2 → K3 by rotation.
+- Race: a rotation K1 → K2 and a recovery K1 → K3 verified against the same
+  (K1, epoch N) — exactly one compare-and-set wins, the loser gets its
+  conflict (`DeviceAuthenticationRotationServerTest`, gated deterministically;
+  `DeviceAuthenticationRotationRepositoryContractTest` with 32 parties).
+
+On the client, at most one pending key exists: preparing a rotation while a
+recovery is pending throws `DeviceAuthenticationRecoveryInProgress`, and
+preparing a recovery while a rotation is pending throws
+`DeviceAuthenticationRotationInProgress`; the storage enforces the same
+(`storePendingRotationKeyPair` / `storePendingRecoveryKeyPair` refuse).
+
+Escape path when K1 is lost during an unfinished rotation: call
+`resolveDeviceAuthenticationRotation()` first — if the server already holds
+K2 it is promoted and nothing else is needed; otherwise
+`cancelDeviceAuthenticationRotation()` and start a recovery. The client never
+promotes K2 just because K1 disappeared.
+
+## Client state
+
+- Active key K1: unchanged and used for every request until the server
+  accepted K2.
+- Pending rotation key K2: created only by `prepareDeviceAuthenticationRotation`
+  (by `ProtocolEngine`, never by storage), persisted before any network
+  I/O, sealed at rest (record type 9), reused across restarts and attempts
+  until completed or cancelled; never generated twice for one rotation.
+- Completion: reads the epoch with K1, builds a fresh statement (current
+  time, fresh nonce) and sends it; never inside a storage transaction.
+- Promotion: pending → active in one transaction (`promotePendingRotationKeyPair`),
+  only after the server accepted, answered `ALREADY_APPLIED`, or the
+  registration probe with K2 succeeded; K1 is overwritten only in that
+  transaction.
+- Server rejection before mutation (invalid proof, not registered, epoch
+  exhausted, transport failures): K1 stays active, K2 stays pending for
+  another attempt or an explicit cancel; nothing is deleted automatically.
+- Cancel: removes only the pending rotation key.
+- Nothing rotates implicitly: not in `initialize`, `send`, `receive`,
+  `publishPreKeys`, and not by key age. Policy is out of scope.
+
+### Lost responses and crashes
+
+- Response lost after the server committed: the next
+  `completeDeviceAuthenticationRotation` reads the epoch with K1, which the
+  server now rejects (`AuthenticationFailed(INVALID)`); the client then
+  probes with K2 (`resolveDeviceAuthenticationRotation`, a registration
+  request signed by K2 — registering the registered key changes nothing) and
+  promotes K2. A rotation rejected as `CONFLICT`, `EXPIRED` or `REPLAY` is
+  resolved the same way before failing.
+- An exact retry of the same request (same statement bytes) within the
+  window is answered `ALREADY_APPLIED` by the server.
+- Crash or failed promotion after the server committed: K2 is still pending
+  after a restart; `resolveDeviceAuthenticationRotation` or another
+  `completeDeviceAuthenticationRotation` promotes it. No recovery is needed.
+- A competing recovery won (for example started from another installation
+  of this device): K1 is rejected and the K2 probe conflicts; the call fails
+  with `AuthenticationFailed`, K1 and K2 stay as they are. This installation
+  holds neither registered key: cancel the rotation and recover it
+  (docs/device-recovery.md).
+
+## Storage
+
+- Client: `device_authentication_rotation_key` (single row, sealed record
+  type 9, own associated data so it never opens as the active key (type 7)
+  or the recovery key (type 8)); in `SEALED_COLUMNS`, re-encrypted and
+  covered by the reference scan of storage key rotation
+  (docs/storage-key-rotation.md); a damaged record throws
+  `StorageEncryptionException` and is never replaced. Client SQLDelight
+  schema v11 via `10.sqm` (a new empty table; no existing row changes),
+  frozen fixture `Version10Schema`. `InMemoryClientStorage` has the same
+  semantics without encryption.
+- Server: `device_registration.rotation_id`, server schema v3 via server
+  `2.sqm` (`server_storage.format = 3`), frozen fixture `ServerVersion2Schema`;
+  `open` refuses format 1 and 2 (migrate with `SqlDelightServerStorage.Schema`).
+  `InMemoryServerStorage` has the same semantics.
+
+## HTTP API
+
+```text
+GET /v1/devices/{user}/{device}/registration            ServerAuth v1 (READ_REGISTRATION)
+200 {"authEpoch": 7}
+401 missing_authentication | device_not_registered | expired_authentication
+    | invalid_authentication | authentication_replay
+
+PUT /v1/devices/{user}/{device}/registration/rotation   no auth headers
+{"currentPublicKey":"<b64>","replacementPublicKey":"<b64>","authEpoch":7,
+ "timestamp":1767225600000,"nonce":"<b64>",
+ "authorizationSignature":"<b64>","proofOfPossession":"<b64>"}
+204                                         rotated or already applied
+400 invalid_device_auth_rotation            malformed, non-canonical Base64, sizes, epoch < 1, K1 = K2
+404 device_auth_rotation_not_registered
+401 expired_authentication | invalid_device_auth_rotation_proof | authentication_replay
+409 device_auth_rotation_conflict | device_auth_epoch_exhausted
+500 internal_error
+```
+
+Signatures cover the binary statement, never the JSON. The recovery route
+additionally maps `EPOCH_EXHAUSTED` to `409 device_auth_epoch_exhausted`.
+
+## Usage
+
+```kotlin
+client.rotateDeviceAuthenticationKey()        // prepare + complete
+
+// or step by step
+client.prepareDeviceAuthenticationRotation()  // local only; K2 persisted
+client.completeDeviceAuthenticationRotation() // network; promotes K2
+
+// after a crash or lost response
+client.resolveDeviceAuthenticationRotation()  // true: K2 promoted
+client.cancelDeviceAuthenticationRotation()   // only if the rotation will not complete
+```
+
+## Tests
+
+- `core:protocol` `DeviceAuthenticationRotationTest`: frozen vectors, tamper,
+  wrong signers, malformed signatures, same key, domain separation.
+- `storage:testing` `DeviceAuthenticationRotationRepositoryContractTest`
+  (in-memory, SQLDelight in-memory, file-backed): CAS, epoch, metadata,
+  idempotency, stale replay, exhaustion, 32-party races (identical,
+  different, rotation vs recovery), prekeys/mailbox/nonces untouched.
+- `storage:server:sqldelight` `SqlDelightServerRotationTest` (restarts,
+  rollback before/after nonce claim and CAS), `SqlDelightServerMigrationTest`
+  (v1 → v3, v2 → v3, fresh = migrated), `SqlDelightServerStorageOpenTest`.
+- `server:core` `DeviceAuthenticationRotationServerTest`,
+  `server:ktor` `DeviceAuthenticationRotationRoutesTest` (routes, adapter,
+  client over HTTP, lost response, restarts, `internal_error`).
+- `client:core` `DeviceAuthenticationRotationTest`; `storage:client:sqldelight`
+  `DeviceAuthenticationRotationStorageTest` (sealing, AD separation,
+  corruption, storage key rotation, restarts, crash before promotion,
+  migration from `Version10Schema`); `storage:encryption`
+  `StorageCipherTest.deviceAuthenticationRotationKeyVector` and
+  `ClientRecordCipherTest`; `ClientStorageContractTest`.
+
+## Limitations
+
+- Rotation is explicit; there is no scheduling or age-based policy, and the
+  server never triggers it.
+- The active key K1 is required; a device that lost it uses recovery.
+- No last-device recovery, account recovery or recovery codes.
+- No messaging identity rotation or recovery; no sealed sender.

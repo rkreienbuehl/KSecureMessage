@@ -7,6 +7,7 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
+import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
@@ -60,6 +61,27 @@ internal class DeviceRecoveryRequestDto(
     val authorizerSignature: String,
 )
 
+/**
+ * Body of `PUT /v1/devices/{user}/{device}/registration/rotation`
+ * (docs/device-authentication-rotation.md). The device is in the path.
+ * [timestamp] is epoch milliseconds; the signatures cover the binary rotation
+ * statement, never this JSON.
+ */
+@Serializable
+internal class DeviceAuthenticationRotationRequestDto(
+    val currentPublicKey: String,
+    val replacementPublicKey: String,
+    val authEpoch: Long,
+    val timestamp: Long,
+    val nonce: String,
+    val authorizationSignature: String,
+    val proofOfPossession: String,
+)
+
+/** Body of the `200` response of `GET /v1/devices/{user}/{device}/registration`. */
+@Serializable
+internal class DeviceRegistrationStateResponse(val authEpoch: Long)
+
 /** Body of 4xx responses. */
 @Serializable
 internal class ErrorResponse(val error: String)
@@ -101,4 +123,14 @@ internal fun DeviceRecoveryAuthorization.toRequest() = DeviceRecoveryRequestDto(
     nonce = Base64.encode(request.nonce.bytes),
     proofOfPossession = Base64.encode(request.proofOfPossession),
     authorizerSignature = Base64.encode(authorizerSignature),
+)
+
+internal fun DeviceAuthenticationRotationAuthorization.toRequest() = DeviceAuthenticationRotationRequestDto(
+    currentPublicKey = Base64.encode(statement.currentPublicKey),
+    replacementPublicKey = Base64.encode(statement.replacementPublicKey),
+    authEpoch = statement.expectedAuthEpoch,
+    timestamp = statement.timestamp.toEpochMilliseconds(),
+    nonce = Base64.encode(statement.nonce.bytes),
+    authorizationSignature = Base64.encode(authorizationSignature),
+    proofOfPossession = Base64.encode(proofOfPossession),
 )
