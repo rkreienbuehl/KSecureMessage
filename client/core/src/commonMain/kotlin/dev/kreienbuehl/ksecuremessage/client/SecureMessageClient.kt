@@ -823,6 +823,57 @@ class SecureMessageClient(
     }
 
     /**
+     * Whether this user has a pending recovery key reset to surface
+     * (docs/recovery-key-reset.md, "Reset awareness"). Read-only: reads the
+     * recovery key status and then the reset status (two signed requests
+     * with this device's active device authentication key, never cached),
+     * checks that the reset is bound to the active key and epoch of this
+     * user, and classifies it with the client clock:
+     * [RecoveryKeyResetAwareness.Pending] before
+     * [RecoveryKeyResetStatus.Pending.eligibleAt],
+     * [RecoveryKeyResetAwareness.Eligible] from then on. The server still
+     * decides eligibility with its own clock when a completion is submitted.
+     *
+     * The two reads are not atomic. A mismatch that a transition between
+     * them can explain is read again once (at most four requests); if it
+     * persists, returns [RecoveryKeyResetAwareness.Inconsistent]. Never
+     * requests, cancels or completes a reset, never rotates a key, stores
+     * nothing, and is never called implicitly.
+     */
+    suspend fun recoveryKeyResetAwareness(): RecoveryKeyResetAwareness = deviceAuthenticationMutex.withLock {
+        withRequestSigner { _, signer ->
+            suspend fun read(): Pair<LastDeviceRecoveryKeyStatus, RecoveryKeyResetStatus> =
+                transport.lastDeviceRecoveryKeyStatus(localAddress, signer) to transport.lastDeviceRecoveryKeyResetStatus(localAddress, signer)
+
+            var (keyStatus, resetStatus) = read()
+            var inconsistency = resetAwarenessInconsistency(keyStatus, resetStatus)
+            if (inconsistency != null && inconsistency != RecoveryKeyResetAwarenessInconsistency.RESET_OF_OTHER_USER) {
+                // A transition between the two reads can explain it: read the pair once more, never loop.
+                read().let { (key, reset) -> keyStatus = key; resetStatus = reset }
+                inconsistency = resetAwarenessInconsistency(keyStatus, resetStatus)
+            }
+            if (inconsistency != null) return@withRequestSigner RecoveryKeyResetAwareness.Inconsistent(inconsistency)
+            val reset = resetStatus as? RecoveryKeyResetStatus.Pending ?: return@withRequestSigner RecoveryKeyResetAwareness.None
+            val now = clock.now()
+            if (reset.isEligibleAt(now)) RecoveryKeyResetAwareness.Eligible(reset, now) else RecoveryKeyResetAwareness.Pending(reset, now)
+        }
+    }
+
+    private fun resetAwarenessInconsistency(
+        keyStatus: LastDeviceRecoveryKeyStatus,
+        resetStatus: RecoveryKeyResetStatus,
+    ): RecoveryKeyResetAwarenessInconsistency? {
+        val reset = resetStatus as? RecoveryKeyResetStatus.Pending ?: return null
+        return when {
+            reset.userId != localAddress.userId -> RecoveryKeyResetAwarenessInconsistency.RESET_OF_OTHER_USER
+            keyStatus !is LastDeviceRecoveryKeyStatus.Active -> RecoveryKeyResetAwarenessInconsistency.RESET_WITHOUT_ACTIVE_RECOVERY_KEY
+            keyStatus.epoch != reset.recoveryKeyEpoch -> RecoveryKeyResetAwarenessInconsistency.RESET_EPOCH_MISMATCH
+            !keyStatus.isKey(reset.recoveryPublicKey) -> RecoveryKeyResetAwarenessInconsistency.RESET_KEY_MISMATCH
+            else -> null
+        }
+    }
+
+    /**
      * Completes the pending recovery key reset with [newKey]
      * (docs/recovery-key-reset.md): this device's signed request and
      * [newKey]'s proof of possession over the pending reset. The server

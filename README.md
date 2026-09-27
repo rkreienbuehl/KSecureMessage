@@ -288,6 +288,17 @@ val r2 = client.createLastDeviceRecoveryKey()                   // back it up of
 client.completeLastDeviceRecoveryKeyReset(r2)
 ```
 
+Milestone 24 done: recovery key reset awareness. `recoveryKeyResetAwareness()` combines the two existing signed reads, the recovery key status and then the reset status, into one read-only result: `None`, `Pending` (client clock before `eligibleAt`, with the non-negative remaining time), `Eligible` (client clock at or after `eligibleAt`; the server still decides on completion with its own clock) or `Inconsistent(reason)` (the reset is not bound to this user's active key and epoch). The two reads are not atomic, so a pair that does not validate is read again exactly once: normally 2 requests, at most 4. The call never requests, cancels or completes a reset, never rotates a key, stores and caches nothing, and never polls. The application decides what to show. There are no server, route, schema, wire or format changes. See [docs/recovery-key-reset.md](docs/recovery-key-reset.md) ("Reset awareness").
+
+```kotlin
+when (val awareness = client.recoveryKeyResetAwareness()) {
+    RecoveryKeyResetAwareness.None -> Unit
+    is RecoveryKeyResetAwareness.Pending -> warnPending(awareness.reset, awareness.remainingUntilEligible)
+    is RecoveryKeyResetAwareness.Eligible -> warnEligible(awareness.reset)
+    is RecoveryKeyResetAwareness.Inconsistent -> reportStateError(awareness.reason)
+}
+```
+
 ## Next implementation steps
 
 1. A PostgreSQL server adapter if multi-node deployment is needed.

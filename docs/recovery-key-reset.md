@@ -457,6 +457,92 @@ client.completeLastDeviceRecoveryKeyReset(r2)               // COMPLETED | ALREA
   - `IllegalArgumentException`: R2 is the key being reset, or an R1 that is
     not the reset's key is used to cancel.
 
+## Reset awareness (M24)
+
+`recoveryKeyResetAwareness()` answers one question for a healthy device:
+is there a reset this application should surface? It is a client-only,
+read-only composition of two existing signed reads. There is no new server
+state, route, format, storage or schema.
+
+```kotlin
+when (val awareness = client.recoveryKeyResetAwareness()) {
+    RecoveryKeyResetAwareness.None -> { /* nothing to surface */ }
+    is RecoveryKeyResetAwareness.Pending -> { /* awareness.reset, awareness.remainingUntilEligible */ }
+    is RecoveryKeyResetAwareness.Eligible -> { /* the reset can be completed now (client clock) */ }
+    is RecoveryKeyResetAwareness.Inconsistent -> { /* awareness.reason: a security/state error */ }
+}
+```
+
+**States.** The states are factual. There is no severity and no UI policy.
+
+| State | Meaning |
+|---|---|
+| `None` | No reset is pending. This holds for an active, unconfigured or revoked key alike; it is not a statement about recovery key health. |
+| `Pending(reset, evaluatedAt)` | The reset is pending and `evaluatedAt < reset.eligibleAt` by the client clock. `remainingUntilEligible = max(0, eligibleAt − evaluatedAt)`. |
+| `Eligible(reset, evaluatedAt)` | The reset is pending and `evaluatedAt >= reset.eligibleAt` by the client clock. This means only that the server's persisted reset is old enough. |
+| `Inconsistent(reason)` | The two views still contradicted each other after one reread. The reason is `RESET_WITHOUT_ACTIVE_RECOVERY_KEY`, `RESET_EPOCH_MISMATCH`, `RESET_KEY_MISMATCH` or `RESET_OF_OTHER_USER`. It contains no key bytes and is never folded into `None`. |
+
+`reset` is the server's `RecoveryKeyResetStatus.Pending`: ID, requesting
+device, request and eligibility times, and the recovery key epoch and public
+key it replaces.
+
+**Algorithm.**
+
+1. The call runs under `deviceAuthenticationMutex` with this device's
+   active device authentication key. Without one it throws `NotInitialized`.
+   It never initializes or registers anything.
+2. It reads the recovery key status (signed `GET …/last-device-recovery/key`).
+3. It reads the reset status (signed `GET …/last-device-recovery/key/reset`).
+4. It validates the pair. A pending reset must belong to this user, the
+   recovery key must be `ACTIVE`, and the reset must be bound to exactly
+   that epoch and public key. No reset is always consistent.
+5. If the pair does not validate, it reads both again once. The exception is
+   another user's reset: no transition explains that, so it is not reread.
+   If the pair still does not validate, it returns `Inconsistent`.
+6. It classifies the pair with one reading of the injected client clock.
+
+The normal path makes 2 signed GETs, and at most 4 are made. There are no
+sleeps, no loop and no background retry. Every request is signed afresh by
+the normal client signer, and the ServerAuth nonce claims of those GETs are
+the only server-side effect.
+
+**Not an atomic snapshot.** The two reads are separate requests, so a
+transition can happen between them or right after the call returns:
+
+- **Cancellation between the reads:** the call sees ACTIVE R1/N and no reset,
+  a consistent pair, and returns `None`.
+- **Completion between the reads:** the call sees R1/N and no reset. That
+  pair is consistent and gives `None` for the current state. The call never
+  claims that "another device completed it": without stored history it
+  cannot prove that. If a new reset for R2/N+1 was also requested, the pair
+  mismatches, the reread sees R2/N+1 with its reset, and the call returns
+  that reset.
+- **M19 rotation between the reads:** the rotation deletes the reset, so the
+  result is `None`.
+- **Revocation or registration between the reads:** a mismatch triggers the
+  reread, and the fresh pair wins.
+- **Persistent mismatch:** the result is `Inconsistent`. That is impossible
+  while the M23 invariants hold.
+
+Every write (cancel, complete, rotate) is still checked by the server with
+its own compare-and-set.
+
+**Clock.** Pending versus Eligible uses the injected client clock:
+`now < eligibleAt` gives `Pending` and `now >= eligibleAt` gives `Eligible`.
+A client clock that is behind or moved back gives `Pending`, never a
+negative duration or an exception. The server remains authoritative: a
+completion is accepted only when the *server's* `now >= eligibleAt`, so an
+`Eligible` result can still meet `NOT_YET_ELIGIBLE`. `Eligible` does not
+mean that a completion should happen or that anyone approved it.
+
+**Read-only.** The call never requests, cancels or completes a reset, never
+rotates or revokes a recovery key, and never recovers a device key. It
+writes no client storage, caches nothing and remembers nothing: no "last
+seen" reset, no acknowledgement, no history. Each call reads fresh. Nothing
+calls it implicitly, there is no polling, and the application decides when
+to call it and what to show. The R1-signed status query stays a separate M23
+capability; the awareness call takes no offline key.
+
 ## Persistence and migration
 
 Server schema version 7 (`6.sqm`, `server_storage.format` = 7):
@@ -511,7 +597,10 @@ nonce. Nothing else changes:
   that survives the delay without anyone cancelling can reset the recovery
   authority.
 - **Visibility is not push.** Status visibility is not push notification;
-  applications must check and surface the reset state themselves.
+  applications must check and surface the reset state themselves. The M24
+  awareness call only combines two reads. It is not an atomic snapshot, its
+  client-clock classification can differ from the server's eligibility, and
+  it cannot tell who completed or cancelled an earlier reset.
 - **Wall clock.** Wall-clock jumps change the effective delay.
 - **R1 stays powerful.** R1 keeps its full power during the delay (M18
   recovery, rotation, cancellation).
