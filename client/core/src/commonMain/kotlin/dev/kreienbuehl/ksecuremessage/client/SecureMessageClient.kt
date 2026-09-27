@@ -154,6 +154,8 @@ import kotlin.uuid.Uuid
  * [rotateDeviceAuthenticationKey], or [prepareDeviceAuthenticationRotation]
  * and [completeDeviceAuthenticationRotation]. The current key authorizes the
  * new one; no other device takes part. Nothing rotates automatically.
+ * [deviceAuthenticationHealth] classifies the state of these credentials
+ * read-only (docs/device-authentication-health.md).
  *
  * Identities can be verified manually and changes accepted explicitly
  * (docs/identity-verification.md): [safetyNumber] gives a value both devices
@@ -600,6 +602,103 @@ class SecureMessageClient(
         val recovery = deviceAuthentication.pendingRecoveryKeyPair()?.also { it.privateKey.fill(0) } != null
         val lastDevice = deviceAuthentication.pendingLastDeviceRecoveryKeyPair()?.also { it.privateKey.fill(0) } != null
         return AuthenticationTransitions(rotation, recovery || lastDevice)
+    }
+
+    /**
+     * The state of this device's server authentication credentials
+     * (docs/device-authentication-health.md), for the application to show or
+     * act on. Read-only: never initializes, registers, rotates, recovers,
+     * resolves, cancels, creates a key, writes storage or caches anything,
+     * and is never called implicitly.
+     *
+     * Local state decides first, without asking the server, in this order:
+     * several pending transitions → [DeviceAuthenticationHealth.Inconsistent];
+     * a pending device or last-device recovery →
+     * [DeviceAuthenticationHealth.RecoveryPending]; a pending rotation →
+     * [DeviceAuthenticationHealth.RotationPending] (or Inconsistent without
+     * the active key); no active key → [DeviceAuthenticationHealth.ActiveKeyMissing].
+     * Otherwise reads the registration status once with a request signed by
+     * the active key: not registered → [DeviceAuthenticationHealth.Unregistered];
+     * else [DeviceAuthenticationHealth.RotationDue] if [policy] says the key's
+     * age (client clock, read once, minus the server installation time,
+     * clamped at zero) reached its maximum, and [DeviceAuthenticationHealth.Healthy]
+     * otherwise or without a [policy]. There is no default policy.
+     *
+     * The local state is read again (no second request) after the server
+     * answered; a transition that appeared meanwhile is reported instead.
+     * Throws [SecureMessageClientException.NotInitialized] without a local
+     * identity or on storage that has not created its first key yet
+     * (milestone 12 upgrade), and every transport failure, including
+     * [SecureMessageTransportException.AuthenticationFailed] other than
+     * `NOT_REGISTERED`, as it is.
+     */
+    suspend fun deviceAuthenticationHealth(policy: DeviceAuthenticationRotationPolicy? = null): DeviceAuthenticationHealth =
+        deviceAuthenticationMutex.withLock {
+            val local = storage.transaction { localAuthenticationState() }
+            local.classify()?.let {
+                local.active?.privateKey?.fill(0)
+                return@withLock it
+            }
+            val active = checkNotNull(local.active)
+            val registration = try {
+                withRequestSigner(active) { _, signer -> transport.registrationStatus(localAddress, signer) }
+            } catch (e: SecureMessageTransportException.AuthenticationFailed) {
+                if (e.failure != SecureMessageTransportException.AuthenticationFailure.NOT_REGISTERED) throw e
+                null
+            }
+            // A transition that does not take this mutex (device recovery) may have started during the request.
+            val after = storage.transaction { localAuthenticationState() }
+            after.active?.privateKey?.fill(0)
+            after.classify()?.let { return@withLock it }
+            if (registration == null) return@withLock DeviceAuthenticationHealth.Unregistered
+            val status = DeviceAuthenticationRotationStatus(
+                authEpoch = registration.authEpoch,
+                authKeyInstalledAt = registration.authKeyInstalledAt,
+                evaluatedAt = clock.now(),
+                pendingRotation = false,
+                pendingRecovery = false,
+            )
+            if (policy != null && policy.isDue(status.age)) {
+                DeviceAuthenticationHealth.RotationDue(status, policy)
+            } else {
+                DeviceAuthenticationHealth.Healthy(status, policy)
+            }
+        }
+
+    private class LocalAuthenticationState(
+        val active: DeviceAuthenticationKeyPair?,
+        val awaitsUpgradeKey: Boolean,
+        val rotation: Boolean,
+        val recovery: Boolean,
+        val lastDeviceRecovery: Boolean,
+    ) {
+        /** The health local state alone decides, or `null` if the server has to be asked. */
+        fun classify(): DeviceAuthenticationHealth? = when {
+            listOf(rotation, recovery, lastDeviceRecovery).count { it } > 1 ->
+                DeviceAuthenticationHealth.Inconsistent(DeviceAuthenticationHealthInconsistency.MULTIPLE_PENDING_TRANSITIONS)
+            recovery -> DeviceAuthenticationHealth.RecoveryPending(DeviceAuthenticationRecoveryKind.DEVICE_RECOVERY)
+            lastDeviceRecovery -> DeviceAuthenticationHealth.RecoveryPending(DeviceAuthenticationRecoveryKind.LAST_DEVICE_RECOVERY)
+            rotation && active == null ->
+                DeviceAuthenticationHealth.Inconsistent(DeviceAuthenticationHealthInconsistency.ROTATION_PENDING_WITHOUT_ACTIVE_KEY)
+            rotation -> DeviceAuthenticationHealth.RotationPending
+            active == null -> if (awaitsUpgradeKey) throw SecureMessageClientException.NotInitialized() else DeviceAuthenticationHealth.ActiveKeyMissing
+            else -> null
+        }
+    }
+
+    /**
+     * The active key pair (the caller wipes it) and which pending slots are
+     * filled; wipes the pending private keys. Needs the local identity.
+     */
+    private suspend fun ClientStorage.localAuthenticationState(): LocalAuthenticationState {
+        requireIdentity()
+        return LocalAuthenticationState(
+            active = deviceAuthentication.keyPair(),
+            awaitsUpgradeKey = deviceAuthentication.awaitsUpgradeKey(),
+            rotation = deviceAuthentication.pendingRotationKeyPair()?.also { it.privateKey.fill(0) } != null,
+            recovery = deviceAuthentication.pendingRecoveryKeyPair()?.also { it.privateKey.fill(0) } != null,
+            lastDeviceRecovery = deviceAuthentication.pendingLastDeviceRecoveryKeyPair()?.also { it.privateKey.fill(0) } != null,
+        )
     }
 
     /**

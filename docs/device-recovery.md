@@ -397,6 +397,18 @@ laptop.receive()
 - `storage:client:sqldelight` `DeviceRecoveryStorageTest`: sealed pending
   key, restarts, rotation, corruption, promotion failure, schema 8 → 9.
 
+## Health awareness (milestone 25)
+
+`deviceAuthenticationHealth()` reports a pending recovery key as
+`RecoveryPending(DEVICE_RECOVERY)` (or `LAST_DEVICE_RECOVERY` for M18)
+without a server request, whether the active key is still present or lost,
+and a lost key without a pending recovery as `ActiveKeyMissing`, also
+without a request. It never prepares, completes, resolves or cancels a
+recovery and never recreates a key: the M12/M14 fail-closed rule stands.
+The M14 functions do not take the device authentication mutex; a recovery
+prepared while the helper's status read is open is caught by its local
+re-read. See docs/device-authentication-health.md.
+
 ## Limitations
 
 - Recovery needs another registered device of the same user; for losing the

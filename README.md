@@ -299,6 +299,20 @@ when (val awareness = client.recoveryKeyResetAwareness()) {
 }
 ```
 
+Milestone 25 done: device authentication health awareness. `deviceAuthenticationHealth(policy)` answers "what state are this device's server authentication credentials in?" with one read-only, factual result: `Healthy(status, policy)`, `RotationDue(status, policy)` (M17 semantics: `age >= maxKeyAge`, age clamped at zero, `INFINITE` never due, no default policy; without a policy it is never due), `RotationPending`, `RecoveryPending(kind)` (device or last-device recovery), `ActiveKeyMissing`, `Unregistered` (the server answered `NOT_REGISTERED`) or `Inconsistent(reason)` (contradictory local key slots). Local state decides first, in that order (several pending transitions, recovery, rotation, missing key) without a request; otherwise exactly one signed registration status read, then one local re-read, then one clock read. Operational failures (transport, `500`, any other `AuthenticationFailed`) are thrown, never classified. The registration status does not name the registered key, so key equality is not proven. The call never initializes, registers, rotates, recovers, resolves, cancels, creates a key, writes or caches anything, and is never called implicitly. No server, route, schema, wire or format changes. See [docs/device-authentication-health.md](docs/device-authentication-health.md).
+
+```kotlin
+when (val health = client.deviceAuthenticationHealth(policy)) {
+    is DeviceAuthenticationHealth.Healthy -> Unit
+    is DeviceAuthenticationHealth.RotationDue -> offerRotation(health.status)
+    DeviceAuthenticationHealth.RotationPending -> showPendingRotation()
+    is DeviceAuthenticationHealth.RecoveryPending -> showPendingRecovery(health.kind)
+    DeviceAuthenticationHealth.ActiveKeyMissing -> startRecoveryFlow()
+    DeviceAuthenticationHealth.Unregistered -> offerRegistration()
+    is DeviceAuthenticationHealth.Inconsistent -> reportStateError(health.reason)
+}
+```
+
 ## Next implementation steps
 
 1. A PostgreSQL server adapter if multi-node deployment is needed.

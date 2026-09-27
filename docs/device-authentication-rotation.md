@@ -529,6 +529,16 @@ minus the server's installation time:
   that finds its accepted key already promoted by another instance treats
   that as done; otherwise the M16 errors apply.
 
+### Health awareness (milestone 25)
+
+`deviceAuthenticationHealth(policy)` combines the local key slots and, only
+when they do not decide, one registration status read into one read-only
+result (`Healthy`, `RotationDue`, `RotationPending`, `RecoveryPending`,
+`ActiveKeyMissing`, `Unregistered`, `Inconsistent`). It uses this policy's
+semantics unchanged (`age >= maxKeyAge`, clamped age, `INFINITE` never due,
+no default), reports a pending rotation before any age, and never rotates,
+resolves or completes anything. See docs/device-authentication-health.md.
+
 ## Limitations
 
 - Rotation is explicit; the M17 policy is evaluated only when the
