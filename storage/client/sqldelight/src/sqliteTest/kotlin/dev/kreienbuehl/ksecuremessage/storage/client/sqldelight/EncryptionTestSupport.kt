@@ -5,6 +5,8 @@ import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
+import dev.kreienbuehl.ksecuremessage.client.ReceiveResult
+import dev.kreienbuehl.ksecuremessage.client.ReceivedMessage
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageClient
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransport
 import dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner
@@ -12,18 +14,22 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceAuthenticationRegistrationStatus
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
+import dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus
 import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 import dev.kreienbuehl.ksecuremessage.storage.encryption.ClientRecordCipher
 import dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationPhase
 import dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationStatus
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.test.assertIs
 import kotlin.test.fail
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -55,18 +61,18 @@ class TestRelay : SecureMessageTransport {
     override suspend fun lastDeviceRecoveryChallenge(target: DeviceAddress): LastDeviceRecoveryChallenge = error("not used")
 
     override suspend fun lastDeviceRecoveryKeyStatus(
-        address: dev.kreienbuehl.ksecuremessage.model.DeviceAddress,
-        signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
-    ): dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus = error("not used")
+        address: DeviceAddress,
+        signer: ServerRequestSigner,
+    ): LastDeviceRecoveryKeyStatus = error("not used")
 
     override suspend fun rotateLastDeviceRecoveryKey(
-        authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization,
-        signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
+        authorization: RecoveryKeyRotationAuthorization,
+        signer: ServerRequestSigner,
     ) = error("not used")
 
     override suspend fun revokeLastDeviceRecoveryKey(
-        authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization,
-        signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
+        authorization: RecoveryKeyRevocationAuthorization,
+        signer: ServerRequestSigner,
     ) = error("not used")
 
     override suspend fun recoverLastDevice(authorization: LastDeviceRecoveryAuthorization) = error("not used")
@@ -87,6 +93,20 @@ class TestRelay : SecureMessageTransport {
     fun waiting(address: DeviceAddress): Int = mailboxes[address]?.size ?: 0
 }
 
+/** Decrypts [envelope], commits the delivered message (which sends its acknowledgement) and returns it. */
+suspend fun SecureMessageClient.accept(envelope: EncryptedEnvelope): ReceivedMessage =
+    assertIs<ReceiveResult.Delivery>(decrypt(envelope)).message.also { commitReceivedMessage(it) }
+
+/** Decrypts every envelope in order and commits each delivered message, as an application would. */
+suspend fun SecureMessageClient.acceptAll(envelopes: List<EncryptedEnvelope>) {
+    for (envelope in envelopes) {
+        val result = decrypt(envelope)
+        if (result is ReceiveResult.Delivery) commitReceivedMessage(result.message)
+    }
+}
+
+fun ReceivedMessage.text(): String = plaintext.decodeToString()
+
 class TestClock(var now: Instant) : Clock {
     override fun now(): Instant = now
 }
@@ -96,7 +116,7 @@ class FailingRecords(private val delegate: ClientRecordCipher) : ClientRecordCip
     /**
      * Names of the seal functions that fail: identity, deviceAuthenticationKey,
      * deviceAuthenticationRecoveryKey, deviceAuthenticationRotationKey,
-     * deviceAuthenticationLastDeviceRecoveryKey, signedPreKey, oneTimePreKey, session, pending.
+     * deviceAuthenticationLastDeviceRecoveryKey, signedPreKey, oneTimePreKey, session, pending, pendingInbound, processedDigest.
      */
     var failing: Set<String> = emptySet()
 
@@ -130,6 +150,10 @@ class FailingRecords(private val delegate: ClientRecordCipher) : ClientRecordCip
     override suspend fun sealSession(session: SecureSession): ByteArray = check("session").let { delegate.sealSession(session) }
     override suspend fun sealPendingFrame(recipient: DeviceAddress, id: LogicalMessageId, frame: ByteArray): ByteArray =
         check("pending").let { delegate.sealPendingFrame(recipient, id, frame) }
+    override suspend fun sealPendingInboundFrame(sender: DeviceAddress, id: LogicalMessageId, frame: ByteArray): ByteArray =
+        check("pendingInbound").let { delegate.sealPendingInboundFrame(sender, id, frame) }
+    override suspend fun sealProcessedDigest(sender: DeviceAddress, id: LogicalMessageId, digest: ByteArray): ByteArray =
+        check("processedDigest").let { delegate.sealProcessedDigest(sender, id, digest) }
 
     companion object {
         /** A factory for [SqlDelightClientStorage.open] that records the cipher it created. */

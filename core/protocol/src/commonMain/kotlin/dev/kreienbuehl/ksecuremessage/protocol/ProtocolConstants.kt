@@ -110,6 +110,13 @@ internal object ProtocolConstants {
      */
     const val SAFETY_NUMBER_DOMAIN = "KSecureMessage-SafetyNumber-v1"
 
+    /**
+     * Domain separator of [ApplicationMessageDigest], the content commitment
+     * kept with a committed inbound message. Local storage only, never sent;
+     * stored digests depend on it.
+     */
+    const val PROCESSED_MESSAGE_DOMAIN = "KSecureMessage-ProcessedMessage-v1"
+
     /** Size of an encoded public key: X25519 key followed by Ed25519 key. */
     const val PUBLIC_KEY_SIZE = 64
 }

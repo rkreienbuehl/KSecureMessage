@@ -15,8 +15,12 @@ and one-time prekey private keys), session state (`SecureSession.state`,
 which contains the ratchet chain keys) and, since milestone 8, application
 message content: the plaintext of every sent message stays in
 `PendingOutboundStore` until the recipient acknowledges it
-([message-reliability.md](message-reliability.md)). `ProcessedInboundStore`
-holds sender addresses and logical message IDs (metadata, no content).
+([message-reliability.md](message-reliability.md)), and since milestone 20
+the plaintext of every received message stays in `PendingInboundStore` until
+the application commits it ([application-delivery.md](application-delivery.md)).
+`ProcessedInboundStore` holds sender addresses, logical message IDs and
+commit times (metadata) and, since milestone 20, a digest of each committed
+body (a content fingerprint, so it is sealed too).
 
 **Since milestone 9 `SqlDelightClientStorage` encrypts these records** with
 AES-256-GCM under a storage key from an application-supplied
@@ -132,6 +136,7 @@ interface ClientStorage {
     val sessionInitiations: SessionInitiationStore
     val preKeys: PreKeyStore
     val pendingOutbound: PendingOutboundStore
+    val pendingInbound: PendingInboundStore
     val processedInbound: ProcessedInboundStore
     suspend fun <T> transaction(block: suspend ClientStorage.() -> T): T
 }
@@ -181,9 +186,22 @@ Every implementation must provide:
   `remove` returns whether it removed something. The client stores a message
   in the transaction that first encrypts it and removes it in the transaction
   that decrypts its acknowledgement.
-- **Processed inbound messages** (milestone 8). `markProcessed` is idempotent
-  and scoped by sender. Entries are never removed. The client writes the
-  marker in the transaction that decrypts the message.
+- **Pending inbound messages** (milestone 20). `store` assigns a sequence
+  number that increases with every call and is never reused, also after
+  removals and restarts; a second `store` of the same (sender, ID) throws
+  `IllegalArgumentException`. `list()` and `list(sender)` are ordered by
+  sequence; `contains` never opens a record. The client stores a message in
+  the transaction that decrypts it and removes it only in the commit
+  transaction. Nothing expires them.
+- **Processed inbound messages** (milestones 8 and 20). Scoped by sender.
+  `markProcessed(sender, id, digest, committedAt)` throws if the entry
+  exists (never replaced). `isProcessed` never opens a record; `get` returns
+  the digest and commit time (`null` for entries from before milestone 20).
+  `stampLegacyCommitTimes(at)` sets only missing commit times.
+  `pruneCommittedAtOrBefore(cutoff)` removes entries with a commit time at or
+  before `cutoff`, never entries without one and never pending messages. The
+  client writes the entry in the commit transaction, together with removing
+  the pending inbound message.
 - **Monotonic prekey IDs**, as described above.
 - **No aliasing.** Mutating an array after storing it, or an array returned
   by a load, must not change stored state.
@@ -250,7 +268,8 @@ Tables:
 - `remote_identity`: pinned remote identity public keys, keyed by remote user and device ID, with `verification` (0 unverified, 1 verified; schema version 10)
 - `retired_session_initiation`: retired 32-byte session initiation IDs, keyed by remote user, device ID and initiation ID, with the nullable local `signed_pre_key_id` used for pruning
 - `pending_outbound_message`: `sequence INTEGER PRIMARY KEY AUTOINCREMENT` (never reused), recipient user and device ID, 16-byte `message_id`, and the sealed frame (encrypted; the frame holds the application plaintext); unique per recipient and message ID
-- `processed_inbound_message`: sender user and device ID and 16-byte `message_id`
+- `processed_inbound_message`: sender user and device ID and 16-byte `message_id`; since schema version 13 `committed_at` (epoch milliseconds, nullable for legacy rows, indexed) and `sealed_digest` (record type 12, `NULL` for legacy rows)
+- `pending_inbound_message` (schema version 13, milestone 20): `sequence INTEGER PRIMARY KEY AUTOINCREMENT` (never reused), sender user and device ID, 16-byte `message_id`, `received_at` (epoch milliseconds) and the sealed frame (record type 11; holds the application plaintext); unique per sender and message ID
 
 Since schema version 6 the key pairs, session state and pending frames are
 in `sealed_*` columns holding encrypted storage records, and
@@ -262,7 +281,7 @@ does not depend on Kodium internals. All IDs have a
 Open the storage with `SqlDelightClientStorage.open(driver, keyProvider)`.
 There is no unencrypted mode.
 
-The schema version is 12. Version 1 (milestones 3 and 4) had no
+The schema version is 13. Version 1 (milestones 3 and 4) had no
 `remote_identity` table; `1.sqm` adds it and changes nothing else. Version 2
 (milestone 5) had no `retired_session_initiation` table; `2.sqm` adds it and
 changes nothing else. Version 3 (milestone 6) had no lifecycle columns;
@@ -300,7 +319,13 @@ Version 10 (milestone 15) had no pending rotation key; `10.sqm` creates
 Version 11 (milestones 16 and 17) had no pending last-device recovery key;
 `11.sqm` creates `device_authentication_last_device_recovery_key`, empty, and
 changes no existing row ([last-device-recovery.md](last-device-recovery.md#client-state)).
-Frozen copies of versions 1–11 (`Version1Schema` … `Version11Schema`) back the
+Version 12 (milestones 18 and 19) had no application commit boundary;
+`12.sqm` creates `pending_inbound_message`, empty, and adds the nullable
+`processed_inbound_message.committed_at` and `sealed_digest` plus an index on
+`committed_at`. Existing processed IDs are kept; the next `initialize()`
+stamps their commit time once with the client clock, their digest stays
+unknown ([application-delivery.md](application-delivery.md#migration)).
+Frozen copies of versions 1–12 (`Version1Schema` … `Version12Schema`) back the
 migration tests.
 A driver created with `SqlDelightClientStorage.Schema`,
 as in the table above, reads SQLite's `user_version` on open and runs the
@@ -336,8 +361,9 @@ so they are only linked and run on a Linux or Windows host.
 - Pruning of retired session initiations that name no local signed prekey
   (initiations this device started, entries from before milestone 7).
 - A secure or monotonic clock for the signed prekey lifecycle.
-- Pruning of processed message IDs (kept forever, see
-  [message-reliability.md](message-reliability.md#storage)).
+- Automatic pruning of processed message IDs (only explicit
+  `pruneProcessedMessages`, see [application-delivery.md](application-delivery.md#processed-id-retention)),
+  and any expiry of uncommitted pending inbound messages.
 - Platform storage key providers, storage key rotation, rollback protection
   and integrity of plaintext metadata
   ([storage-encryption.md](storage-encryption.md#not-covered)).

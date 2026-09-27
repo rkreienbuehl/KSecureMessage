@@ -1,7 +1,6 @@
 package dev.kreienbuehl.ksecuremessage.server.ktor
 
 import dev.kreienbuehl.ksecuremessage.client.PreKeyConfiguration
-import dev.kreienbuehl.ksecuremessage.client.ReceiveResult
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageClient
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.LastDeviceRecoveryFailure
@@ -38,7 +37,6 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -275,7 +273,7 @@ class LastDeviceRecoveryRoutesTest {
         val offline = phoneClient.createLastDeviceRecoveryKey()
         phoneClient.registerLastDeviceRecoveryKey(offline)
         bobClient.send(phone, "before".encodeToByteArray())
-        assertIs<ReceiveResult.Message>(phoneClient.decrypt(phoneClient.receive().single()))
+        phoneClient.accept(phoneClient.receive().single())
         bobClient.receive().forEach { bobClient.decrypt(it) } // the ACK
         phoneClient.markRemoteIdentityVerified(phoneClient.safetyNumber(bob))
         val safetyNumber = phoneClient.safetyNumber(bob)
@@ -293,7 +291,7 @@ class LastDeviceRecoveryRoutesTest {
         http.drain(k1).assertError(HttpStatusCode.Unauthorized, "invalid_authentication")
         assertEquals(VerificationState.VERIFIED, phoneClient.remoteIdentityTrust(bob)?.verification)
         assertEquals(safetyNumber.displayString, phoneClient.safetyNumber(bob).displayString)
-        val message = assertIs<ReceiveResult.Message>(phoneClient.decrypt(phoneClient.receive().single()))
+        val message = phoneClient.accept(phoneClient.receive().single())
         assertEquals("queued", message.plaintext.decodeToString(), "the mailbox was kept")
         phoneClient.publishPreKeys()
         phoneClient.rotateDeviceAuthenticationKey()

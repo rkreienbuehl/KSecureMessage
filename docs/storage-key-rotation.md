@@ -204,7 +204,11 @@ instead of being skipped), and for each:
 
 Nothing else changes: IDs, `created_at` / `replaced_at`, `sequence`, logical
 message IDs, session state bytes, pins, retired initiations, processed IDs,
-row IDs and the AUTOINCREMENT high-water mark stay as they were.
+`received_at` and `committed_at` (milestone 20), row IDs and the
+AUTOINCREMENT high-water marks stay as they were. Pending inbound frames and
+processed digests (milestone 20) are re-encrypted like pending outbound
+frames; tested by `ApplicationDeliveryStorageTest.pendingAndProcessedRecordsSurviveStorageKeyRotation`
+and the populated fixtures of `StorageKeyRotationTest`.
 
 Transactions: one per batch. If any record in a batch fails (authentication,
 malformed record, unknown key, cancellation), the whole batch rolls back and
@@ -232,10 +236,17 @@ The authoritative check before a key is retired is a scan, not a counter.
   pending device recovery key; docs/device-recovery.md)
 - `device_authentication_rotation_key.sealed_key_pair` (milestone 16, the
   pending routine rotation key; docs/device-authentication-rotation.md)
+- `device_authentication_last_device_recovery_key.sealed_key_pair`
+  (milestone 18, the pending last-device recovery key; docs/last-device-recovery.md)
 - `signed_pre_key.sealed_key_pair`
 - `one_time_pre_key.sealed_key_pair`
 - `session.sealed_state`
 - `pending_outbound_message.sealed_frame`
+- `pending_inbound_message.sealed_frame` (milestone 20, received messages
+  awaiting the application's commit; docs/application-delivery.md)
+- `processed_inbound_message.sealed_digest` (milestone 20, content digests of
+  committed messages; `NULL` for rows from before milestone 20, which the
+  scan and the batches skip)
 - `storage_encryption.key_check`
 - `storage_encryption.retiring_key_check`
 

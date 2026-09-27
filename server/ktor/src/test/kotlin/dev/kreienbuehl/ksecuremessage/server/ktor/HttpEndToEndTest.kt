@@ -64,7 +64,7 @@ class HttpEndToEndTest {
         val first = bob.receive().single()
         assertEquals(OneTimePreKeyId(0), assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(first.payload)).oneTimePreKeyId)
         assertNotNull(bobStorage.preKeys.oneTimePreKey(OneTimePreKeyId(0)), "private key kept until the message arrives")
-        val received = assertIs<ReceiveResult.Message>(bob.decrypt(first))
+        val received = bob.accept(first)
         assertEquals("Hello Bob", received.plaintext.decodeToString())
         assertEquals(hello.id, received.id)
         assertTrue(received.ackSent)
@@ -83,7 +83,7 @@ class HttpEndToEndTest {
         bob.send(aliceAddress, "Hello Alice".encodeToByteArray())
         val reply = alice.receive().single()
         assertIs<RatchetMessage>(CiphertextMessageCodec.decode(reply.payload))
-        assertEquals("Hello Alice", assertIs<ReceiveResult.Message>(alice.decrypt(reply)).plaintext.decodeToString())
+        assertEquals("Hello Alice", alice.accept(reply).plaintext.decodeToString())
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(bob.decrypt(bob.receive().single())).cleared)
         assertEquals(emptyList(), bob.pendingMessages(aliceAddress))
 
@@ -98,7 +98,7 @@ class HttpEndToEndTest {
         assertContentEquals(bobIdentity, restartedAlice.remoteIdentityKey(bobAddress))
         assertContentEquals(aliceIdentity, restartedBob.remoteIdentityKey(aliceAddress))
         restartedAlice.send(bobAddress, "after restart".encodeToByteArray())
-        val afterRestart = assertIs<ReceiveResult.Message>(restartedBob.decrypt(restartedBob.receive().single()))
+        val afterRestart = restartedBob.accept(restartedBob.receive().single())
         assertEquals("after restart", afterRestart.plaintext.decodeToString())
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(restartedAlice.decrypt(restartedAlice.receive().single())).cleared)
     }

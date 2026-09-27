@@ -42,6 +42,8 @@ private val CAROL = DeviceAddress(UserId("carol"), DeviceId("tablet"))
 private val SECRET_MESSAGE = "super-secret-pending-message".encodeToByteArray()
 private val IDENTITY_SECRET = ByteArray(32) { 0x5A }
 private val AUTH_SECRET = ByteArray(32) { 0x5B }
+private val RECEIVED_SECRET = "super-secret-received-message".encodeToByteArray()
+private val DIGEST = ByteArray(32) { 0x3C }
 private val SESSION_MARKER = "session-state-marker-0123456789".encodeToByteArray()
 
 /** Record encryption of SQLDelight storage, checked on the persisted bytes. */
@@ -103,15 +105,18 @@ class SqlDelightEncryptionTest {
         storage.pendingOutbound.store(BOB, messageId(1), SECRET_MESSAGE)
         storage.pendingOutbound.store(BOB, messageId(2), SECRET_MESSAGE)
         storage.pendingOutbound.store(CAROL, messageId(1), SECRET_MESSAGE)
-        storage.processedInbound.markProcessed(ALICE, messageId(3))
+        storage.processedInbound.markProcessed(ALICE, messageId(3), DIGEST, Instant.fromEpochMilliseconds(3_000))
+        storage.pendingInbound.store(ALICE, messageId(4), RECEIVED_SECRET, Instant.fromEpochMilliseconds(4_000))
     }
 
     @Test
     fun newDatabaseStoresOnlyEncryptedRecords() = runTest {
         populate(reopen())
 
-        assertNoPlaintext(IDENTITY_SECRET, AUTH_SECRET, SESSION_MARKER, SECRET_MESSAGE, spk(1).privateKey, otpk(10).privateKey)
+        assertNoPlaintext(IDENTITY_SECRET, AUTH_SECRET, SESSION_MARKER, SECRET_MESSAGE, RECEIVED_SECRET, DIGEST, spk(1).privateKey, otpk(10).privateKey)
         assertTrue(driver.blob("SELECT sealed_key_pair FROM device_authentication_key").isSealed())
+        assertTrue(driver.blob("SELECT sealed_frame FROM pending_inbound_message").isSealed())
+        assertTrue(driver.blob("SELECT sealed_digest FROM processed_inbound_message").isSealed())
         assertEquals(listOf(1L), driver.longs("SELECT format FROM storage_encryption"))
         assertEquals(listOf(1L), driver.longs("SELECT key_id FROM storage_encryption"))
         assertTrue(driver.blob("SELECT key_check FROM storage_encryption").isSealed())
@@ -128,6 +133,8 @@ class SqlDelightEncryptionTest {
         assertEquals(listOf(messageId(1), messageId(2)), after.pendingOutbound.list(BOB).map { it.id })
         assertContentEquals(SECRET_MESSAGE, after.pendingOutbound.get(CAROL, messageId(1))?.frame)
         assertTrue(after.processedInbound.isProcessed(ALICE, messageId(3)))
+        assertContentEquals(DIGEST, after.processedInbound.get(ALICE, messageId(3))?.digest)
+        assertContentEquals(RECEIVED_SECRET, after.pendingInbound.get(ALICE, messageId(4))?.frame)
     }
 
     @Test
@@ -297,8 +304,8 @@ class SqlDelightEncryptionTest {
         alice.initialize()
         network.publish(alice)
         alice.send(BOB, "hello".encodeToByteArray())
-        network.receive(BOB).forEach { bob.decrypt(it) }
-        network.receive(ALICE).forEach { alice.decrypt(it) }
+        network.receive(BOB).let { bob.acceptAll(it) }
+        network.receive(ALICE).let { alice.acceptAll(it) }
         return aliceStorage to bob
     }
 
@@ -397,7 +404,7 @@ class SqlDelightEncryptionTest {
         assertNoPlaintext(SECRET_MESSAGE)
 
         assertEquals(listOf(sent.id), alice().retryPendingMessages(BOB))
-        val received = assertIs<ReceiveResult.Message>(bob.decrypt(network.receive(BOB).single()))
+        val received = bob.accept(network.receive(BOB).single())
         assertEquals(sent.id, received.id)
         assertContentEquals(SECRET_MESSAGE, received.plaintext)
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice().decrypt(network.receive(ALICE).single())).cleared)

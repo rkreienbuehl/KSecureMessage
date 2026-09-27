@@ -16,6 +16,7 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceAuthenticationRegistrationStat
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
+import dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
@@ -24,6 +25,8 @@ import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyMessage
 import dev.kreienbuehl.ksecuremessage.protocol.CiphertextMessageCodec
 import dev.kreienbuehl.ksecuremessage.protocol.KodiumProtocolEngine
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
@@ -339,7 +342,7 @@ class SqlDelightPersistenceTest {
         // Restart during the grace period: still accepted.
         clock.now += 15.days
         val restarted = bob()
-        assertEquals("from alice", restarted.decrypt(fromAlice).text())
+        assertEquals("from alice", restarted.accept(fromAlice).text())
         restarted.send(ALICE, "ack".encodeToByteArray())
         alice.receiveText()
         val first = assertNotNull(engine.sessionInfo(assertNotNull(reopen().sessions.load(ALICE))).initiationId)
@@ -391,7 +394,7 @@ class SqlDelightPersistenceTest {
 
         alice.send(BOB, "old session".encodeToByteArray())
         val old = network.receive(BOB).single()
-        assertEquals("old session", bob.decrypt(old).text())
+        assertEquals("old session", bob.accept(old).text())
         bob.send(ALICE, "ack".encodeToByteArray())
         alice.receiveText()
 
@@ -453,9 +456,9 @@ class SqlDelightPersistenceTest {
 
         if (aliceInitiation < bobInitiation) {
             assertFailsWith<SecureMessageClientException.SessionCollision> { restarted.decrypt(toAlice) }
-            assertEquals("from Alice", bob.decrypt(toBob).text())
+            assertEquals("from Alice", bob.accept(toBob).text())
         } else {
-            assertEquals("from Bob", restarted.decrypt(toAlice).text())
+            assertEquals("from Bob", restarted.accept(toAlice).text())
             assertFailsWith<SecureMessageClientException.SessionCollision> { bob.decrypt(toBob) }
         }
         val winner = minOf(aliceInitiation, bobInitiation)
@@ -513,7 +516,7 @@ class SqlDelightPersistenceTest {
         assertEquals(emptyList(), migrated.pendingOutbound.list(ALICE))
         assertFalse(migrated.processedInbound.isProcessed(ALICE, messageId(1)))
         migrated.pendingOutbound.store(ALICE, messageId(1), bytes(1))
-        migrated.processedInbound.markProcessed(ALICE, messageId(2))
+        migrated.processedInbound.markProcessed(ALICE, messageId(2), bytes(2), Instant.fromEpochMilliseconds(2_000))
         val reopened = reopen()
         assertEquals(listOf(messageId(1)), reopened.pendingOutbound.list(ALICE).map { it.id })
         assertTrue(reopened.processedInbound.isProcessed(ALICE, messageId(2)))
@@ -524,9 +527,20 @@ class SqlDelightPersistenceTest {
         val before = reopen()
         val first = before.pendingOutbound.store(BOB, messageId(5), bytes(5))
         val second = before.pendingOutbound.store(BOB, messageId(1), bytes(1))
-        before.processedInbound.markProcessed(ALICE, messageId(7))
+        before.processedInbound.markProcessed(ALICE, messageId(7), bytes(7), Instant.fromEpochMilliseconds(7_000))
+        val received = before.pendingInbound.store(ALICE, messageId(8), bytes(8), Instant.fromEpochMilliseconds(8_000))
+        before.pendingInbound.store(CAROL, messageId(9), bytes(9), Instant.fromEpochMilliseconds(9_000))
 
         val after = reopen()
+        assertEquals(listOf(ALICE to messageId(8), CAROL to messageId(9)), after.pendingInbound.list().map { it.sender to it.id })
+        val pending = assertNotNull(after.pendingInbound.get(ALICE, messageId(8)))
+        assertEquals(received, pending.sequence)
+        assertEquals(Instant.fromEpochMilliseconds(8_000), pending.receivedAt)
+        assertContentEquals(bytes(8), pending.frame)
+        val processed = assertNotNull(after.processedInbound.get(ALICE, messageId(7)))
+        assertContentEquals(bytes(7), processed.digest)
+        assertEquals(Instant.fromEpochMilliseconds(7_000), processed.committedAt)
+        assertTrue(after.pendingInbound.remove(ALICE, messageId(8)))
         assertEquals(listOf(messageId(5), messageId(1)), after.pendingOutbound.list(BOB).map { it.id })
         assertEquals(listOf(first, second), after.pendingOutbound.list(BOB).map { it.sequence })
         assertContentEquals(bytes(1), after.pendingOutbound.get(BOB, messageId(1))?.frame)
@@ -537,6 +551,10 @@ class SqlDelightPersistenceTest {
         val third = reopen().pendingOutbound.store(BOB, messageId(9), bytes(9))
         assertTrue(third > second)
         assertEquals(listOf(messageId(5), messageId(9)), reopen().pendingOutbound.list(BOB).map { it.id })
+
+        assertTrue(reopen().pendingInbound.store(ALICE, messageId(10), bytes(10), Instant.fromEpochMilliseconds(10_000)) > received)
+        assertEquals(1, reopen().processedInbound.pruneCommittedAtOrBefore(Instant.fromEpochMilliseconds(7_000)))
+        assertFalse(reopen().processedInbound.isProcessed(ALICE, messageId(7)), "pruning persists")
     }
 
     @Test
@@ -556,7 +574,7 @@ class SqlDelightPersistenceTest {
         assertEquals(ids, restartedBob().pendingMessages(ALICE).map { it.id })
 
         assertEquals(ids, restartedBob().retryPendingMessages(ALICE))
-        assertEquals(listOf("one", "two"), network.receive(ALICE).map { alice.decrypt(it).text() })
+        assertEquals(listOf("one", "two"), network.receive(ALICE).map { alice.accept(it).text() })
 
         // Acknowledgements are processed by a restarted client and survive the next restart.
         val acks = network.receive(BOB).map { assertIs<ReceiveResult.Acknowledgement>(restartedBob().decrypt(it)) }
@@ -566,11 +584,11 @@ class SqlDelightPersistenceTest {
 
         // A retry of an already processed message after a restart is a duplicate.
         val sent = alice.send(BOB, "lost ack".encodeToByteArray())
-        assertEquals("lost ack", restartedBob().decrypt(network.receive(BOB).single()).text())
+        assertEquals("lost ack", restartedBob().accept(network.receive(BOB).single()).text())
         network.receive(ALICE) // the acknowledgement is lost
         assertTrue(reopen().processedInbound.isProcessed(ALICE, sent.id))
         assertEquals(listOf(sent.id), alice.retryPendingMessages(BOB))
-        val duplicate = assertIs<ReceiveResult.Duplicate>(restartedBob().decrypt(network.receive(BOB).single()))
+        val duplicate = assertIs<ReceiveResult.AlreadyCommitted>(restartedBob().decrypt(network.receive(BOB).single()))
         assertEquals(sent.id, duplicate.id)
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice.decrypt(network.receive(ALICE).single())).cleared)
         assertEquals(emptyList(), alice.pendingMessages(BOB))
@@ -600,11 +618,11 @@ class SqlDelightPersistenceTest {
         if (aliceInitiation < bobInitiation) {
             // Bob's message is lost: Alice discards it, Bob keeps it pending.
             assertFailsWith<SecureMessageClientException.SessionCollision> { alice().decrypt(toAlice) }
-            assertEquals("from Alice", bob.decrypt(toBob).text())
+            assertEquals("from Alice", bob.accept(toBob).text())
             assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice().decrypt(network.receive(ALICE).single())).cleared)
             assertEquals(listOf(fromBob.id), bob.pendingMessages(ALICE).map { it.id })
             bob.retryPendingMessages(ALICE)
-            val resent = assertIs<ReceiveResult.Message>(alice().decrypt(network.receive(ALICE).single()))
+            val resent = alice().accept(network.receive(ALICE).single())
             assertEquals(fromBob.id, resent.id)
             assertEquals("from Bob", resent.plaintext.decodeToString())
             assertTrue(assertIs<ReceiveResult.Acknowledgement>(bob.decrypt(network.receive(BOB).single())).cleared)
@@ -612,11 +630,11 @@ class SqlDelightPersistenceTest {
         } else {
             // Alice's message is lost; her pending copy is only on disk.
             assertFailsWith<SecureMessageClientException.SessionCollision> { bob.decrypt(toBob) }
-            assertEquals("from Bob", alice().decrypt(toAlice).text())
+            assertEquals("from Bob", alice().accept(toAlice).text())
             assertTrue(assertIs<ReceiveResult.Acknowledgement>(bob.decrypt(network.receive(BOB).single())).cleared)
             assertEquals(listOf(fromAlice.id), alice().pendingMessages(BOB).map { it.id })
             alice().retryPendingMessages(BOB)
-            val resent = assertIs<ReceiveResult.Message>(bob.decrypt(network.receive(BOB).single()))
+            val resent = bob.accept(network.receive(BOB).single())
             assertEquals(fromAlice.id, resent.id)
             assertEquals("from Alice", resent.plaintext.decodeToString())
             assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice().decrypt(network.receive(ALICE).single())).cleared)
@@ -630,11 +648,11 @@ class SqlDelightPersistenceTest {
      */
     private suspend fun SecureMessageClient.receiveText(): String {
         val results = network.receive(localAddress).map { decrypt(it) }
-        results.forEach { assertTrue(it is ReceiveResult.Message || it is ReceiveResult.Acknowledgement, "unexpected $it") }
-        return results.filterIsInstance<ReceiveResult.Message>().single().text()
+        results.forEach { assertTrue(it is ReceiveResult.Delivery || it is ReceiveResult.Acknowledgement, "unexpected $it") }
+        val message = results.filterIsInstance<ReceiveResult.Delivery>().single().message
+        commitReceivedMessage(message)
+        return message.text()
     }
-
-    private fun ReceiveResult.text(): String = assertIs<ReceiveResult.Message>(this).plaintext.decodeToString()
 
     private class TestClock(var now: Instant) : Clock {
         override fun now(): Instant = now
@@ -666,18 +684,18 @@ class SqlDelightPersistenceTest {
         override suspend fun lastDeviceRecoveryChallenge(target: DeviceAddress): LastDeviceRecoveryChallenge = error("not used")
 
         override suspend fun lastDeviceRecoveryKeyStatus(
-            address: dev.kreienbuehl.ksecuremessage.model.DeviceAddress,
-            signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
-        ): dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus = error("not used")
+            address: DeviceAddress,
+            signer: ServerRequestSigner,
+        ): LastDeviceRecoveryKeyStatus = error("not used")
 
         override suspend fun rotateLastDeviceRecoveryKey(
-            authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization,
-            signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
+            authorization: RecoveryKeyRotationAuthorization,
+            signer: ServerRequestSigner,
         ) = error("not used")
 
         override suspend fun revokeLastDeviceRecoveryKey(
-            authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization,
-            signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
+            authorization: RecoveryKeyRevocationAuthorization,
+            signer: ServerRequestSigner,
         ) = error("not used")
 
         override suspend fun recoverLastDevice(authorization: LastDeviceRecoveryAuthorization) = error("not used")

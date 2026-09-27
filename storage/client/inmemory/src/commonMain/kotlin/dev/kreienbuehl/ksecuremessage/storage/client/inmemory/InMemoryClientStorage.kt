@@ -15,9 +15,12 @@ import dev.kreienbuehl.ksecuremessage.protocol.VerificationState
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.DeviceAuthenticationKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.IdentityStore
+import dev.kreienbuehl.ksecuremessage.storage.PendingInboundMessage
+import dev.kreienbuehl.ksecuremessage.storage.PendingInboundStore
 import dev.kreienbuehl.ksecuremessage.storage.PendingOutboundMessage
 import dev.kreienbuehl.ksecuremessage.storage.PendingOutboundStore
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
+import dev.kreienbuehl.ksecuremessage.storage.ProcessedInboundMessage
 import dev.kreienbuehl.ksecuremessage.storage.ProcessedInboundStore
 import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityRecord
 import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
@@ -39,7 +42,8 @@ import kotlin.time.Instant
  * serializes transactions. Byte arrays are copied on the way in and out, so
  * callers cannot change stored keys or sessions through an alias. It never
  * holds pre-milestone-12 state, so [DeviceAuthenticationKeyStore.awaitsUpgradeKey]
- * is always `false`.
+ * is always `false`, and every processed entry has a digest and a commit
+ * time.
  */
 class InMemoryClientStorage : ClientStorage {
     private val mutex = Mutex()
@@ -128,11 +132,24 @@ class InMemoryClientStorage : ClientStorage {
             transaction { pendingOutbound.remove(recipient, id) }
     }
 
+    override val pendingInbound: PendingInboundStore = object : PendingInboundStore {
+        override suspend fun store(sender: DeviceAddress, id: LogicalMessageId, frame: ByteArray, receivedAt: Instant) =
+            transaction { pendingInbound.store(sender, id, frame, receivedAt) }
+        override suspend fun contains(sender: DeviceAddress, id: LogicalMessageId) = transaction { pendingInbound.contains(sender, id) }
+        override suspend fun get(sender: DeviceAddress, id: LogicalMessageId) = transaction { pendingInbound.get(sender, id) }
+        override suspend fun list() = transaction { pendingInbound.list() }
+        override suspend fun list(sender: DeviceAddress) = transaction { pendingInbound.list(sender) }
+        override suspend fun remove(sender: DeviceAddress, id: LogicalMessageId) = transaction { pendingInbound.remove(sender, id) }
+    }
+
     override val processedInbound: ProcessedInboundStore = object : ProcessedInboundStore {
         override suspend fun isProcessed(sender: DeviceAddress, id: LogicalMessageId) =
             transaction { processedInbound.isProcessed(sender, id) }
-        override suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId) =
-            transaction { processedInbound.markProcessed(sender, id) }
+        override suspend fun get(sender: DeviceAddress, id: LogicalMessageId) = transaction { processedInbound.get(sender, id) }
+        override suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId, digest: ByteArray, committedAt: Instant) =
+            transaction { processedInbound.markProcessed(sender, id, digest, committedAt) }
+        override suspend fun stampLegacyCommitTimes(at: Instant) = transaction { processedInbound.stampLegacyCommitTimes(at) }
+        override suspend fun pruneCommittedAtOrBefore(cutoff: Instant) = transaction { processedInbound.pruneCommittedAtOrBefore(cutoff) }
     }
 
     override suspend fun <T> transaction(block: suspend ClientStorage.() -> T): T {
@@ -181,10 +198,18 @@ private data class State(
     val pendingOutbound: Map<Pair<DeviceAddress, LogicalMessageId>, PendingEntry> = emptyMap(),
     /** Highest pending sequence number ever assigned; never lowered. */
     val highestPendingSequence: Long = 0,
-    val processedInbound: Set<Pair<DeviceAddress, LogicalMessageId>> = emptySet(),
+    /** Received messages awaiting the application's commit; frames are copied on the way in and out. */
+    val pendingInbound: Map<Pair<DeviceAddress, LogicalMessageId>, PendingInboundEntry> = emptyMap(),
+    /** Highest pending inbound sequence number ever assigned; never lowered. */
+    val highestPendingInboundSequence: Long = 0,
+    val processedInbound: Map<Pair<DeviceAddress, LogicalMessageId>, ProcessedEntry> = emptyMap(),
 )
 
 private class PendingEntry(val sequence: Long, val frame: ByteArray)
+
+private class PendingInboundEntry(val sequence: Long, val receivedAt: Instant, val frame: ByteArray)
+
+private class ProcessedEntry(val digest: ByteArray, val committedAt: Instant)
 
 /** Lifecycle timestamps of a stored signed prekey; `null` until stamped (see PreKeyStore). */
 private data class SignedPreKeyTimes(val createdAt: Instant?, val replacedAt: Instant?)
@@ -217,11 +242,58 @@ private class TransactionView(var state: State) : ClientStorage {
         }
     }
 
+    override val pendingInbound: PendingInboundStore = object : PendingInboundStore {
+        override suspend fun store(sender: DeviceAddress, id: LogicalMessageId, frame: ByteArray, receivedAt: Instant): Long {
+            require((sender to id) !in state.pendingInbound) { "Message is already pending" }
+            val sequence = state.highestPendingInboundSequence + 1
+            state = state.copy(
+                pendingInbound = state.pendingInbound + ((sender to id) to PendingInboundEntry(sequence, receivedAt, frame.copyOf())),
+                highestPendingInboundSequence = sequence,
+            )
+            return sequence
+        }
+
+        override suspend fun contains(sender: DeviceAddress, id: LogicalMessageId) = (sender to id) in state.pendingInbound
+
+        override suspend fun get(sender: DeviceAddress, id: LogicalMessageId) =
+            state.pendingInbound[sender to id]?.let { PendingInboundMessage(sender, id, it.sequence, it.receivedAt, it.frame.copyOf()) }
+
+        override suspend fun list() = messages { true }
+
+        override suspend fun list(sender: DeviceAddress) = messages { it == sender }
+
+        private fun messages(sender: (DeviceAddress) -> Boolean) = state.pendingInbound
+            .filterKeys { sender(it.first) }
+            .map { (key, entry) -> PendingInboundMessage(key.first, key.second, entry.sequence, entry.receivedAt, entry.frame.copyOf()) }
+            .sortedBy { it.sequence }
+
+        override suspend fun remove(sender: DeviceAddress, id: LogicalMessageId): Boolean {
+            if ((sender to id) !in state.pendingInbound) return false
+            state = state.copy(pendingInbound = state.pendingInbound - (sender to id))
+            return true
+        }
+    }
+
     override val processedInbound: ProcessedInboundStore = object : ProcessedInboundStore {
         override suspend fun isProcessed(sender: DeviceAddress, id: LogicalMessageId) = (sender to id) in state.processedInbound
 
-        override suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId) {
-            state = state.copy(processedInbound = state.processedInbound + (sender to id))
+        override suspend fun get(sender: DeviceAddress, id: LogicalMessageId) =
+            state.processedInbound[sender to id]?.let { ProcessedInboundMessage(sender, id, it.digest.copyOf(), it.committedAt) }
+
+        override suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId, digest: ByteArray, committedAt: Instant) {
+            require(digest.size == DIGEST_SIZE) { "A processed message digest has $DIGEST_SIZE bytes" }
+            require((sender to id) !in state.processedInbound) { "Message is already processed" }
+            state = state.copy(processedInbound = state.processedInbound + ((sender to id) to ProcessedEntry(digest.copyOf(), committedAt)))
+        }
+
+        // Every entry here has a commit time.
+        override suspend fun stampLegacyCommitTimes(at: Instant) = 0
+
+        override suspend fun pruneCommittedAtOrBefore(cutoff: Instant): Int {
+            val kept = state.processedInbound.filterValues { it.committedAt > cutoff }
+            val removed = state.processedInbound.size - kept.size
+            state = state.copy(processedInbound = kept)
+            return removed
         }
     }
 
@@ -445,6 +517,8 @@ private class TransactionView(var state: State) : ClientStorage {
 
     override suspend fun <T> transaction(block: suspend ClientStorage.() -> T): T = block()
 }
+
+private const val DIGEST_SIZE = 32
 
 private fun LocalIdentity.copy() = LocalIdentity(publicKey.copyOf(), privateKey.copyOf())
 

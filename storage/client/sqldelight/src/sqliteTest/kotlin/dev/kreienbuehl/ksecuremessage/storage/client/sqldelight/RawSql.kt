@@ -52,6 +52,28 @@ fun Map<String, List<String?>>.withUnverifiedPins(): Map<String, List<String?>> 
     return this + ("remote_identity" to pins.map { "$it|0" })
 }
 
+/**
+ * Removes what schema version 13 (milestone 20, 12.sqm) added, for tests that
+ * turn a new database into an older one: the pending inbound table and the
+ * processed commit time and digest.
+ */
+fun SqlDriver.dropVersion13Additions() {
+    exec("DROP TABLE pending_inbound_message")
+    exec("DELETE FROM sqlite_sequence WHERE name = 'pending_inbound_message'")
+    exec("DROP INDEX processed_inbound_message_committed_at")
+    exec("ALTER TABLE processed_inbound_message DROP COLUMN sealed_digest")
+    exec("ALTER TABLE processed_inbound_message DROP COLUMN committed_at")
+}
+
+/**
+ * A [dump] of a database from before schema version 13 as migration leaves
+ * it: every processed message ID gained a `NULL` commit time and digest.
+ */
+fun Map<String, List<String?>>.withLegacyProcessedMessages(): Map<String, List<String?>> {
+    val processed = get("processed_inbound_message") ?: return this
+    return this + ("processed_inbound_message" to processed.map { "$it|NULL|NULL" }) + ("pending_inbound_message" to emptyList())
+}
+
 fun ByteArray.toHex(): String = joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
 
 fun ByteArray.flipped(index: Int): ByteArray = copyOf().also { it[index] = (it[index].toInt() xor 0x01).toByte() }

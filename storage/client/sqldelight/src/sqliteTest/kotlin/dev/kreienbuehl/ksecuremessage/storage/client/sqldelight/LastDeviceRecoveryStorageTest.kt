@@ -2,7 +2,6 @@ package dev.kreienbuehl.ksecuremessage.storage.client.sqldelight
 
 import app.cash.sqldelight.db.SqlDriver
 import dev.kreienbuehl.ksecuremessage.client.PreKeyConfiguration
-import dev.kreienbuehl.ksecuremessage.client.ReceiveResult
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageClient
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageClientException
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransport
@@ -13,6 +12,7 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceAuthenticationRegistrationStat
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
+import dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.UserId
@@ -26,6 +26,8 @@ import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallengeId
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryId
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
@@ -42,7 +44,6 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -111,7 +112,7 @@ class LastDeviceRecoveryStorageTest {
         recoveryKey = alice.createLastDeviceRecoveryKey()
         alice.registerLastDeviceRecoveryKey(recoveryKey)
         bob.send(ALICE, "before".encodeToByteArray())
-        assertIs<ReceiveResult.Message>(alice.decrypt(alice.receive().single()))
+        alice.accept(alice.receive().single())
         bob.receive().forEach { bob.decrypt(it) } // the ACK
         driver.exec("DELETE FROM device_authentication_key")
         return reopen()
@@ -310,7 +311,7 @@ class LastDeviceRecoveryStorageTest {
             client.publishPreKeys()
         }
         bob.send(ALICE, "before".encodeToByteArray())
-        assertIs<ReceiveResult.Message>(alice.decrypt(alice.receive().single()))
+        alice.accept(alice.receive().single())
         bob.receive().forEach { bob.decrypt(it) } // the ACK
         alice.markRemoteIdentityVerified(alice.safetyNumber(BOB))
         alice.send(BOB, "pending at the upgrade".encodeToByteArray())
@@ -322,6 +323,7 @@ class LastDeviceRecoveryStorageTest {
         val rotation = storage.storageKeyRotationStatus()
 
         driver.exec("DROP TABLE $TABLE")
+        driver.dropVersion13Additions()
         driver.exec("PRAGMA user_version = 11")
         val fixture = TestDatabase()
         try {
@@ -333,9 +335,9 @@ class LastDeviceRecoveryStorageTest {
         val before = driver.dump()
 
         val migrated = reopen()
-        assertEquals(listOf(12L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(13L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
-        assertEquals(before, after - TABLE, "no existing row changes")
+        assertEquals(before.withLegacyProcessedMessages(), after - TABLE, "no existing row changes")
         assertEquals(emptyList(), after.getValue(TABLE))
         assertContentEquals(identity.privateKey, migrated.identity.identity()?.privateKey)
         assertContentEquals(deviceKey.privateKey, migrated.deviceAuthentication.keyPair()?.privateKey)
@@ -355,6 +357,7 @@ class LastDeviceRecoveryStorageTest {
     fun downgradedDatabaseMatchesTheVersion11Fixture() = runTest {
         alice(reopen()).initialize()
         driver.exec("DROP TABLE $TABLE")
+        driver.dropVersion13Additions()
         driver.exec("PRAGMA user_version = 11")
         val downgraded = driver.tables().associateWith { driver.columns(it) }
         val fixture = TestDatabase()
@@ -423,18 +426,18 @@ class LastDeviceRecoveryStorageTest {
         }
 
         override suspend fun lastDeviceRecoveryKeyStatus(
-            address: dev.kreienbuehl.ksecuremessage.model.DeviceAddress,
-            signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
-        ): dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus = error("not used")
+            address: DeviceAddress,
+            signer: ServerRequestSigner,
+        ): LastDeviceRecoveryKeyStatus = error("not used")
 
         override suspend fun rotateLastDeviceRecoveryKey(
-            authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization,
-            signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
+            authorization: RecoveryKeyRotationAuthorization,
+            signer: ServerRequestSigner,
         ) = error("not used")
 
         override suspend fun revokeLastDeviceRecoveryKey(
-            authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization,
-            signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
+            authorization: RecoveryKeyRevocationAuthorization,
+            signer: ServerRequestSigner,
         ) = error("not used")
 
         override suspend fun recoverLastDevice(authorization: LastDeviceRecoveryAuthorization) {

@@ -67,9 +67,10 @@ Not protected:
 | One-time prekeys (`one_time_pre_key`) | private key | public key, private key | ID | record type, ID | Publication reads and authenticates every record, so a tampered public key is never published silently. |
 | Sessions (`session`) | ratchet state | state | remote user and device ID | record type, remote address | Lookup by address. |
 | Pending outbound (`pending_outbound_message`) | message plaintext (reliability frame) | frame | sequence, recipient, logical message ID | record type, recipient, logical ID | Lookup and ordering need the plaintext key and sequence. |
+| Pending inbound (`pending_inbound_message`, milestone 20) | received message plaintext (reliability frame) | frame | sequence, sender, logical message ID, `received_at` | record type 11, sender, logical ID | Kept until the application commits it ([application-delivery.md](application-delivery.md)); enumeration order needs the plaintext sequence. |
 | Remote identity pins (`remote_identity`) | none (public keys) | nothing | all | none | Public values; see the integrity limitation above. |
 | Retired initiations (`retired_session_initiation`) | none (public hashes) | nothing | all | none | Replay-protection lookups. |
-| Processed inbound (`processed_inbound_message`) | metadata only | nothing | all | none | Duplicate lookups; hiding communication metadata is out of scope. |
+| Processed inbound (`processed_inbound_message`) | content digest (milestone 20) | `version:u8 = 1 \| digest[32]` in `sealed_digest` (`NULL` for rows from before milestone 20) | sender, logical message ID, `committed_at` | record type 12, sender, logical ID | Duplicate lookups and retention need IDs and commit time; hiding communication metadata is out of scope. The digest is sealed because a plain hash of a short message can be brute-forced from the file. |
 | `pre_key_state` | none | nothing | current signed prekey ID, high-water marks | none | Needed by SQL; tampering is denial of service. |
 | `storage_encryption` | none | key check records (sealed, empty) for the current and, while rotating, the retiring key | format, key IDs, rotation phase, key ID high-water mark | key check: record type, key ID | Marker, key binding, storage key rotation state. |
 
@@ -146,6 +147,8 @@ the associated data, so version, algorithm and key ID are authenticated.
 | pending device recovery key | 8 | none (there is at most one; milestone 14) |
 | pending device authentication rotation key | 9 | none (there is at most one; milestone 16) |
 | pending last-device recovery key | 10 | none (there is at most one; milestone 18) |
+| pending inbound | 11 | sender user ID, sender device ID, 16-byte logical message ID (milestone 20) |
+| processed inbound digest | 12 | sender user ID, sender device ID, 16-byte logical message ID (milestone 20) |
 
 The IDs and the domain string must never change. Because the record type is
 authenticated, a record moved to another type fails even when the plaintext
@@ -169,7 +172,14 @@ another row of the same type fails.
 - Signed prekey: `u8 version = 1 | bytes(publicKey) | bytes(signature) | bytes(privateKey)`
 - One-time prekey: `u8 version = 1 | bytes(publicKey) | bytes(privateKey)`
 - Session: `SecureSession.state` as is (versioned inside)
-- Pending: the `SecurePayload` frame as is (versioned inside)
+- Pending (outbound, type 5, and inbound, type 11): the `SecurePayload`
+  frame as is (versioned inside); the client also checks that the frame's
+  logical ID is the row's. Frozen vector for type 11:
+  `StorageCipherTest.pendingInboundFrameVector` (nonce `d0 … db`)
+- Processed digest (type 12): `u8 version = 1 | digest[32]`, the
+  `ApplicationMessageDigest` of the committed body (frozen vector
+  `StorageCipherTest.processedDigestVector`, nonce `e0 … eb`). Both type 11
+  and 12 vectors were computed independently with Python `cryptography`
 - Key check: empty
 
 `bytes(x)` is a u32 big-endian length followed by x. Lengths are checked

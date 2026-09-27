@@ -157,13 +157,36 @@ CREATE TABLE pending_outbound_message (
     UNIQUE (recipient_user_id, recipient_device_id, message_id)
 );
 
--- Logical message IDs accepted per sender, for duplicate suppression. Rows
--- are never deleted. Added in schema version 5, see 4.sqm.
+-- Logical message IDs committed per sender, for duplicate suppression.
+-- Added in schema version 5, see 4.sqm. committed_at (epoch milliseconds,
+-- local clock) and sealed_digest (record type 12) were added in schema
+-- version 13, see 12.sqm; both are NULL for rows from before it until
+-- initialize() stamps committed_at, and sealed_digest stays NULL for them.
+-- Rows are deleted only by explicit pruning of committed_at.
 CREATE TABLE processed_inbound_message (
     sender_user_id TEXT NOT NULL,
     sender_device_id TEXT NOT NULL,
     message_id BLOB NOT NULL CHECK (length(message_id) = 16),
+    committed_at INTEGER,
+    sealed_digest BLOB,
     PRIMARY KEY (sender_user_id, sender_device_id, message_id)
+);
+
+CREATE INDEX processed_inbound_message_committed_at ON processed_inbound_message (committed_at);
+
+-- Received application messages awaiting the application's commit.
+-- sealed_frame is the encrypted reliability frame (record type 11; it
+-- contains application plaintext). AUTOINCREMENT keeps sequence numbers from
+-- being reused after deletes, so they give the local acceptance order. Added
+-- in schema version 13, see 12.sqm.
+CREATE TABLE pending_inbound_message (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_user_id TEXT NOT NULL,
+    sender_device_id TEXT NOT NULL,
+    message_id BLOB NOT NULL CHECK (length(message_id) = 16),
+    received_at INTEGER NOT NULL,
+    sealed_frame BLOB NOT NULL,
+    UNIQUE (sender_user_id, sender_device_id, message_id)
 );
 
 selectStorageEncryption:
@@ -254,6 +277,22 @@ WHERE hex(substr(sealed_frame, 1, 10)) IS NOT :header ORDER BY sequence LIMIT :l
 updatePendingOutboundRecord:
 UPDATE pending_outbound_message SET sealed_frame = ? WHERE sequence = ?;
 
+selectPendingInboundToReseal:
+SELECT sequence, sender_user_id, sender_device_id, message_id, sealed_frame FROM pending_inbound_message
+WHERE hex(substr(sealed_frame, 1, 10)) IS NOT :header ORDER BY sequence LIMIT :limit;
+
+updatePendingInboundRecord:
+UPDATE pending_inbound_message SET sealed_frame = ? WHERE sequence = ?;
+
+selectProcessedDigestsToReseal:
+SELECT sender_user_id, sender_device_id, message_id, sealed_digest FROM processed_inbound_message
+WHERE sealed_digest IS NOT NULL AND hex(substr(sealed_digest, 1, 10)) IS NOT :header
+ORDER BY sender_user_id, sender_device_id, message_id LIMIT :limit;
+
+updateProcessedDigestRecord:
+UPDATE processed_inbound_message SET sealed_digest = ?
+WHERE sender_user_id = ? AND sender_device_id = ? AND message_id = ?;
+
 countRecordsToReseal:
 SELECT (SELECT count(*) FROM local_identity WHERE hex(substr(sealed_identity, 1, 10)) IS NOT :header)
     + (SELECT count(*) FROM device_authentication_key WHERE hex(substr(sealed_key_pair, 1, 10)) IS NOT :header)
@@ -263,7 +302,10 @@ SELECT (SELECT count(*) FROM local_identity WHERE hex(substr(sealed_identity, 1,
     + (SELECT count(*) FROM signed_pre_key WHERE hex(substr(sealed_key_pair, 1, 10)) IS NOT :header)
     + (SELECT count(*) FROM one_time_pre_key WHERE hex(substr(sealed_key_pair, 1, 10)) IS NOT :header)
     + (SELECT count(*) FROM session WHERE hex(substr(sealed_state, 1, 10)) IS NOT :header)
-    + (SELECT count(*) FROM pending_outbound_message WHERE hex(substr(sealed_frame, 1, 10)) IS NOT :header);
+    + (SELECT count(*) FROM pending_outbound_message WHERE hex(substr(sealed_frame, 1, 10)) IS NOT :header)
+    + (SELECT count(*) FROM pending_inbound_message WHERE hex(substr(sealed_frame, 1, 10)) IS NOT :header)
+    + (SELECT count(*) FROM processed_inbound_message
+        WHERE sealed_digest IS NOT NULL AND hex(substr(sealed_digest, 1, 10)) IS NOT :header);
 
 countSealedRecords:
 SELECT (SELECT count(*) FROM local_identity) + (SELECT count(*) FROM device_authentication_key)
@@ -272,7 +314,9 @@ SELECT (SELECT count(*) FROM local_identity) + (SELECT count(*) FROM device_auth
     + (SELECT count(*) FROM device_authentication_last_device_recovery_key)
     + (SELECT count(*) FROM signed_pre_key)
     + (SELECT count(*) FROM one_time_pre_key) + (SELECT count(*) FROM session)
-    + (SELECT count(*) FROM pending_outbound_message);
+    + (SELECT count(*) FROM pending_outbound_message)
+    + (SELECT count(*) FROM pending_inbound_message)
+    + (SELECT count(*) FROM processed_inbound_message WHERE sealed_digest IS NOT NULL);
 
 selectIdentity:
 SELECT sealed_identity FROM local_identity;
@@ -435,5 +479,38 @@ DELETE FROM pending_outbound_message WHERE recipient_user_id = ? AND recipient_d
 countProcessedInbound:
 SELECT count(*) FROM processed_inbound_message WHERE sender_user_id = ? AND sender_device_id = ? AND message_id = ?;
 
+-- Plain INSERT: the primary key rejects a second entry.
 insertProcessedInbound:
-INSERT OR IGNORE INTO processed_inbound_message (sender_user_id, sender_device_id, message_id) VALUES (?, ?, ?);
+INSERT INTO processed_inbound_message (sender_user_id, sender_device_id, message_id, committed_at, sealed_digest)
+VALUES (?, ?, ?, ?, ?);
+
+selectProcessedInbound:
+SELECT committed_at, sealed_digest FROM processed_inbound_message
+WHERE sender_user_id = ? AND sender_device_id = ? AND message_id = ?;
+
+stampLegacyProcessedInbound:
+UPDATE processed_inbound_message SET committed_at = ? WHERE committed_at IS NULL;
+
+pruneProcessedInbound:
+DELETE FROM processed_inbound_message WHERE committed_at IS NOT NULL AND committed_at <= ?;
+
+-- Plain INSERT: the unique key rejects a second entry.
+insertPendingInbound:
+INSERT INTO pending_inbound_message (sender_user_id, sender_device_id, message_id, received_at, sealed_frame) VALUES (?, ?, ?, ?, ?);
+
+selectPendingInbound:
+SELECT sequence, received_at, sealed_frame FROM pending_inbound_message
+WHERE sender_user_id = ? AND sender_device_id = ? AND message_id = ?;
+
+countPendingInbound:
+SELECT count(*) FROM pending_inbound_message WHERE sender_user_id = ? AND sender_device_id = ? AND message_id = ?;
+
+selectAllPendingInbound:
+SELECT sequence, sender_user_id, sender_device_id, message_id, received_at, sealed_frame FROM pending_inbound_message ORDER BY sequence;
+
+selectPendingInboundFrom:
+SELECT sequence, message_id, received_at, sealed_frame FROM pending_inbound_message
+WHERE sender_user_id = ? AND sender_device_id = ? ORDER BY sequence;
+
+deletePendingInbound:
+DELETE FROM pending_inbound_message WHERE sender_user_id = ? AND sender_device_id = ? AND message_id = ?;

@@ -130,6 +130,26 @@ internal class SqlDelightStorageKeyRotationBackend(
                 val frame = records.openPendingFrame(recipient, id, row.sealed_frame)
                 queries.updatePendingOutboundRecord(records.sealPendingFrame(recipient, id, frame), row.sequence)
             }
+            budget -= rows.size
+        }
+        if (budget > 0) {
+            val rows = queries.selectPendingInboundToReseal(header, budget).awaitAsList()
+            for (row in rows) {
+                val sender = DeviceAddress(UserId(row.sender_user_id), DeviceId(row.sender_device_id))
+                val id = LogicalMessageId.fromByteArray(row.message_id)
+                val frame = records.openPendingInboundFrame(sender, id, row.sealed_frame)
+                queries.updatePendingInboundRecord(records.sealPendingInboundFrame(sender, id, frame), row.sequence)
+            }
+            budget -= rows.size
+        }
+        if (budget > 0) {
+            val rows = queries.selectProcessedDigestsToReseal(header, budget).awaitAsList()
+            for (row in rows) {
+                val sender = DeviceAddress(UserId(row.sender_user_id), DeviceId(row.sender_device_id))
+                val id = LogicalMessageId.fromByteArray(row.message_id)
+                val digest = records.openProcessedDigest(sender, id, row.sealed_digest)
+                queries.updateProcessedDigestRecord(records.sealProcessedDigest(sender, id, digest), row.sender_user_id, row.sender_device_id, row.message_id)
+            }
         }
         queries.countRecordsToReseal(header).awaitAsOne()
     }

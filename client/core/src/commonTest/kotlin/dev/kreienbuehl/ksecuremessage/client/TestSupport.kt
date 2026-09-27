@@ -40,6 +40,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.VerificationState
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.DeviceAuthenticationKeyStore
+import dev.kreienbuehl.ksecuremessage.storage.PendingInboundStore
 import dev.kreienbuehl.ksecuremessage.storage.PendingOutboundStore
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.ProcessedInboundStore
@@ -613,6 +614,8 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
     var failPendingStore = false
     var failPendingRemoval = false
     var failMarkProcessed = false
+    var failPendingInboundStore = false
+    var failPendingInboundRemoval = false
 
     /** If set, that many more session writes succeed; the ones after fail. */
     var sessionStoresBeforeFailure: Int? = null
@@ -624,6 +627,7 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
     override val sessionInitiations get() = delegate.sessionInitiations
     override val preKeys get() = delegate.preKeys
     override val pendingOutbound get() = delegate.pendingOutbound
+    override val pendingInbound get() = delegate.pendingInbound
     override val processedInbound get() = delegate.processedInbound
 
     override suspend fun <T> transaction(block: suspend ClientStorage.() -> T): T =
@@ -748,10 +752,22 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
             }
         }
 
+        override val pendingInbound: PendingInboundStore = object : PendingInboundStore by tx.pendingInbound {
+            override suspend fun store(sender: DeviceAddress, id: LogicalMessageId, frame: ByteArray, receivedAt: Instant): Long {
+                if (failPendingInboundStore) throw StorageFailure()
+                return tx.pendingInbound.store(sender, id, frame, receivedAt)
+            }
+
+            override suspend fun remove(sender: DeviceAddress, id: LogicalMessageId): Boolean {
+                if (failPendingInboundRemoval) throw StorageFailure()
+                return tx.pendingInbound.remove(sender, id)
+            }
+        }
+
         override val processedInbound: ProcessedInboundStore = object : ProcessedInboundStore by tx.processedInbound {
-            override suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId) {
+            override suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId, digest: ByteArray, committedAt: Instant) {
                 if (failMarkProcessed) throw StorageFailure()
-                tx.processedInbound.markProcessed(sender, id)
+                tx.processedInbound.markProcessed(sender, id, digest, committedAt)
             }
         }
 

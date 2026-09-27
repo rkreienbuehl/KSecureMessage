@@ -1,0 +1,28 @@
+-- Schema version 12 to 13 (milestone 20): application commit boundary
+-- (docs/application-delivery.md).
+--
+-- pending_inbound_message holds received application messages until the
+-- application commits them. sealed_frame is the encrypted reliability frame
+-- (record type 11; it contains application plaintext). AUTOINCREMENT keeps
+-- sequence numbers from being reused after deletes, so they give the local
+-- acceptance order. A new, empty table.
+--
+-- processed_inbound_message gains the commit time (epoch milliseconds, local
+-- clock) and the sealed content digest (record type 12). Existing rows keep
+-- both NULL: SecureMessageClient.initialize() stamps their commit time once;
+-- their digest cannot be reconstructed and stays NULL.
+CREATE TABLE pending_inbound_message (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_user_id TEXT NOT NULL,
+    sender_device_id TEXT NOT NULL,
+    message_id BLOB NOT NULL CHECK (length(message_id) = 16),
+    received_at INTEGER NOT NULL,
+    sealed_frame BLOB NOT NULL,
+    UNIQUE (sender_user_id, sender_device_id, message_id)
+);
+
+ALTER TABLE processed_inbound_message ADD COLUMN committed_at INTEGER;
+
+ALTER TABLE processed_inbound_message ADD COLUMN sealed_digest BLOB;
+
+CREATE INDEX processed_inbound_message_committed_at ON processed_inbound_message (committed_at);

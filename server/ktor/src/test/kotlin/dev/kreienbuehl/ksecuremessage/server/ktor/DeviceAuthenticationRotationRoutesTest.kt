@@ -1,7 +1,6 @@
 package dev.kreienbuehl.ksecuremessage.server.ktor
 
 import dev.kreienbuehl.ksecuremessage.client.PreKeyConfiguration
-import dev.kreienbuehl.ksecuremessage.client.ReceiveResult
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageClient
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.AuthenticationFailure
@@ -33,7 +32,6 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -243,7 +241,7 @@ class DeviceAuthenticationRotationRoutesTest {
             device.publishPreKeys()
         }
         bobClient.send(phone, "before".encodeToByteArray())
-        assertIs<ReceiveResult.Message>(phoneClient.decrypt(phoneClient.receive().single()))
+        phoneClient.accept(phoneClient.receive().single())
         bobClient.receive().forEach { bobClient.decrypt(it) } // the ACK
         phoneClient.markRemoteIdentityVerified(phoneClient.safetyNumber(bob))
         val safetyNumber = phoneClient.safetyNumber(bob)
@@ -265,7 +263,7 @@ class DeviceAuthenticationRotationRoutesTest {
         assertEquals(VerificationState.VERIFIED, phoneClient.remoteIdentityTrust(bob)?.verification)
         assertEquals(safetyNumber.displayString, phoneClient.safetyNumber(bob).displayString)
         bobClient.send(phone, "after".encodeToByteArray())
-        val message = assertIs<ReceiveResult.Message>(phoneClient.decrypt(phoneClient.receive().single()))
+        val message = phoneClient.accept(phoneClient.receive().single())
         assertEquals("after", message.plaintext.decodeToString())
         phoneClient.publishPreKeys()
 

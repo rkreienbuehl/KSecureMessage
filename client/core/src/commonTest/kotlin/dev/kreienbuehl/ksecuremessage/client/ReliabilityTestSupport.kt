@@ -178,6 +178,18 @@ internal class ReliableDevice(
 
     suspend fun isProcessed(from: ReliableDevice, id: LogicalMessageId) = storage.processedInbound.isProcessed(from.address, id)
 
+    /** Whether message [id] from [from] waits for the application's commit. */
+    suspend fun isPendingInbound(from: ReliableDevice, id: LogicalMessageId) = storage.pendingInbound.contains(from.address, id)
+
+    /** Commits the message [result] delivered. */
+    suspend fun commit(result: ReceiveResult): CommitResult = client.commitReceivedMessage(result.delivery())
+
+    /** Decrypts the single waiting envelope, commits the delivered message and returns its text. */
+    suspend fun acceptOne(): String {
+        val result = receiveOne()
+        return result.text().also { commit(result) }
+    }
+
     /** Sends a hand-made reliability frame through the raw session layer. */
     suspend fun sendFrame(to: ReliableDevice, payload: SecurePayload) =
         client.sendRaw(to.address, SecurePayloadCodec.encode(payload))
@@ -188,4 +200,13 @@ internal class ReliableDevice(
     )
 }
 
-internal fun ReceiveResult.text(): String = assertIs<ReceiveResult.Message>(this).plaintext.decodeToString()
+/** Decrypts [envelope], commits the delivered message and returns its plaintext. */
+internal suspend fun SecureMessageClient.accept(envelope: EncryptedEnvelope): ByteArray {
+    val message = decrypt(envelope).delivery()
+    commitReceivedMessage(message)
+    return message.plaintext
+}
+
+internal fun ReceiveResult.delivery(): ReceivedMessage = assertIs<ReceiveResult.Delivery>(this).message
+
+internal fun ReceiveResult.text(): String = delivery().plaintext.decodeToString()

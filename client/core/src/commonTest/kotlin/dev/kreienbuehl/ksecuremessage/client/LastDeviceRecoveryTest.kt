@@ -87,7 +87,7 @@ class LastDeviceRecoveryTest {
         recoveryText = key.encode()
         if (registerRecoveryKey) phone.registerLastDeviceRecoveryKey(key)
         bob.send(ALICE, "before".encodeToByteArray())
-        assertEquals("before", assertIs<ReceiveResult.Message>(phone.decrypt(phone.receive().single())).plaintext.decodeToString())
+        assertEquals("before", phone.accept(phone.receive().single()).decodeToString())
         bob.decrypt(bob.receive().single()) // the ACK
         bob.send(ALICE, "while lost".encodeToByteArray())
         val lost = assertNotNull(phoneStorage.deviceAuthentication.keyPair())
@@ -135,7 +135,7 @@ class LastDeviceRecoveryTest {
         val phone = phone
         phone.initialize()
         val message = phone.decrypt(phone.receive().single())
-        assertEquals("while lost", assertIs<ReceiveResult.Message>(message).plaintext.decodeToString())
+        assertEquals("while lost", message.delivery().plaintext.decodeToString())
         phone.publishPreKeys()
         // The recovered key rotates like any other key.
         phone.rotateDeviceAuthenticationKey()

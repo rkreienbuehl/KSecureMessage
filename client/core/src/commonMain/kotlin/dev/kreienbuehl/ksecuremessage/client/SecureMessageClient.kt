@@ -13,6 +13,7 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
 import dev.kreienbuehl.ksecuremessage.model.RatchetMessage
+import dev.kreienbuehl.ksecuremessage.protocol.ApplicationMessageDigest
 import dev.kreienbuehl.ksecuremessage.protocol.CiphertextMessageCodec
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotation
@@ -41,10 +42,13 @@ import dev.kreienbuehl.ksecuremessage.protocol.SessionInfo
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.protocol.VerificationState
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
+import dev.kreienbuehl.ksecuremessage.storage.PendingInboundMessage
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 /**
@@ -55,11 +59,24 @@ import kotlin.uuid.Uuid
  * Messages are reliable across collisions, lost envelopes and lost
  * acknowledgements (docs/message-reliability.md). [send] gives each
  * application message a [LogicalMessageId] and keeps it pending, plaintext
- * included, until the recipient acknowledges it. [decrypt] returns each
- * logical message of a sender at most once and answers it with an encrypted
- * acknowledgement. [retryPendingMessages] encrypts pending messages again,
- * under the current session and with the same logical ID. Both peers must
- * use this frame (milestone 8); raw plaintext from older peers is rejected.
+ * included, until the recipient acknowledges it. [retryPendingMessages]
+ * encrypts pending messages again, under the current session and with the
+ * same logical ID. Both peers must use this frame (milestone 8); raw
+ * plaintext from older peers is rejected.
+ *
+ * Received messages are delivered at least once, until the application
+ * commits them (docs/application-delivery.md). [decrypt] stores a new
+ * message as pending and returns it as [ReceiveResult.Delivery];
+ * [pendingReceivedMessages] returns every uncommitted message again, also
+ * after a restart. Once the application has applied a message durably, it
+ * calls [commitReceivedMessage], which records the message as processed and
+ * only then sends the encrypted acknowledgement. An acknowledgement therefore
+ * means that the receiving application committed the message. This is not
+ * exactly-once processing: an application that crashes between its own
+ * commit and [commitReceivedMessage] sees the message again, so it should
+ * apply messages idempotently, keyed by sender and logical ID. Committed IDs
+ * are kept for duplicate suppression until [pruneProcessedMessages] removes
+ * them.
  *
  * The client owns its local protocol state in [storage]: identity key,
  * signed prekeys, one-time prekeys and sessions. Call [initialize] once per
@@ -188,7 +205,11 @@ class SecureMessageClient(
      * device: call [registerDevice].
      */
     suspend fun initialize() {
-        storage.transaction { with(preKeyManager) { ensureInitialized() } }
+        storage.transaction {
+            with(preKeyManager) { ensureInitialized() }
+            // Committed IDs from before milestone 20 get a full retention period from now on.
+            processedInbound.stampLegacyCommitTimes(preKeyManager.now())
+        }
     }
 
     /**
@@ -1219,8 +1240,10 @@ class SecureMessageClient(
      * returns the IDs whose new envelope the transport took. Each attempt is
      * a fresh encryption under the current session with a new envelope ID;
      * the logical ID stays. Messages stay pending until [remote]
-     * acknowledges them, so calling this again sends them again; the
-     * recipient delivers each logical message only once.
+     * acknowledges them, which it does only after its application committed
+     * them (docs/application-delivery.md), so calling this again sends them
+     * again. Before that commit the recipient delivers the retry again as the
+     * same message; after it, the recipient only acknowledges it again.
      *
      * The client never keeps a session it knows lost a collision, so a retry
      * always uses the session this device currently has. Call it after
@@ -1270,24 +1293,29 @@ class SecureMessageClient(
     }
 
     /**
-     * Decrypts and processes [envelope] (docs/message-reliability.md).
+     * Decrypts and processes [envelope] (docs/message-reliability.md,
+     * docs/application-delivery.md).
      *
-     * - A new application message is marked processed in the same
-     *   transaction as its ratchet step and returned as
-     *   [ReceiveResult.Message]; this client then sends an encrypted
-     *   acknowledgement to the sender.
-     * - A message whose logical ID was already processed is returned as
-     *   [ReceiveResult.Duplicate] without its plaintext and acknowledged
-     *   again.
+     * - A new application message is stored as pending, sealed at rest, in
+     *   the same transaction as its ratchet step, and returned as
+     *   [ReceiveResult.Delivery]. It is **not** acknowledged: call
+     *   [commitReceivedMessage] once the application has applied it.
+     * - A message whose logical ID is pending (a retry before the commit) is
+     *   returned again as the same [ReceiveResult.Delivery], not
+     *   acknowledged, and not stored twice.
+     * - A message whose logical ID was committed is returned as
+     *   [ReceiveResult.AlreadyCommitted] without its plaintext and
+     *   acknowledged again.
      * - An acknowledgement removes the matching pending message sent to this
      *   sender ([ReceiveResult.Acknowledgement]). It is never acknowledged.
      *
+     * A logical ID that arrives again with another body fails with
+     * [SecureMessageClientException.LogicalMessageConflict] and changes
+     * nothing. For IDs committed before milestone 20 no digest is stored, so
+     * such a mismatch is not detected; they count as committed.
+     *
      * A failed acknowledgement does not fail this call: the result says
      * `ackSent = false` and the sender's next retry triggers a new one.
-     *
-     * Delivery is at most once per (sender, logical ID): once this returns a
-     * [ReceiveResult.Message], the same message is never returned again, even
-     * if the application crashes before it handled it.
      *
      * Failures change nothing, except that a
      * [SecureMessageClientException.SessionCollision] retires the losing
@@ -1314,15 +1342,107 @@ class SecureMessageClient(
         // plaintext was discarded unread: no acknowledgement.
         processed ?: throw SecureMessageClientException.SessionCollision(sender)
         return when (processed) {
-            is Processed.New -> ReceiveResult.Message(sender, processed.id, processed.body, acknowledge(sender, processed.id))
-            is Processed.Duplicate -> ReceiveResult.Duplicate(sender, processed.id, acknowledge(sender, processed.id))
+            is Processed.Delivered -> ReceiveResult.Delivery(processed.message)
+            is Processed.AlreadyCommitted -> ReceiveResult.AlreadyCommitted(sender, processed.id, acknowledge(sender, processed.id))
             is Processed.Acknowledged -> ReceiveResult.Acknowledgement(sender, processed.id, processed.cleared)
         }
     }
 
     /**
+     * The received messages the application has not committed yet, in the
+     * order this device accepted them ([ReceivedMessage.sequence]), from
+     * [sender] only if given. Contains their plaintext. Call it after a
+     * restart: a message stays here until [commitReceivedMessage], whether or
+     * not its sender sends it again.
+     */
+    suspend fun pendingReceivedMessages(sender: DeviceAddress? = null): List<ReceivedMessage> {
+        val pending = storage.transaction {
+            requireIdentity()
+            if (sender == null) pendingInbound.list() else pendingInbound.list(sender)
+        }
+        return pending.map { it.toReceivedMessage() }
+    }
+
+    /**
+     * Records that the application has durably applied [message] and
+     * acknowledges it to its sender (docs/application-delivery.md).
+     */
+    suspend fun commitReceivedMessage(message: ReceivedMessage): CommitResult = commitReceivedMessage(message.sender, message.id)
+
+    /**
+     * Records that the application has durably applied message [id] from
+     * [sender] and acknowledges it (docs/application-delivery.md).
+     *
+     * In one transaction the pending message is removed and its logical ID
+     * recorded as processed, with the commit time and a digest of its body
+     * ([CommitStatus.COMMITTED]). Only after that commit, outside it, the
+     * encrypted acknowledgement is sent on the existing session. A failed
+     * acknowledgement never undoes the commit: [CommitResult.ackSent] is
+     * `false`, and the sender's next retry is acknowledged.
+     *
+     * Idempotent: for a message committed before, nothing changes and the
+     * acknowledgement is sent again ([CommitStatus.ALREADY_COMMITTED]). A
+     * message that is neither pending nor committed (never received, or its
+     * processed entry was pruned) throws
+     * [SecureMessageClientException.ReceivedMessageNotPending].
+     *
+     * Call it only after the application's own transaction committed. If the
+     * application crashes in between, the message is delivered again; apply
+     * it idempotently, keyed by ([sender], [id]).
+     */
+    suspend fun commitReceivedMessage(sender: DeviceAddress, id: LogicalMessageId): CommitResult {
+        val status = storage.transaction {
+            requireIdentity()
+            val pending = pendingInbound.get(sender, id)
+            when {
+                pending != null -> {
+                    val body = pending.body()
+                    val digest = try {
+                        ApplicationMessageDigest.of(body)
+                    } finally {
+                        body.fill(0)
+                    }
+                    pendingInbound.remove(sender, id)
+                    processedInbound.markProcessed(sender, id, digest, preKeyManager.now())
+                    CommitStatus.COMMITTED
+                }
+                processedInbound.isProcessed(sender, id) -> CommitStatus.ALREADY_COMMITTED
+                else -> throw SecureMessageClientException.ReceivedMessageNotPending(sender, id)
+            }
+        }
+        return CommitResult(sender, id, status, acknowledge(sender, id))
+    }
+
+    /**
+     * Removes the processed entries of committed messages whose age (the
+     * [clock] now minus their commit time) is at least [ProcessedInboundRetentionPolicy.maxAge],
+     * and returns their number (docs/application-delivery.md). Pending
+     * messages are never removed. Entries from before milestone 20 without a
+     * commit time are kept until [initialize] stamps them.
+     *
+     * Nothing calls this implicitly. After an entry is removed, a copy of
+     * that message the sender sends later is no longer recognized: it is
+     * delivered again as new (unless the ratchet rejects the old ciphertext,
+     * which it does for a replayed envelope). The retention uses the wall
+     * clock: a clock set back removes less, a clock set forward removes
+     * earlier.
+     */
+    suspend fun pruneProcessedMessages(policy: ProcessedInboundRetentionPolicy): Int = storage.transaction {
+        requireIdentity()
+        if (policy.maxAge.isInfinite()) return@transaction 0
+        val now = preKeyManager.now().toEpochMilliseconds()
+        // Adapters keep whole milliseconds: age >= maxAge means age >= maxAge rounded up.
+        var maxAgeMillis = policy.maxAge.inWholeMilliseconds
+        if (maxAgeMillis.milliseconds < policy.maxAge) maxAgeMillis++
+        // Nothing can be older than the earliest representable time.
+        if (now < Long.MIN_VALUE + maxAgeMillis) return@transaction 0
+        processedInbound.pruneCommittedAtOrBefore(Instant.fromEpochMilliseconds(now - maxAgeMillis))
+    }
+
+    /**
      * Applies a decrypted reliability frame inside the receive transaction.
-     * A malformed frame throws, which rolls back the ratchet step too.
+     * A malformed frame or a logical message conflict throws, which rolls
+     * back the ratchet step too.
      */
     private suspend fun ClientStorage.process(sender: DeviceAddress, plaintext: ByteArray): Processed {
         val payload = try {
@@ -1331,16 +1451,46 @@ class SecureMessageClient(
             plaintext.fill(0)
         }
         return when (payload) {
-            is SecurePayload.ApplicationMessage ->
-                if (processedInbound.isProcessed(sender, payload.id)) {
-                    payload.body.fill(0)
-                    Processed.Duplicate(payload.id)
-                } else {
-                    processedInbound.markProcessed(sender, payload.id)
-                    Processed.New(payload.id, payload.body)
-                }
+            is SecurePayload.ApplicationMessage -> processApplicationMessage(sender, payload)
             // Scoped to the sender: only the device a message went to can clear it.
             is SecurePayload.Acknowledgement -> Processed.Acknowledged(payload.id, pendingOutbound.remove(sender, payload.id))
+        }
+    }
+
+    private suspend fun ClientStorage.processApplicationMessage(sender: DeviceAddress, payload: SecurePayload.ApplicationMessage): Processed {
+        val id = payload.id
+        val body = payload.body
+        var delivered = false
+        try {
+            val processed = processedInbound.get(sender, id)
+            if (processed != null) {
+                // No digest for IDs committed before milestone 20: they cannot be compared.
+                val digest = processed.digest
+                if (digest != null && !constantTimeEquals(digest, ApplicationMessageDigest.of(body))) {
+                    throw SecureMessageClientException.LogicalMessageConflict(sender, id)
+                }
+                return Processed.AlreadyCommitted(id)
+            }
+            val pending = pendingInbound.get(sender, id)
+            if (pending != null) {
+                val message = pending.toReceivedMessage()
+                if (!constantTimeEquals(message.plaintext, body)) {
+                    message.plaintext.fill(0)
+                    throw SecureMessageClientException.LogicalMessageConflict(sender, id)
+                }
+                return Processed.Delivered(message)
+            }
+            val receivedAt = preKeyManager.now()
+            val frame = SecurePayloadCodec.encode(payload)
+            val sequence = try {
+                pendingInbound.store(sender, id, frame, receivedAt)
+            } finally {
+                frame.fill(0)
+            }
+            delivered = true
+            return Processed.Delivered(ReceivedMessage(sender, id, sequence, receivedAt, body))
+        } finally {
+            if (!delivered) body.fill(0)
         }
     }
 
@@ -1614,9 +1764,10 @@ class SecureMessageClient(
 
     /** What a received reliability frame did. Acknowledgements are sent after the commit. */
     private sealed interface Processed {
-        class New(val id: LogicalMessageId, val body: ByteArray) : Processed
+        /** New or still pending: delivered to the application, not acknowledged. */
+        class Delivered(val message: ReceivedMessage) : Processed
 
-        class Duplicate(val id: LogicalMessageId) : Processed
+        class AlreadyCommitted(val id: LogicalMessageId) : Processed
 
         class Acknowledged(val id: LogicalMessageId, val cleared: Boolean) : Processed
     }
@@ -1654,4 +1805,27 @@ class SecureMessageClient(
             SecureMessageTransportException.RotationFailure.REPLAY,
         )
     }
+}
+
+/** The application body of a pending inbound frame. The frame is authenticated with its row key. */
+private fun PendingInboundMessage.body(): ByteArray {
+    val payload = try {
+        SecurePayloadCodec.decode(frame)
+    } finally {
+        frame.fill(0)
+    }
+    if (payload !is SecurePayload.ApplicationMessage || payload.id != id) {
+        throw SecureMessageClientException.InconsistentStorage("Pending received message $id does not hold its frame")
+    }
+    return payload.body
+}
+
+private fun PendingInboundMessage.toReceivedMessage() = ReceivedMessage(sender, id, sequence, receivedAt, body())
+
+/** Compares without an early exit on the first differing byte. The length is not secret. */
+private fun constantTimeEquals(a: ByteArray, b: ByteArray): Boolean {
+    if (a.size != b.size) return false
+    var difference = 0
+    for (i in a.indices) difference = difference or (a[i].toInt() xor b[i].toInt())
+    return difference == 0
 }

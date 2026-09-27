@@ -66,13 +66,15 @@ class MessageCollisionRecoveryTest {
         suspend fun winnerRejectsTheLosingInitiation() {
             assertFailsWith<SecureMessageClientException.SessionCollision> { winner.receive(c.toWinner) }
             assertTrue(!winner.isProcessed(loser, c.loserMessage.id), "discarded, not processed")
+            assertTrue(!winner.isPendingInbound(loser, c.loserMessage.id), "discarded, not pending")
         }
 
         suspend fun loserSwitchesToTheWinningSession() {
-            val received = assertIs<ReceiveResult.Message>(loser.receive(c.toLoser))
+            val result = loser.receive(c.toLoser)
+            val received = result.delivery()
             assertEquals(winnerText, received.plaintext.decodeToString())
             assertEquals(c.winnerMessage.id, received.id)
-            assertTrue(received.ackSent)
+            assertTrue(loser.commit(result).ackSent)
         }
 
         if (winnerProcessesFirst) {
@@ -104,10 +106,14 @@ class MessageCollisionRecoveryTest {
         assertNotEquals(c.loserMessage.envelope.id, resent.id, "new envelope")
         assertIs<RatchetMessage>(CiphertextMessageCodec.decode(resent.payload), "encrypted on the winning session")
 
-        val delivered = assertIs<ReceiveResult.Message>(winner.receive(resent))
+        val result = winner.receive(resent)
+        val delivered = result.delivery()
         assertEquals(c.loserMessage.id, delivered.id, "same logical message")
         assertEquals(loserText, delivered.plaintext.decodeToString())
-        assertTrue(delivered.ackSent)
+        // Still pending for the sender until the winner's application commits it.
+        assertEquals(emptyList(), loser.inbox())
+        assertEquals(listOf(c.loserMessage.id), loser.pending(winner))
+        assertTrue(winner.commit(result).ackSent)
 
         val loserAck = assertIs<ReceiveResult.Acknowledgement>(loser.receiveOne())
         assertEquals(c.loserMessage.id, loserAck.id)
@@ -118,7 +124,7 @@ class MessageCollisionRecoveryTest {
 
         // Both sides keep working on one session.
         loser.send(winner, "after recovery")
-        assertEquals("after recovery", winner.receiveOne().text())
+        assertEquals("after recovery", winner.acceptOne())
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(loser.receiveOne()).cleared)
     }
 
@@ -147,10 +153,12 @@ class MessageCollisionRecoveryTest {
         assertEquals(emptyList(), c.loser.inbox())
         assertEquals(listOf(c.loserMessage.id), c.loser.pending(c.winner))
 
-        c.loser.receive(c.toLoser).text()
+        c.loser.commit(c.loser.receive(c.toLoser))
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(c.winner.receiveOne()).cleared)
         c.loser.client.retryPendingMessages(c.winner.address)
-        assertEquals(c.loserMessage.id, assertIs<ReceiveResult.Message>(c.winner.receiveOne()).id)
+        val delivery = c.winner.receiveOne()
+        assertEquals(c.loserMessage.id, delivery.delivery().id)
+        c.winner.commit(delivery)
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(c.loser.receiveOne()).cleared)
         assertEquals(emptyList(), c.loser.pending(c.winner))
     }

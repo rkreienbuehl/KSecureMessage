@@ -1,5 +1,9 @@
 package dev.kreienbuehl.ksecuremessage.storage.encryption
 
+import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.DeviceId
+import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
+import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -126,6 +130,65 @@ class StorageCipherTest {
         assertContentEquals(keyPair.privateKey, opened.privateKey)
         assertEquals(10, StorageRecordType.DEVICE_AUTHENTICATION_LAST_DEVICE_RECOVERY_KEY.id.toInt())
         assertEquals(StorageRecordType.entries.size, StorageRecordType.entries.map { it.id }.toSet().size)
+    }
+
+    /**
+     * Record type 11 (milestone 20): a received frame awaiting the
+     * application's commit, bound to sender and logical message ID. The
+     * plaintext is the SecurePayload frame as is. Computed independently
+     * (Python `cryptography`, AESGCM). Frozen. Its own fixed nonce.
+     */
+    @Test
+    fun pendingInboundFrameVector() = runTest {
+        val sender = DeviceAddress(UserId("alice"), DeviceId("phone"))
+        val id = LogicalMessageId.fromByteArray(ByteArray(16) { (0x10 + it).toByte() })
+        val header = EncryptedRecordFormat.header(StorageKeyId(7))
+        assertEquals(
+            "4b534d52010100000007000000194b5365637572654d6573736167652d53746f726167652d76310b0300000005616c6963650000000570686f6e65" +
+                "00000010101112131415161718191a1b1c1d1e1f",
+            EncryptedRecordFormat.associatedData(
+                header,
+                StorageRecordType.PENDING_INBOUND,
+                listOf("alice".encodeToByteArray(), "phone".encodeToByteArray(), id.toByteArray()),
+            ).toHex(),
+        )
+        val frame = byteArrayOf(1, 1) + id.toByteArray() + byteArrayOf(0, 0, 0, 5) + "hello".encodeToByteArray()
+        val vector = "4b534d52010100000007d0d1d2d3d4d5d6d7d8d9dadb2da6f67f7ab4e5b44e4830a6eccd9bfcd1155dd54098d0235fe62178763f5af72c" +
+            "5979e56a3c5e5a2d1c66"
+        val cipher = StorageCipher(key) { ByteArray(12) { (0xD0 + it).toByte() } }
+        assertEquals(vector, AeadClientRecordCipher(cipher).sealPendingInboundFrame(sender, id, frame).toHex())
+        assertContentEquals(frame, ClientRecordCipher(key).openPendingInboundFrame(sender, id, hex(vector)))
+        assertEquals(11, StorageRecordType.PENDING_INBOUND.id.toInt())
+        assertEquals(StorageRecordType.entries.size, StorageRecordType.entries.map { it.id }.toSet().size)
+    }
+
+    /**
+     * Record type 12 (milestone 20): the content digest of a committed
+     * received message, `version:u8 = 1 | digest[32]`, bound to sender and
+     * logical message ID. Computed independently (Python `cryptography`,
+     * AESGCM). Frozen. Its own fixed nonce.
+     */
+    @Test
+    fun processedDigestVector() = runTest {
+        val sender = DeviceAddress(UserId("alice"), DeviceId("phone"))
+        val id = LogicalMessageId.fromByteArray(ByteArray(16) { (0x10 + it).toByte() })
+        val header = EncryptedRecordFormat.header(StorageKeyId(7))
+        assertEquals(
+            "4b534d52010100000007000000194b5365637572654d6573736167652d53746f726167652d76310c0300000005616c6963650000000570686f6e65" +
+                "00000010101112131415161718191a1b1c1d1e1f",
+            EncryptedRecordFormat.associatedData(
+                header,
+                StorageRecordType.PROCESSED_INBOUND_DIGEST,
+                listOf("alice".encodeToByteArray(), "phone".encodeToByteArray(), id.toByteArray()),
+            ).toHex(),
+        )
+        val digest = ByteArray(32) { 0x33 }
+        val vector = "4b534d52010100000007e0e1e2e3e4e5e6e7e8e9eaeb35f1fab0c6f3b918f3304d7d6d2fcbb0f69608d4cdb7fe2bafb2594e3f021bb9607e" +
+            "5c95f2147bf079b9892b88ed18580b"
+        val cipher = StorageCipher(key) { ByteArray(12) { (0xE0 + it).toByte() } }
+        assertEquals(vector, AeadClientRecordCipher(cipher).sealProcessedDigest(sender, id, digest).toHex())
+        assertContentEquals(digest, ClientRecordCipher(key).openProcessedDigest(sender, id, hex(vector)))
+        assertEquals(12, StorageRecordType.PROCESSED_INBOUND_DIGEST.id.toInt())
     }
 
     @Test
@@ -266,6 +329,6 @@ class StorageCipherTest {
             EncryptedRecordFormat.associatedData(EncryptedRecordFormat.header(StorageKeyId(2)), StorageRecordType.KEY_CHECK, emptyList()).toHex(),
         )
         assertEquals(all.size, all.toSet().size)
-        assertEquals(listOf<Byte>(1, 2, 3, 4, 5, 6, 7, 8, 9, 10), StorageRecordType.entries.map { it.id })
+        assertEquals(listOf<Byte>(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12), StorageRecordType.entries.map { it.id })
     }
 }

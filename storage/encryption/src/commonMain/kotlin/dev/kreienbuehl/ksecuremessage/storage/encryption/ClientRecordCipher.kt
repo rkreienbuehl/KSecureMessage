@@ -80,6 +80,22 @@ interface ClientRecordCipher {
     suspend fun sealPendingFrame(recipient: DeviceAddress, id: LogicalMessageId, frame: ByteArray): ByteArray
     suspend fun openPendingFrame(recipient: DeviceAddress, id: LogicalMessageId, sealed: ByteArray): ByteArray
 
+    /**
+     * A received message frame not yet committed by the application
+     * (docs/application-delivery.md), bound to the sender and the logical
+     * message ID. Its own record type, so it never opens as a sent frame.
+     */
+    suspend fun sealPendingInboundFrame(sender: DeviceAddress, id: LogicalMessageId, frame: ByteArray): ByteArray
+    suspend fun openPendingInboundFrame(sender: DeviceAddress, id: LogicalMessageId, sealed: ByteArray): ByteArray
+
+    /**
+     * The 32-byte content digest of a committed received message
+     * (docs/application-delivery.md), bound to the sender and the logical
+     * message ID.
+     */
+    suspend fun sealProcessedDigest(sender: DeviceAddress, id: LogicalMessageId, digest: ByteArray): ByteArray
+    suspend fun openProcessedDigest(sender: DeviceAddress, id: LogicalMessageId, sealed: ByteArray): ByteArray
+
     /** A record with no content that proves the key when opened. */
     suspend fun sealKeyCheck(): ByteArray
 
@@ -124,7 +140,8 @@ object SealedRecords {
  * - signed prekey: `version:u8 = 1 | bytes(publicKey) | bytes(signature) | bytes(privateKey)`
  * - one-time prekey: `version:u8 = 1 | bytes(publicKey) | bytes(privateKey)`
  * - session: the session state as is (it has its own version)
- * - pending frame: the frame as is (SecurePayload has its own version)
+ * - pending frame (sent or received): the frame as is (SecurePayload has its own version)
+ * - processed digest: `version:u8 = 1 | digest[32]`
  * - key check: empty
  *
  * `bytes(x)` is a u32 big-endian length followed by x. IDs and addresses are
@@ -221,6 +238,20 @@ internal class AeadClientRecordCipher(private val cipher: StorageCipher) : Clien
     override suspend fun openPendingFrame(recipient: DeviceAddress, id: LogicalMessageId, sealed: ByteArray): ByteArray =
         cipher.open(StorageRecordType.PENDING_OUTBOUND, recipient.fields() + id.toByteArray(), sealed)
 
+    override suspend fun sealPendingInboundFrame(sender: DeviceAddress, id: LogicalMessageId, frame: ByteArray): ByteArray =
+        cipher.seal(StorageRecordType.PENDING_INBOUND, sender.fields() + id.toByteArray(), frame)
+
+    override suspend fun openPendingInboundFrame(sender: DeviceAddress, id: LogicalMessageId, sealed: ByteArray): ByteArray =
+        cipher.open(StorageRecordType.PENDING_INBOUND, sender.fields() + id.toByteArray(), sealed)
+
+    override suspend fun sealProcessedDigest(sender: DeviceAddress, id: LogicalMessageId, digest: ByteArray): ByteArray {
+        require(digest.size == DIGEST_SIZE) { "A processed message digest has $DIGEST_SIZE bytes" }
+        return sealEncoded(StorageRecordType.PROCESSED_INBOUND_DIGEST, sender.fields() + id.toByteArray()) { fixed(digest) }
+    }
+
+    override suspend fun openProcessedDigest(sender: DeviceAddress, id: LogicalMessageId, sealed: ByteArray): ByteArray =
+        openEncoded(StorageRecordType.PROCESSED_INBOUND_DIGEST, sender.fields() + id.toByteArray(), sealed) { fixed(DIGEST_SIZE) }
+
     override suspend fun sealKeyCheck(): ByteArray = cipher.seal(StorageRecordType.KEY_CHECK, emptyList(), ByteArray(0))
 
     override suspend fun verifyKeyCheck(sealed: ByteArray) {
@@ -261,5 +292,6 @@ internal class AeadClientRecordCipher(private val cipher: StorageCipher) : Clien
 
     private companion object {
         const val RECORD_VERSION: Byte = 1
+        const val DIGEST_SIZE = 32
     }
 }

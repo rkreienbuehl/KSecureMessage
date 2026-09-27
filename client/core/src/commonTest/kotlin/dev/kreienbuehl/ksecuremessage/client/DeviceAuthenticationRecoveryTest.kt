@@ -20,7 +20,6 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -66,7 +65,7 @@ class DeviceAuthenticationRecoveryTest {
         }
         bob.send(LAPTOP, "before".encodeToByteArray())
         val laptop = laptop
-        assertEquals("before", assertIs<ReceiveResult.Message>(laptop.decrypt(laptop.receive().single())).plaintext.decodeToString())
+        assertEquals("before", laptop.accept(laptop.receive().single()).decodeToString())
         bob.decrypt(bob.receive().single()) // the ACK
         bob.send(LAPTOP, "while lost".encodeToByteArray())
         val lost = assertNotNull(laptopStorage.deviceAuthentication.keyPair())
@@ -117,7 +116,7 @@ class DeviceAuthenticationRecoveryTest {
         val laptop = laptop
         laptop.initialize()
         val message = laptop.decrypt(laptop.receive().single())
-        assertEquals("while lost", assertIs<ReceiveResult.Message>(message).plaintext.decodeToString())
+        assertEquals("while lost", message.delivery().plaintext.decodeToString())
         laptop.publishPreKeys()
     }
 
@@ -145,7 +144,7 @@ class DeviceAuthenticationRecoveryTest {
 
         val laptop = laptop
         laptop.initialize()
-        assertEquals("while lost", assertIs<ReceiveResult.Message>(laptop.decrypt(laptop.receive().single())).plaintext.decodeToString())
+        assertEquals("while lost", laptop.accept(laptop.receive().single()).decodeToString())
     }
 
     @Test

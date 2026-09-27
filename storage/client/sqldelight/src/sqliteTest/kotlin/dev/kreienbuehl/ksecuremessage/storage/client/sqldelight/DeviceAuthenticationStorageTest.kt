@@ -21,7 +21,6 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -78,6 +77,7 @@ class DeviceAuthenticationStorageTest {
         driver.exec("DROP TABLE device_authentication_rotation_key")
         driver.exec("DROP TABLE device_authentication_last_device_recovery_key")
         driver.exec("ALTER TABLE remote_identity DROP COLUMN verification")
+        driver.dropVersion13Additions()
         driver.exec("PRAGMA user_version = 7")
     }
 
@@ -134,9 +134,9 @@ class DeviceAuthenticationStorageTest {
         database.closeOpenDrivers()
 
         val storage = reopen()
-        assertEquals(listOf(12L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(13L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
-        assertEquals(before.withUnverifiedPins(), after - AUTH_TABLES, "no existing row changes")
+        assertEquals(before.withUnverifiedPins().withLegacyProcessedMessages(), after - AUTH_TABLES, "no existing row changes")
         assertEquals(emptyList(), after.getValue("device_authentication_key"), "SQL creates no key material")
         assertEquals(1L, awaitsUpgradeKeyColumn())
         assertTrue(storage.deviceAuthentication.awaitsUpgradeKey())
@@ -181,7 +181,7 @@ class DeviceAuthenticationStorageTest {
         bob.initialize()
         network.publish(bob)
         alice.send(BOB, "before the upgrade".encodeToByteArray())
-        assertEquals("before the upgrade", assertIs<ReceiveResult.Message>(bob.decrypt(network.receive(BOB).single())).plaintext.decodeToString())
+        assertEquals("before the upgrade", bob.accept(network.receive(BOB).single()).plaintext.decodeToString())
         alice.decrypt(network.receive(ALICE).single())
         bob.send(ALICE, "pending at the upgrade".encodeToByteArray())
         network.receive(ALICE) // lost: stays pending at Bob
@@ -191,7 +191,7 @@ class DeviceAuthenticationStorageTest {
 
         // Opening migrates the schema; nothing but the new tables changes, and no key is created yet.
         val migrated = reopen()
-        assertEquals(before.withUnverifiedPins(), driver.dump() - AUTH_TABLES)
+        assertEquals(before.withUnverifiedPins().withLegacyProcessedMessages(), driver.dump() - AUTH_TABLES)
         assertTrue(migrated.deviceAuthentication.awaitsUpgradeKey())
         assertNull(migrated.deviceAuthentication.keyPair())
 
@@ -200,7 +200,12 @@ class DeviceAuthenticationStorageTest {
         assertFalse(migrated.deviceAuthentication.awaitsUpgradeKey())
         assertEquals(0L, awaitsUpgradeKeyColumn())
         assertContentEquals(identity.privateKey, migrated.identity.identity()?.privateKey, "the identity is kept")
-        assertEquals(before.withUnverifiedPins() - "one_time_pre_key" - "pre_key_state", driver.dump() - AUTH_TABLES - "one_time_pre_key" - "pre_key_state")
+        assertEquals(
+            before.withUnverifiedPins().withLegacyProcessedMessages() - "one_time_pre_key" - "pre_key_state" - "processed_inbound_message",
+            driver.dump() - AUTH_TABLES - "one_time_pre_key" - "pre_key_state" - "processed_inbound_message",
+        )
+        // initialize() stamped the legacy processed ID's commit time once; its digest stays unknown.
+        assertEquals(listOf(1L), driver.longs("SELECT count(*) FROM processed_inbound_message WHERE committed_at IS NOT NULL AND sealed_digest IS NULL"))
 
         // Exactly once: later starts keep that key.
         repeat(2) {
@@ -215,7 +220,7 @@ class DeviceAuthenticationStorageTest {
         assertEquals(1, upgraded.pendingMessages(ALICE).size)
         upgraded.send(ALICE, "after the upgrade".encodeToByteArray())
         val received = network.receive(ALICE).map { alice.decrypt(it) }
-        assertEquals(listOf("after the upgrade"), received.filterIsInstance<ReceiveResult.Message>().map { it.plaintext.decodeToString() })
+        assertEquals(listOf("after the upgrade"), received.filterIsInstance<ReceiveResult.Delivery>().map { it.message.plaintext.decodeToString() })
     }
 
     private val aliceDatabase = TestDatabase()

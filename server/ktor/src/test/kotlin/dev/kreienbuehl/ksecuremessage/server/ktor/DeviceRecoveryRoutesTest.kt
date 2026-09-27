@@ -1,7 +1,6 @@
 package dev.kreienbuehl.ksecuremessage.server.ktor
 
 import dev.kreienbuehl.ksecuremessage.client.PreKeyConfiguration
-import dev.kreienbuehl.ksecuremessage.client.ReceiveResult
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageClient
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RecoveryFailure
@@ -30,7 +29,6 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
@@ -189,7 +187,7 @@ class DeviceRecoveryRoutesTest {
         assertContentEquals(request.replacementPublicKey, laptopStorage.deviceAuthentication.keyPair()?.publicKey)
         http.drain(TestDevice(laptop, clock), old).assertError(HttpStatusCode.Unauthorized, "invalid_authentication")
 
-        val message = assertIs<ReceiveResult.Message>(laptopClient.decrypt(laptopClient.receive().single()))
+        val message = laptopClient.accept(laptopClient.receive().single())
         assertEquals("queued", message.plaintext.decodeToString())
         laptopClient.publishPreKeys()
 

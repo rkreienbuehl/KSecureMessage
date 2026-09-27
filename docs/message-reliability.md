@@ -9,6 +9,15 @@ mechanism recovers messages whose envelope or acknowledgement was lost.
 It is not a durable messaging service. The server is unchanged, retries are
 explicit, and no exactly-once guarantee for application side effects exists.
 
+> **Milestone 20 changed the receive side.** A received message is no longer
+> marked processed and acknowledged when `decrypt` returns it. It is stored as
+> pending (sealed at rest) and delivered again until the application calls
+> `commitReceivedMessage`; only that commit records it as processed and sends
+> the ACK. The sections below describe the milestone 8 mechanics that still
+> hold (frames, logical IDs, pending outbound, retry, collisions) and point to
+> [application-delivery.md](application-delivery.md) for the receive
+> lifecycle, the commit, the ACK meaning and processed-ID retention.
+
 Code: `client/core/.../client/SecureMessageClient.kt` (`send`, `decrypt`,
 `retryPendingMessages`, `pendingMessages`), `ReliableMessages.kt`,
 `core/protocol/.../protocol/SecurePayloadCodec.kt`, stores in
@@ -28,7 +37,8 @@ Code: `client/core/.../client/SecureMessageClient.kt` (`send`, `decrypt`,
 |---|---|---|
 | Transport accepted the envelope (`send` returns, HTTP 202) | the relay queued one ciphertext | no |
 | Recipient decrypted the ciphertext | ratchet step succeeded | no |
-| Recipient accepted the logical message | frame valid, marked processed, returned once as `ReceiveResult.Message` | no |
+| Recipient accepted the logical message | frame valid, stored as pending inbound, returned as `ReceiveResult.Delivery` (again for every retry until committed) | no |
+| Recipient's application committed it (M20) | `commitReceivedMessage`: pending inbound → processed, then ACK sent | no |
 | Sender processed the recipient's acknowledgement | encrypted ACK arrived on the session | **yes** |
 
 ## Logical message ID vs. envelope ID
@@ -119,22 +129,28 @@ skipped message for the recipient).
 `decrypt(envelope): ReceiveResult` runs the session rules of milestones 5–7
 unchanged, then, in the same transaction, decodes the frame:
 
-- **ApplicationMessage, ID not processed for this sender:** mark processed,
-  return `ReceiveResult.Message(sender, id, plaintext, ackSent)`.
-- **ApplicationMessage, ID already processed:** return
-  `ReceiveResult.Duplicate(sender, id, ackSent)` without the plaintext.
+- **ApplicationMessage, ID neither pending nor processed for this sender
+  (M20):** store it as pending inbound, return `ReceiveResult.Delivery`. No
+  ACK.
+- **ApplicationMessage, ID pending (M20):** the same body is returned again
+  as the same `Delivery` (no second row, no ACK); another body fails with
+  `LogicalMessageConflict` and changes nothing.
+- **ApplicationMessage, ID already processed (committed):** return
+  `ReceiveResult.AlreadyCommitted(sender, id, ackSent)` without the
+  plaintext and ACK again; a body whose digest differs from the committed one
+  fails with `LogicalMessageConflict`, without ACK.
 - **Acknowledgement:** remove the pending message (recipient = this sender,
   id) and return `ReceiveResult.Acknowledgement(sender, id, cleared)`.
   `cleared = false` for an unknown or repeated ACK, which is harmless.
   ACKs are never acknowledged.
 
-For `Message` and `Duplicate` the client then sends an encrypted ACK frame
-to the sender, after the commit, through the same send mutex and transport as
-any message, on the **existing** session only (it never fetches a bundle or
-starts a session) and never stored as pending. If that fails for any reason
-other than cancellation, `ackSent` is `false` and the call still succeeds: the
-processed marker stays and the sender's next retry triggers a new ACK.
-`CancellationException` propagates.
+For `AlreadyCommitted`, and after `commitReceivedMessage`, the client sends
+an encrypted ACK frame to the sender, after the storage commit, through the
+same send mutex and transport as any message, on the **existing** session
+only (it never fetches a bundle or starts a session) and never stored as
+pending. If that fails for any reason other than cancellation, `ackSent` is
+`false` and the call still succeeds: the processed marker stays and the
+sender's next retry triggers a new ACK. `CancellationException` propagates.
 
 Nothing is acknowledged, and nothing is marked processed, when the receive
 fails: decryption failure, `IdentityChanged`, `StaleSessionInitiation`,
@@ -144,10 +160,12 @@ is exactly the message its sender must resend).
 
 ## What an ACK means
 
-An ACK for M from device B proves: B decrypted M on a session authenticated
-by B's pinned identity, the frame was valid, and B recorded M as processed
-(now or earlier). It does **not** mean that B's application stored,
-displayed or read M. There are no read receipts or delivered/read UI states.
+Since milestone 20 an ACK for M from device B means: **B's application
+explicitly committed M** (`commitReceivedMessage`), after B decrypted M on a
+session authenticated by B's pinned identity with a valid frame. Before
+milestone 20 it meant only that B's client recorded M as processed. It still
+does not mean that a user read M. There are no read receipts or
+delivered/read UI states.
 
 ACK authenticity comes from the session: an ACK is only accepted after
 decryption, and it only clears a message that was sent **to the ACK's
@@ -155,17 +173,13 @@ sender**. Bob cannot clear Alice's pending message to Carol.
 
 ## Delivery guarantee
 
-`decrypt` returns each (sender, logical ID) at most once. The processed
-marker commits together with the ratchet step before `decrypt` returns. If
-the application crashes after that and before it handled the plaintext, the
-message is lost for the application: dedup suppresses the sender's retries.
-KSecureMessage has no application commit callback, so exactly-once
-application side effects are not provided. Before milestone 8 the same
-window existed (the ratchet step committed before the plaintext was
-returned).
-
-Transport attempts are at least once (the sender may retry any number of
-times); logical delivery through `decrypt` is at most once.
+Milestone 8 delivered each (sender, logical ID) at most once: a crash after
+`decrypt` returned lost the message for the application. Since milestone 20
+delivery is **at least once until the explicit commit**: the pending inbound
+message survives restarts, `pendingReceivedMessages` returns it, sender
+retries return it again, and only `commitReceivedMessage` ends that. Exactly
+once application side effects are still not provided; see
+[application-delivery.md](application-delivery.md).
 
 ## Retry
 
@@ -182,7 +196,9 @@ mutex):
    leave that message pending and the session unchanged.
 
 It returns the IDs handed off. Nothing becomes delivered through a retry;
-messages stay pending until their ACK. Old ciphertext is never reused. There
+messages stay pending until their ACK, which since milestone 20 comes only
+after the recipient's application committed them, so a message can stay
+pending longer than before. Old ciphertext is never reused. There
 is no scheduler: the application decides when to call it, for example after
 processing received envelopes, after a `SessionCollision`, or when it
 suspects a lost ACK. `pendingMessages(remote)` lists what is still pending
@@ -230,8 +246,9 @@ has the smaller ID and wins; Alice's first message A1 went out on `a`.
 3. Bob decrypts ACK(B1): B1 is no longer pending. The sessions converged.
 4. Alice calls `retryPendingMessages(BOB)`: A1's stored frame (same logical
    ID) is encrypted fresh on `b` into a new envelope.
-5. Bob decrypts it: A1 is new for (Alice, A1), marked processed, returned
-   once, ACK(A1) sent.
+5. Bob decrypts it: A1 is new for (Alice, A1), stored as pending inbound and
+   returned as `Delivery`; once Bob's application commits it, it is marked
+   processed and ACK(A1) is sent.
 6. Alice decrypts ACK(A1): A1 is removed from pending storage.
 
 If Alice retried between steps 1 and 2, Bob would reject the retry as
@@ -258,11 +275,10 @@ Receiver:
 - *Crash inside the receive transaction:* rolled back; the envelope can be
   decrypted again if the application still has it, otherwise the sender's
   retry delivers the message.
-- *Crash after the commit (processed marker stored), before the ACK:* the
-  sender's retry is a `Duplicate`, not delivered again, and triggers another
-  ACK.
-- *Crash after `decrypt` returned, before the application handled it:* the
-  message is lost for the application (see "Delivery guarantee").
+- *Crash after `decrypt` stored the message as pending:* delivered again by
+  `pendingReceivedMessages` and by sender retries (milestone 20; before, it
+  was lost). All receiver crash windows:
+  [application-delivery.md](application-delivery.md#crash-windows).
 
 ACKs are not stored for resending. If an ACK is lost and the sender never
 retries, the sender keeps the message pending indefinitely; the recovery path
@@ -275,10 +291,13 @@ is the sender's explicit retry.
   encryption; removed only by a valid ACK from that recipient. The frame, not
   the ciphertext, is kept, so every retry encrypts the same bytes fresh and
   the logical ID cannot drift. No tombstone after removal.
-- `ProcessedInboundStore`: (sender, id) set. Written in the same transaction
-  as the ratchet step. **Kept forever**: without server delivery expiry, any
-  old message could still be retried, so time-based pruning could redeliver
-  it. This grows with the number of received messages.
+- `PendingInboundStore` (milestone 20): (sender, id) → sequence, receive
+  time and the ApplicationMessage frame, until the application commits it.
+- `ProcessedInboundStore`: (sender, id) → commit time and body digest
+  (milestone 20). Written by the commit, together with removing the pending
+  inbound entry. Kept until the application prunes it explicitly with a
+  retention policy ([application-delivery.md](application-delivery.md#processed-id-retention));
+  before milestone 20 it was never pruned.
 
 SQLDelight schema version 5 (`4.sqm`) adds `pending_outbound_message` and
 `processed_inbound_message`; see [storage.md](storage.md). Since schema
@@ -293,6 +312,10 @@ afterwards.
 - `decrypt(envelope)` returns `ReceiveResult` (`Message`, `Duplicate`,
   `Acknowledgement`) instead of `ByteArray`, and sends ACKs.
 - New: `retryPendingMessages(remote)`, `pendingMessages(remote)`.
+- Milestone 20: `ReceiveResult.Message` and `Duplicate` are replaced by
+  `Delivery` and `AlreadyCommitted`; `decrypt` no longer ACKs new messages;
+  new `pendingReceivedMessages`, `commitReceivedMessage`,
+  `pruneProcessedMessages` ([application-delivery.md](application-delivery.md#public-api)).
 - The raw session layer (`encryptRaw`, `sendRaw`, `decryptRaw`: raw
   plaintext, no frame, no ACK) is `internal`. The public `encrypt` is gone:
   an envelope encrypted outside the reliability layer would not be
@@ -302,8 +325,10 @@ afterwards.
 
 ## Limitations
 
-- No exactly-once application side effects; no application commit API.
-- Processed IDs are never pruned.
+- No exactly-once application side effects: the application commit
+  (milestone 20) is explicit and not atomic with the application's database.
+- Processed IDs are pruned only by explicit calls with a wall-clock retention
+  policy (milestone 20).
 - Pending plaintext is encrypted at rest only by `SqlDelightClientStorage`
   (milestone 9); plaintext written before the upgrade may survive in SQLite
   free pages, journals and backups.

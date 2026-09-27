@@ -34,7 +34,7 @@ class IdentityVerificationTest {
     /** A message each way, so both devices pinned each other. */
     private suspend fun introduce(a: ReliableDevice, b: ReliableDevice) {
         a.send(b, "hello")
-        b.receiveOne()
+        b.acceptOne()
         a.receiveOne()
     }
 
@@ -111,7 +111,7 @@ class IdentityVerificationTest {
         alice.storage.sessions.remove(BOB)
         network.fake.publish(bob.client)
         alice.send(bob, "new session")
-        bob.receiveOne()
+        bob.acceptOne()
         alice.receiveOne()
         assertEquals(VerificationState.VERIFIED, alice.trust(bob)?.verification)
         assertEquals(number, alice.client.safetyNumber(BOB))

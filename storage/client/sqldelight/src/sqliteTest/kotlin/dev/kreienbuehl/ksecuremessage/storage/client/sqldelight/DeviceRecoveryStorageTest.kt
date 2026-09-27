@@ -15,6 +15,7 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceAuthenticationRegistrationStat
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
+import dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.UserId
@@ -22,6 +23,8 @@ import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecovery
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.KodiumProtocolEngine
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
@@ -210,10 +213,10 @@ class DeviceRecoveryStorageTest {
         database.closeOpenDrivers()
 
         val storage = reopen()
-        assertEquals(listOf(12L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(13L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
         assertEquals(
-            before.withUnverifiedPins(),
+            before.withUnverifiedPins().withLegacyProcessedMessages(),
             after - "device_authentication_recovery_key" - "device_authentication_rotation_key" - "device_authentication_last_device_recovery_key",
             "no existing row changes",
         )
@@ -230,6 +233,7 @@ class DeviceRecoveryStorageTest {
         driver.exec("DROP TABLE device_authentication_rotation_key")
         driver.exec("DROP TABLE device_authentication_last_device_recovery_key")
         driver.exec("ALTER TABLE remote_identity DROP COLUMN verification")
+        driver.dropVersion13Additions()
         driver.exec("PRAGMA user_version = 8")
         val downgraded = driver.tables().associateWith { driver.columns(it) }
         val fixture = TestDatabase()
@@ -283,18 +287,18 @@ class DeviceRecoveryStorageTest {
         override suspend fun lastDeviceRecoveryChallenge(target: DeviceAddress): LastDeviceRecoveryChallenge = error("not used")
 
         override suspend fun lastDeviceRecoveryKeyStatus(
-            address: dev.kreienbuehl.ksecuremessage.model.DeviceAddress,
-            signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
-        ): dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus = error("not used")
+            address: DeviceAddress,
+            signer: ServerRequestSigner,
+        ): LastDeviceRecoveryKeyStatus = error("not used")
 
         override suspend fun rotateLastDeviceRecoveryKey(
-            authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization,
-            signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
+            authorization: RecoveryKeyRotationAuthorization,
+            signer: ServerRequestSigner,
         ) = error("not used")
 
         override suspend fun revokeLastDeviceRecoveryKey(
-            authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization,
-            signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
+            authorization: RecoveryKeyRevocationAuthorization,
+            signer: ServerRequestSigner,
         ) = error("not used")
 
         override suspend fun recoverLastDevice(authorization: LastDeviceRecoveryAuthorization) = error("not used")

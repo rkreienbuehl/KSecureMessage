@@ -41,7 +41,7 @@ class MessageReliabilityAtomicityTest {
     fun failedSessionStoreOnSendSendsNothingAndStoresNothing() = runTest {
         val (alice, bob) = devices()
         alice.send(bob, "first")
-        bob.receiveOne()
+        bob.commit(bob.receiveOne())
         alice.receiveOne()
         val session = alice.storage.sessions.load(BOB)!!.state
 
@@ -54,29 +54,71 @@ class MessageReliabilityAtomicityTest {
     }
 
     @Test
-    fun failedProcessedMarkerRollsBackTheWholeReceive() = runTest {
+    fun failedPendingInboundStoreRollsBackTheWholeReceive() = runTest {
         val (alice, bob) = devices()
         val sent = alice.send(bob, "hello")
         val envelope = bob.inbox().single()
+        val oneTimePreKeys = bob.storage.preKeys.oneTimePreKeyCount()
 
-        bob.failing.failMarkProcessed = true
+        bob.failing.failPendingInboundStore = true
         assertFailsWith<StorageFailure> { bob.receive(envelope) }
+        assertFalse(bob.isPendingInbound(alice, sent.id))
         assertFalse(bob.isProcessed(alice, sent.id))
         assertNull(bob.storage.sessions.load(ALICE), "session acceptance rolled back")
         assertNull(bob.storage.remoteIdentities.identityKey(ALICE))
+        assertEquals(oneTimePreKeys, bob.storage.preKeys.oneTimePreKeyCount())
         assertEquals(emptyList(), alice.inbox(), "nothing acknowledged")
 
         // Nothing was consumed, so the same envelope is accepted afterwards.
-        bob.failing.failMarkProcessed = false
-        assertEquals("hello", bob.receive(envelope).text())
+        bob.failing.failPendingInboundStore = false
+        val delivery = bob.receive(envelope)
+        assertEquals("hello", delivery.text())
+        bob.commit(delivery)
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice.receiveOne()).cleared)
+    }
+
+    /** The commit moves pending to processed in one step, or not at all. */
+    @Test
+    fun failedProcessedMarkerRollsBackTheCommit() = runTest {
+        val (alice, bob) = devices()
+        val sent = alice.send(bob, "hello")
+        val delivery = bob.receiveOne()
+
+        bob.failing.failMarkProcessed = true
+        assertFailsWith<StorageFailure> { bob.commit(delivery) }
+        assertTrue(bob.isPendingInbound(alice, sent.id), "still pending")
+        assertFalse(bob.isProcessed(alice, sent.id))
+        assertEquals(emptyList(), alice.inbox(), "nothing acknowledged")
+        assertEquals("hello", bob.client.pendingReceivedMessages().single().plaintext.decodeToString())
+
+        bob.failing.failMarkProcessed = false
+        assertEquals(CommitStatus.COMMITTED, bob.commit(delivery).status)
+        assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice.receiveOne()).cleared)
+    }
+
+    @Test
+    fun failedPendingInboundRemovalRollsBackTheCommit() = runTest {
+        val (alice, bob) = devices()
+        val sent = alice.send(bob, "hello")
+        val delivery = bob.receiveOne()
+
+        bob.failing.failPendingInboundRemoval = true
+        assertFailsWith<StorageFailure> { bob.commit(delivery) }
+        assertTrue(bob.isPendingInbound(alice, sent.id))
+        assertFalse(bob.isProcessed(alice, sent.id))
+        assertEquals(emptyList(), alice.inbox())
+
+        bob.failing.failPendingInboundRemoval = false
+        assertEquals(CommitStatus.COMMITTED, bob.commit(delivery).status)
+        assertFalse(bob.isPendingInbound(alice, sent.id))
+        assertTrue(bob.isProcessed(alice, sent.id))
     }
 
     @Test
     fun failedPendingRemovalKeepsTheMessagePending() = runTest {
         val (alice, bob) = devices()
         val sent = alice.send(bob, "hello")
-        bob.receiveOne()
+        bob.commit(bob.receiveOne())
         val ack = alice.inbox().single()
         val session = alice.storage.sessions.load(BOB)!!.state
 
@@ -109,23 +151,26 @@ class MessageReliabilityAtomicityTest {
         assertEquals("hello", bob.receiveOne().text())
     }
 
-    /** A failed acknowledgement never undoes the accepted message. */
+    /** A failed acknowledgement never undoes the commit. */
     @Test
-    fun failedAcknowledgementEncryptionKeepsTheMessageProcessed() = runTest {
+    fun failedAcknowledgementEncryptionKeepsTheMessageCommitted() = runTest {
         val (alice, bob) = devices()
         val sent = alice.send(bob, "hello")
+        val delivery = bob.receiveOne()
+        assertEquals("hello", delivery.text())
 
-        // The receive stores the session once; the acknowledgement's store fails.
-        bob.failing.sessionStoresBeforeFailure = 1
-        val received = assertIs<ReceiveResult.Message>(bob.receiveOne())
-        bob.failing.sessionStoresBeforeFailure = null
-        assertEquals("hello", received.plaintext.decodeToString())
-        assertFalse(received.ackSent)
+        // The acknowledgement's session store fails.
+        bob.failing.failSessionStore = true
+        val commit = bob.commit(delivery)
+        bob.failing.failSessionStore = false
+        assertEquals(CommitStatus.COMMITTED, commit.status)
+        assertFalse(commit.ackSent)
         assertTrue(bob.isProcessed(alice, sent.id))
+        assertFalse(bob.isPendingInbound(alice, sent.id))
         assertEquals(emptyList(), alice.inbox())
 
         alice.client.retryPendingMessages(BOB)
-        assertTrue(assertIs<ReceiveResult.Duplicate>(bob.receiveOne()).ackSent)
+        assertTrue(assertIs<ReceiveResult.AlreadyCommitted>(bob.receiveOne()).ackSent)
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice.receiveOne()).cleared)
         assertEquals(emptyList(), alice.pending(bob))
     }

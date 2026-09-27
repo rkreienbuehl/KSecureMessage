@@ -5,7 +5,6 @@ import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
 import app.cash.sqldelight.db.SqlDriver
 import dev.kreienbuehl.ksecuremessage.client.PreKeyConfiguration
-import dev.kreienbuehl.ksecuremessage.client.ReceiveResult
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageClient
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransport
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException
@@ -15,6 +14,7 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceAuthenticationRegistrationStat
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
+import dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.UserId
@@ -23,6 +23,8 @@ import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAutho
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationId
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.KodiumProtocolEngine
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
@@ -38,7 +40,6 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -97,7 +98,7 @@ class DeviceAuthenticationRotationStorageTest {
             client.publishPreKeys()
         }
         bob.send(ALICE, "before".encodeToByteArray())
-        assertIs<ReceiveResult.Message>(alice.decrypt(alice.receive().single()))
+        alice.accept(alice.receive().single())
         bob.receive().forEach { bob.decrypt(it) } // the ACK
         return storage
     }
@@ -296,6 +297,7 @@ class DeviceAuthenticationRotationStorageTest {
 
         driver.exec("DROP TABLE device_authentication_rotation_key")
         driver.exec("DROP TABLE device_authentication_last_device_recovery_key")
+        driver.dropVersion13Additions()
         driver.exec("PRAGMA user_version = 10")
         val fixture = TestDatabase()
         try {
@@ -307,9 +309,9 @@ class DeviceAuthenticationRotationStorageTest {
         val before = driver.dump()
 
         val migrated = reopen()
-        assertEquals(listOf(12L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(13L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
-        assertEquals(before, after - "device_authentication_rotation_key" - "device_authentication_last_device_recovery_key", "no existing row changes")
+        assertEquals(before.withLegacyProcessedMessages(), after - "device_authentication_rotation_key" - "device_authentication_last_device_recovery_key", "no existing row changes")
         assertEquals(emptyList(), after.getValue("device_authentication_rotation_key"))
         assertEquals(emptyList(), after.getValue("device_authentication_last_device_recovery_key"))
         assertContentEquals(identity.privateKey, migrated.identity.identity()?.privateKey)
@@ -331,6 +333,7 @@ class DeviceAuthenticationRotationStorageTest {
         alice(reopen()).initialize()
         driver.exec("DROP TABLE device_authentication_rotation_key")
         driver.exec("DROP TABLE device_authentication_last_device_recovery_key")
+        driver.dropVersion13Additions()
         driver.exec("PRAGMA user_version = 10")
         val downgraded = driver.tables().associateWith { driver.columns(it) }
         val fixture = TestDatabase()
@@ -381,18 +384,18 @@ class DeviceAuthenticationRotationStorageTest {
         override suspend fun lastDeviceRecoveryChallenge(target: DeviceAddress): LastDeviceRecoveryChallenge = error("not used")
 
         override suspend fun lastDeviceRecoveryKeyStatus(
-            address: dev.kreienbuehl.ksecuremessage.model.DeviceAddress,
-            signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
-        ): dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus = error("not used")
+            address: DeviceAddress,
+            signer: ServerRequestSigner,
+        ): LastDeviceRecoveryKeyStatus = error("not used")
 
         override suspend fun rotateLastDeviceRecoveryKey(
-            authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization,
-            signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
+            authorization: RecoveryKeyRotationAuthorization,
+            signer: ServerRequestSigner,
         ) = error("not used")
 
         override suspend fun revokeLastDeviceRecoveryKey(
-            authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization,
-            signer: dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner,
+            authorization: RecoveryKeyRevocationAuthorization,
+            signer: ServerRequestSigner,
         ) = error("not used")
 
         override suspend fun recoverLastDevice(authorization: LastDeviceRecoveryAuthorization) = error("not used")

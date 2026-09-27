@@ -14,9 +14,10 @@ import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.VerificationState
 import kotlin.time.Instant
 
-// Every store below except RemoteIdentityStore, SessionInitiationStore and ProcessedInboundStore holds
-// secret key material, ratchet state or application message content. The interfaces exchange them as
-// plaintext; PendingOutboundStore holds the plaintext of sent messages until the recipient acknowledges them.
+// Every store below except RemoteIdentityStore and SessionInitiationStore holds secret key material, ratchet
+// state or application message content (ProcessedInboundStore: a content digest). The interfaces exchange them
+// as plaintext; PendingOutboundStore holds the plaintext of sent messages until the recipient acknowledges them,
+// PendingInboundStore the plaintext of received messages until the application commits them.
 // A persistent adapter must encrypt them at rest (SqlDelightClientStorage seals them with storage:encryption,
 // see docs/storage-encryption.md) and must fail, never return null, when a stored record cannot be read.
 // InMemoryClientStorage persists nothing and does not encrypt. See docs/storage.md.
@@ -362,16 +363,108 @@ interface PendingOutboundStore {
 }
 
 /**
- * Logical messages already accepted from a remote device, for duplicate
- * suppression (docs/message-reliability.md). Keyed by (sender, logical ID):
- * the same ID from another sender is a different message. IDs are kept
- * forever; nothing here removes them.
+ * A received application message the application has not committed yet
+ * (docs/application-delivery.md).
+ *
+ * @property sequence local acceptance order, assigned by
+ *   [PendingInboundStore.store]. Reliability metadata only; not a
+ *   cryptographic value and not a messaging order across senders.
+ * @property receivedAt when this device first accepted the message (local
+ *   clock). Plaintext metadata.
+ * @property frame the encoded `SecurePayload.ApplicationMessage` (logical ID
+ *   plus application plaintext) as it was first accepted.
+ */
+class PendingInboundMessage(
+    val sender: DeviceAddress,
+    val id: LogicalMessageId,
+    val sequence: Long,
+    val receivedAt: Instant,
+    val frame: ByteArray,
+)
+
+/**
+ * Received application messages kept until the application commits them, so
+ * they can be delivered again, also after a restart. Keyed by (sender,
+ * logical ID).
+ *
+ * **Holds application plaintext** (encrypted at rest by persistent adapters,
+ * see docs/storage-encryption.md). Entries are removed only when the
+ * application commits the message; nothing expires them.
+ */
+interface PendingInboundStore {
+    /**
+     * Stores [frame] from [sender] and returns its sequence number. Sequence
+     * numbers increase with every call and are never reused, also after
+     * removals and restarts. Throws [IllegalArgumentException] if [id] is
+     * already pending from [sender].
+     */
+    suspend fun store(sender: DeviceAddress, id: LogicalMessageId, frame: ByteArray, receivedAt: Instant): Long
+
+    /** Whether [id] from [sender] is pending. Never opens a stored record. */
+    suspend fun contains(sender: DeviceAddress, id: LogicalMessageId): Boolean
+
+    suspend fun get(sender: DeviceAddress, id: LogicalMessageId): PendingInboundMessage?
+
+    /** Every pending message, in [PendingInboundMessage.sequence] order. */
+    suspend fun list(): List<PendingInboundMessage>
+
+    /** The messages pending from [sender], in [PendingInboundMessage.sequence] order. */
+    suspend fun list(sender: DeviceAddress): List<PendingInboundMessage>
+
+    /** Removes the entry; returns `false` if it was not pending. */
+    suspend fun remove(sender: DeviceAddress, id: LogicalMessageId): Boolean
+}
+
+/**
+ * A committed received message (docs/application-delivery.md).
+ *
+ * @property digest `ApplicationMessageDigest` of the committed body; `null`
+ *   for entries recorded before milestone 20.
+ * @property committedAt when the application committed it (local clock);
+ *   `null` for entries recorded before milestone 20 until
+ *   [ProcessedInboundStore.stampLegacyCommitTimes] runs.
+ */
+class ProcessedInboundMessage(
+    val sender: DeviceAddress,
+    val id: LogicalMessageId,
+    val digest: ByteArray?,
+    val committedAt: Instant?,
+)
+
+/**
+ * Logical messages the application committed, for duplicate suppression
+ * (docs/message-reliability.md, docs/application-delivery.md). Keyed by
+ * (sender, logical ID): the same ID from another sender is a different
+ * message. Entries are removed only by [pruneCommittedAtOrBefore].
+ *
+ * The digest is sensitive (a fingerprint of the message content): persistent
+ * adapters encrypt it at rest.
  */
 interface ProcessedInboundStore {
+    /** Whether [id] from [sender] is recorded. Never opens a stored record. */
     suspend fun isProcessed(sender: DeviceAddress, id: LogicalMessageId): Boolean
 
-    /** Records [id] from [sender]. Recording it again does nothing. */
-    suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId)
+    suspend fun get(sender: DeviceAddress, id: LogicalMessageId): ProcessedInboundMessage?
+
+    /**
+     * Records [id] from [sender] with the body [digest] (32 bytes) and the
+     * commit time. Throws [IllegalArgumentException] if it is already
+     * recorded: an entry is never replaced.
+     */
+    suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId, digest: ByteArray, committedAt: Instant)
+
+    /**
+     * Sets the commit time of every entry without one (recorded before
+     * milestone 20) to [at]. Never changes a time already set. Returns the
+     * number of entries stamped.
+     */
+    suspend fun stampLegacyCommitTimes(at: Instant): Int
+
+    /**
+     * Removes every entry committed at or before [cutoff] and returns their
+     * number. Entries without a commit time are kept.
+     */
+    suspend fun pruneCommittedAtOrBefore(cutoff: Instant): Int
 }
 
 /**
@@ -383,9 +476,10 @@ interface ProcessedInboundStore {
  * removed together with storing the session it created. A remote identity is
  * pinned in the same transaction that stores the first session with it. A
  * replaced session and the retired initiation are written together. A sent
- * message becomes pending together with the ratchet step that encrypted it; an
- * accepted message is marked processed together with the ratchet step that
- * decrypted it. An accepted identity change replaces the pin, removes the
+ * message becomes pending together with the ratchet step that encrypted it; a
+ * received message becomes pending inbound together with the ratchet step
+ * that decrypted it. A commit removes the pending inbound message and marks
+ * it processed together. An accepted identity change replaces the pin, removes the
  * session and retires its initiation together.
  *
  * Rules for the block:
@@ -404,6 +498,7 @@ interface ClientStorage {
     val sessionInitiations: SessionInitiationStore
     val preKeys: PreKeyStore
     val pendingOutbound: PendingOutboundStore
+    val pendingInbound: PendingInboundStore
     val processedInbound: ProcessedInboundStore
 
     suspend fun <T> transaction(block: suspend ClientStorage.() -> T): T

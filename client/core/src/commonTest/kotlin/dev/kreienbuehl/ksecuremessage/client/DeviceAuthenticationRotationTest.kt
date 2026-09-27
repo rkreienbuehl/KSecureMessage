@@ -19,7 +19,6 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -80,7 +79,7 @@ class DeviceAuthenticationRotationTest {
         }
         bob.send(ALICE, "before".encodeToByteArray())
         val phone = phone
-        assertEquals("before", assertIs<ReceiveResult.Message>(phone.decrypt(phone.receive().single())).plaintext.decodeToString())
+        assertEquals("before", phone.accept(phone.receive().single()).decodeToString())
         bob.decrypt(bob.receive().single()) // the ACK
         phone.markRemoteIdentityVerified(phone.safetyNumber(BOB))
         bob.markRemoteIdentityVerified(bob.safetyNumber(ALICE))
@@ -138,7 +137,7 @@ class DeviceAuthenticationRotationTest {
         assertEquals(pending, phone.pendingMessages(BOB).map { it.id })
         assertEquals(retired, phoneStorage.sessionInitiations.retiredSignedPreKeyIds())
         val phone = phone
-        assertEquals("queued", assertIs<ReceiveResult.Message>(phone.decrypt(phone.receive().single())).plaintext.decodeToString())
+        assertEquals("queued", phone.accept(phone.receive().single()).decodeToString())
         phone.publishPreKeys()
     }
 
@@ -166,7 +165,7 @@ class DeviceAuthenticationRotationTest {
         // Bob's session with the phone goes on without a new initiation.
         bob.send(ALICE, "after".encodeToByteArray())
         val phone = phone
-        assertEquals("after", assertIs<ReceiveResult.Message>(phone.decrypt(phone.receive().single())).plaintext.decodeToString())
+        assertEquals("after", phone.accept(phone.receive().single()).decodeToString())
     }
 
     @Test

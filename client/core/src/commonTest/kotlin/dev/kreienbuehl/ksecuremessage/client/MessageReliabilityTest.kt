@@ -21,7 +21,8 @@ import kotlin.time.Duration.Companion.days
 /**
  * Milestone 8 message reliability (docs/message-reliability.md): logical
  * message IDs, encrypted acknowledgements, pending outbound messages,
- * duplicate suppression and retry.
+ * duplicate suppression and retry. Since milestone 20 the acknowledgement
+ * follows the application's commit (docs/application-delivery.md).
  */
 class MessageReliabilityTest {
     private val network = FlakyNetwork()
@@ -32,7 +33,7 @@ class MessageReliabilityTest {
     /** A message and its acknowledgement: both sides end with nothing pending. */
     private suspend fun roundTrip(from: ReliableDevice, to: ReliableDevice, text: String): LogicalMessageId {
         val sent = from.send(to, text)
-        assertEquals(text, to.receiveOne().text())
+        assertEquals(text, to.acceptOne())
         val ack = assertIs<ReceiveResult.Acknowledgement>(from.receiveOne())
         assertEquals(sent.id, ack.id)
         assertTrue(ack.cleared)
@@ -51,12 +52,22 @@ class MessageReliabilityTest {
         assertEquals(listOf(sent.id), alice.pending(bob))
         assertEquals("hello", alice.client.pendingMessages(BOB).single().plaintext.decodeToString())
 
-        val received = assertIs<ReceiveResult.Message>(bob.receiveOne())
+        val result = bob.receiveOne()
+        val received = result.delivery()
         assertEquals(ALICE, received.sender)
         assertEquals(sent.id, received.id)
         assertEquals("hello", received.plaintext.decodeToString())
-        assertTrue(received.ackSent)
+        // Delivered, not committed: no acknowledgement yet.
+        assertTrue(bob.isPendingInbound(alice, sent.id))
+        assertFalse(bob.isProcessed(alice, sent.id))
+        assertEquals(emptyList(), alice.inbox())
+        assertEquals(listOf(sent.id), alice.pending(bob))
+
+        val commit = bob.commit(result)
+        assertEquals(CommitStatus.COMMITTED, commit.status)
+        assertTrue(commit.ackSent)
         assertTrue(bob.isProcessed(alice, sent.id))
+        assertFalse(bob.isPendingInbound(alice, sent.id))
         assertEquals(listOf(sent.id), alice.pending(bob))
 
         val ack = assertIs<ReceiveResult.Acknowledgement>(alice.receiveOne())
@@ -87,6 +98,8 @@ class MessageReliabilityTest {
 
         assertEquals("before restart", bob.receiveOne().text())
         bob.restart()
+        assertEquals(emptyList(), alice.inbox(), "not acknowledged before the commit")
+        bob.commit(ReceiveResult.Delivery(bob.client.pendingReceivedMessages().single()))
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice.receiveOne()).cleared)
         alice.restart()
         assertEquals(emptyList(), alice.pending(bob))
@@ -105,18 +118,18 @@ class MessageReliabilityTest {
     // Duplicates
 
     @Test
-    fun retryOfAnAcceptedMessageIsNotDeliveredAgainButAcknowledgedAgain() = runTest {
+    fun retryOfACommittedMessageIsNotDeliveredAgainButAcknowledgedAgain() = runTest {
         val alice = device(ALICE)
         val bob = device(BOB)
         val sent = alice.send(bob, "once")
-        assertEquals("once", bob.receiveOne().text())
+        assertEquals("once", bob.acceptOne())
 
         assertEquals(listOf(sent.id), alice.client.retryPendingMessages(BOB))
         val retried = network.sent.last()
         assertNotEquals(sent.envelope.id, retried.id, "a retry is a new envelope")
         assertFalse(sent.envelope.payload.contentEquals(retried.payload), "a retry is fresh ciphertext")
 
-        val duplicate = assertIs<ReceiveResult.Duplicate>(bob.receive(bob.inbox().single()))
+        val duplicate = assertIs<ReceiveResult.AlreadyCommitted>(bob.receive(bob.inbox().single()))
         assertEquals(sent.id, duplicate.id)
         assertTrue(duplicate.ackSent)
 
@@ -136,12 +149,12 @@ class MessageReliabilityTest {
         val bob = device(BOB)
         alice.send(bob, "first contact")
         val first = bob.inbox().single()
-        bob.receive(first).text()
+        bob.commit(bob.receive(first))
         alice.receiveOne()
         roundTrip(bob, alice, "established")
         alice.send(bob, "ratchet message")
         val second = bob.inbox().single()
-        bob.receive(second).text()
+        bob.commit(bob.receive(second))
         alice.receiveOne()
 
         for (replay in listOf(first, second)) {
@@ -159,16 +172,19 @@ class MessageReliabilityTest {
         val sent = alice.send(bob, "important")
 
         network.failingSenders += BOB
-        val received = assertIs<ReceiveResult.Message>(bob.receiveOne())
-        assertFalse(received.ackSent)
-        assertTrue(bob.isProcessed(alice, sent.id), "processed although the acknowledgement failed")
+        val commit = bob.commit(bob.receiveOne())
+        assertEquals(CommitStatus.COMMITTED, commit.status)
+        assertFalse(commit.ackSent)
+        assertTrue(bob.isProcessed(alice, sent.id), "committed although the acknowledgement failed")
+        assertFalse(bob.isPendingInbound(alice, sent.id))
         assertEquals(emptyList(), alice.inbox())
         assertEquals(listOf(sent.id), alice.pending(bob))
 
         network.failingSenders -= BOB
         bob.restart()
+        assertEquals(emptyList(), bob.client.pendingReceivedMessages(), "a committed message is not delivered again")
         alice.client.retryPendingMessages(BOB)
-        val duplicate = assertIs<ReceiveResult.Duplicate>(bob.receiveOne())
+        val duplicate = assertIs<ReceiveResult.AlreadyCommitted>(bob.receiveOne())
         assertTrue(duplicate.ackSent)
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice.receiveOne()).cleared)
         assertEquals(emptyList(), alice.pending(bob))
@@ -179,9 +195,10 @@ class MessageReliabilityTest {
         val alice = device(ALICE)
         val bob = device(BOB)
         val sent = alice.send(bob, "hi")
+        val delivery = bob.receiveOne()
         network.cancellingSenders += BOB
-        assertFailsWith<CancellationException> { bob.receiveOne() }
-        assertTrue(bob.isProcessed(alice, sent.id))
+        assertFailsWith<CancellationException> { bob.commit(delivery) }
+        assertTrue(bob.isProcessed(alice, sent.id), "the commit happened before the acknowledgement")
     }
 
     // Acknowledgements
@@ -214,7 +231,7 @@ class MessageReliabilityTest {
         assertFalse(ack.cleared)
         assertEquals(listOf(toCarol.id), alice.pending(carol))
 
-        assertEquals("for Carol only", carol.receiveOne().text())
+        assertEquals("for Carol only", carol.acceptOne())
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice.receiveOne()).cleared)
         assertEquals(emptyList(), alice.pending(carol))
     }
@@ -231,6 +248,10 @@ class MessageReliabilityTest {
         network.fake.publish(bob.client)
         carol.sendFrame(bob, SecurePayload.ApplicationMessage(id, "from Carol".encodeToByteArray()))
         assertEquals("from Carol", bob.receiveOne().text())
+        assertTrue(bob.isPendingInbound(alice, id))
+        assertTrue(bob.isPendingInbound(carol, id))
+        bob.client.commitReceivedMessage(ALICE, id)
+        bob.client.commitReceivedMessage(CAROL, id)
         assertTrue(bob.isProcessed(alice, id))
         assertTrue(bob.isProcessed(carol, id))
     }
@@ -252,12 +273,14 @@ class MessageReliabilityTest {
         assertEquals(3, retried.size)
 
         // Only the acknowledgement of m2 gets through.
+        val deliveries = retried.map { bob.receive(it) }
+        assertEquals(listOf("m1", "m2", "m3"), deliveries.map { it.text() })
         network.failingSenders += BOB
-        assertEquals("m1", bob.receive(retried[0]).text())
+        bob.commit(deliveries[0])
         network.failingSenders -= BOB
-        assertEquals("m2", bob.receive(retried[1]).text())
+        bob.commit(deliveries[1])
         network.failingSenders += BOB
-        assertEquals("m3", bob.receive(retried[2]).text())
+        bob.commit(deliveries[2])
         network.failingSenders -= BOB
 
         assertEquals(ids[1], assertIs<ReceiveResult.Acknowledgement>(alice.receiveOne()).id)
@@ -265,7 +288,7 @@ class MessageReliabilityTest {
 
         alice.restart()
         assertEquals(listOf(ids[0], ids[2]), alice.client.retryPendingMessages(BOB))
-        val duplicates = bob.inbox().map { assertIs<ReceiveResult.Duplicate>(bob.receive(it)) }
+        val duplicates = bob.inbox().map { assertIs<ReceiveResult.AlreadyCommitted>(bob.receive(it)) }
         assertEquals(listOf(ids[0], ids[2]), duplicates.map { it.id })
         alice.inbox().forEach { assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice.receive(it)).cleared) }
         assertEquals(emptyList(), alice.pending(bob))
@@ -291,9 +314,10 @@ class MessageReliabilityTest {
         network.failingSenders -= ALICE
         alice.restart()
         assertEquals(listOf(error.messageId), alice.client.retryPendingMessages(BOB))
-        val received = assertIs<ReceiveResult.Message>(bob.receiveOne())
-        assertEquals(error.messageId, received.id)
-        assertEquals("offline", received.plaintext.decodeToString())
+        val result = bob.receiveOne()
+        assertEquals(error.messageId, result.delivery().id)
+        assertEquals("offline", result.text())
+        bob.commit(result)
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice.receiveOne()).cleared)
     }
 
@@ -309,7 +333,7 @@ class MessageReliabilityTest {
         assertEquals(emptyList(), bob.inbox())
 
         val largest = alice.client.send(BOB, ByteArray(SecurePayloadCodec.MAX_BODY_SIZE) { 7 })
-        val received = assertIs<ReceiveResult.Message>(bob.receiveOne())
+        val received = bob.receiveOne().delivery()
         assertEquals(largest.id, received.id)
         assertContentEquals(ByteArray(SecurePayloadCodec.MAX_BODY_SIZE) { 7 }, received.plaintext)
     }
@@ -350,6 +374,7 @@ class MessageReliabilityTest {
         val forged = impostor.send(bob, "forged")
         assertFailsWith<SecureMessageClientException.IdentityChanged> { bob.receiveOne() }
         assertFalse(bob.isProcessed(alice, forged.id))
+        assertFalse(bob.isPendingInbound(alice, forged.id))
         assertEquals(emptyList(), impostor.inbox())
         assertEquals(listOf(forged.id), impostor.pending(bob))
     }
@@ -369,6 +394,7 @@ class MessageReliabilityTest {
 
         assertFailsWith<SecureMessageClientException.ExpiredSignedPreKey> { bob.receiveOne() }
         assertFalse(bob.isProcessed(alice, delayed.id))
+        assertFalse(bob.isPendingInbound(alice, delayed.id))
         assertEquals(emptyList(), alice.inbox())
         assertEquals(listOf(delayed.id), alice.pending(bob))
     }

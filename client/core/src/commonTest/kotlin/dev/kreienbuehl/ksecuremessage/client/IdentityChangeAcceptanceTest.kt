@@ -50,10 +50,10 @@ class IdentityChangeAcceptanceTest {
         val alice = device(ALICE)
         val bob = device(BOB)
         alice.send(bob, "hi bob")
-        bob.receiveOne()
+        bob.acceptOne()
         alice.receiveOne()
         bob.send(alice, "hi alice")
-        alice.receiveOne()
+        alice.acceptOne()
         bob.receiveOne()
         return alice to bob
     }
@@ -75,7 +75,7 @@ class IdentityChangeAcceptanceTest {
         val (alice, oldBob) = conversation()
         val carol = device(CAROL)
         alice.send(carol, "hi carol")
-        carol.receiveOne()
+        carol.acceptOne()
         alice.receiveOne()
         alice.client.markRemoteIdentityVerified(alice.client.safetyNumber(BOB))
         val oldInitiation = assertNotNull(alice.initiationWith(oldBob))
@@ -105,15 +105,15 @@ class IdentityChangeAcceptanceTest {
         assertContentEquals(carolSession, alice.storage.sessions.load(CAROL)?.state, "other peers are not touched")
 
         // The refused envelope changed nothing, so it can be processed now.
-        val message = assertIs<ReceiveResult.Message>(alice.receive(envelope))
-        assertEquals("new phone, who dis", message.plaintext.decodeToString())
-        assertTrue(message.ackSent)
+        val result = alice.receive(envelope)
+        assertEquals("new phone, who dis", result.text())
+        assertTrue(alice.commit(result).ackSent)
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(newBob.receiveOne()).cleared)
 
         alice.client.markRemoteIdentityVerified(alice.client.safetyNumber(BOB))
         assertEquals(VerificationState.VERIFIED, alice.trust()?.verification)
         alice.send(newBob, "welcome back")
-        assertEquals("welcome back", newBob.receiveOne().text())
+        assertEquals("welcome back", newBob.acceptOne())
         assertIs<ReceiveResult.Acknowledgement>(alice.receiveOne())
     }
 
@@ -162,12 +162,12 @@ class IdentityChangeAcceptanceTest {
         oldBob.send(alice, "first")
         val oldPreKeyMessage = alice.inbox().single()
         assertTrue(oldPreKeyMessage.isPreKeyMessage())
-        alice.receive(oldPreKeyMessage)
+        alice.commit(alice.receive(oldPreKeyMessage))
         oldBob.receiveOne()
         oldBob.send(alice, "second")
         val oldRatchetMessage = alice.inbox().single()
         assertIs<RatchetMessage>(CiphertextMessageCodec.decode(oldRatchetMessage.payload))
-        alice.receive(oldRatchetMessage)
+        alice.commit(alice.receive(oldRatchetMessage))
         oldBob.receiveOne()
         val oldInitiation = assertNotNull(alice.initiationWith(oldBob))
 
@@ -198,7 +198,7 @@ class IdentityChangeAcceptanceTest {
     fun pendingMessagesSurviveAcceptanceAndAreRetriedUnderTheNewIdentity() = runTest {
         val (alice, oldBob) = conversation()
         val processed = oldBob.send(alice, "from the old phone").id
-        alice.receiveOne()
+        alice.acceptOne()
         oldBob.receiveOne()
         val sent = alice.send(oldBob, "lost with the old phone")
         network.receive(BOB) // never delivered
@@ -212,7 +212,7 @@ class IdentityChangeAcceptanceTest {
 
         assertTrue(alice.storage.processedInbound.isProcessed(BOB, processed), "processed IDs are kept")
 
-        alice.receive(envelope)
+        alice.commit(alice.receive(envelope))
         assertIs<ReceiveResult.Acknowledgement>(newBob.receiveOne())
 
         assertEquals(listOf(sent.id), alice.client.retryPendingMessages(BOB))
@@ -221,9 +221,11 @@ class IdentityChangeAcceptanceTest {
         assertNotEquals(sent.envelope.id, resent.id, "a new envelope")
         assertFalse(sent.envelope.payload.contentEquals(resent.payload), "fresh ciphertext")
 
-        val delivered = assertIs<ReceiveResult.Message>(newBob.receive(newBob.inbox().single()))
+        val result = newBob.receive(newBob.inbox().single())
+        val delivered = result.delivery()
         assertEquals(sent.id, delivered.id, "same logical ID")
         assertEquals("lost with the old phone", delivered.plaintext.decodeToString())
+        newBob.commit(result)
         val ack = assertIs<ReceiveResult.Acknowledgement>(alice.receiveOne())
         assertEquals(sent.id, ack.id)
         assertTrue(ack.cleared)

@@ -72,7 +72,7 @@ class RecoveryKeyLifecycleTest {
         }
         bob.send(ALICE, "hello".encodeToByteArray())
         val phone = phone
-        assertEquals("hello", assertIs<ReceiveResult.Message>(phone.decrypt(phone.receive().single())).plaintext.decodeToString())
+        assertEquals("hello", phone.accept(phone.receive().single()).decodeToString())
         bob.decrypt(bob.receive().single()) // the ACK
         if (registerRecoveryKey) phone.registerLastDeviceRecoveryKey(r1)
     }
@@ -120,7 +120,7 @@ class RecoveryKeyLifecycleTest {
         assertEquals(registration.authKeyInstalledAt, registrationAfter.authKeyInstalledAt)
         assertTrue(phone.pendingMessages(BOB).isEmpty())
         bob.send(ALICE, "still here".encodeToByteArray())
-        assertEquals("still here", assertIs<ReceiveResult.Message>(phone.decrypt(phone.receive().single())).plaintext.decodeToString())
+        assertEquals("still here", phone.accept(phone.receive().single()).decodeToString())
     }
 
     @Test

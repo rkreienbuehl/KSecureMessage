@@ -3,7 +3,6 @@ package dev.kreienbuehl.ksecuremessage.server.ktor
 import dev.kreienbuehl.ksecuremessage.client.LastDeviceRecoveryKeyRevocationResult
 import dev.kreienbuehl.ksecuremessage.client.LastDeviceRecoveryKeyRotationResult
 import dev.kreienbuehl.ksecuremessage.client.PreKeyConfiguration
-import dev.kreienbuehl.ksecuremessage.client.ReceiveResult
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageClient
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageClientException
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransport
@@ -242,7 +241,7 @@ class RecoveryKeyLifecycleRoutesTest {
         assertEquals(LastDeviceRecoveryKeyStatus.Unconfigured, phoneClient.lastDeviceRecoveryKeyStatus())
         phoneClient.registerLastDeviceRecoveryKey(r1)
         bobClient.send(phone, "hi".encodeToByteArray())
-        assertIs<ReceiveResult.Message>(phoneClient.decrypt(phoneClient.receive().single()))
+        phoneClient.accept(phoneClient.receive().single())
 
         // The rotation reached the server, but the client never saw the response; calling again resolves it.
         loseNextResponse = true
@@ -264,7 +263,7 @@ class RecoveryKeyLifecycleRoutesTest {
         assertEquals(1, storage.devices.registrationState(phone)?.authEpoch, "device authentication untouched")
         bobClient.receive().forEach { bobClient.decrypt(it) }
         bobClient.send(phone, "still here".encodeToByteArray())
-        assertIs<ReceiveResult.Message>(phoneClient.decrypt(phoneClient.receive().single()))
+        phoneClient.accept(phoneClient.receive().single())
     }
 
     @Test

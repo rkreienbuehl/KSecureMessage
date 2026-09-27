@@ -46,7 +46,7 @@ private val K2 = StorageKeyId(2)
 private val K3 = StorageKeyId(3)
 
 /** Sealed records written by [StorageKeyRotationTest.populate], without the key checks. */
-private const val POPULATED_RECORDS = 11L
+private const val POPULATED_RECORDS = 14L
 
 /** Storage key rotation of SQLDelight storage (docs/storage-key-rotation.md), checked on the persisted bytes. */
 class StorageKeyRotationTest {
@@ -84,7 +84,7 @@ class StorageKeyRotationTest {
 
     /**
      * One or more records of every sealed category: identity, device authentication key, grace and current SPK,
-     * OTPKs, sessions, pending frames.
+     * OTPKs, sessions, pending frames (sent and received), processed digests.
      */
     private suspend fun populate(storage: ClientStorage) {
         storage.identity.store(LocalIdentity(ByteArray(32) { 0x11 }, ByteArray(32) { 0x5A }))
@@ -97,7 +97,9 @@ class StorageKeyRotationTest {
         storage.pendingOutbound.store(BOB, messageId(1), "pending-1".encodeToByteArray())
         storage.pendingOutbound.store(BOB, messageId(2), "pending-2".encodeToByteArray())
         storage.pendingOutbound.store(CAROL, messageId(1), "pending-3".encodeToByteArray())
-        storage.processedInbound.markProcessed(ALICE, messageId(3))
+        storage.processedInbound.markProcessed(ALICE, messageId(3), ByteArray(32) { 0x33 }, Instant.fromEpochMilliseconds(3_000))
+        storage.pendingInbound.store(ALICE, messageId(4), "received-4".encodeToByteArray(), Instant.fromEpochMilliseconds(4_000))
+        storage.pendingInbound.store(BOB, messageId(5), "received-5".encodeToByteArray(), Instant.fromEpochMilliseconds(5_000))
         storage.remoteIdentities.store(BOB, ByteArray(32) { 0x77 })
     }
 
@@ -120,7 +122,11 @@ class StorageKeyRotationTest {
             for (pending in storage.pendingOutbound.list(remote)) append("pending=$remote/${pending.id}/${pending.sequence}/${pending.frame.toHex()};")
             append("pin=$remote/${storage.remoteIdentities.identityKey(remote)?.toHex()};")
         }
-        append("processed=${storage.processedInbound.isProcessed(ALICE, messageId(3))}")
+        for (pending in storage.pendingInbound.list()) {
+            append("received=${pending.sender}/${pending.id}/${pending.sequence}/${pending.receivedAt}/${pending.frame.toHex()};")
+        }
+        val processed = storage.processedInbound.get(ALICE, messageId(3))
+        append("processed=${processed?.digest?.toHex()}/${processed?.committedAt}")
     }
 
     /** Key IDs of every sealed value, per column, from the raw record headers. */
@@ -246,11 +252,11 @@ class StorageKeyRotationTest {
         val status = storage.resumeStorageKeyRotation(4)
         assertEquals(StorageKeyRotationPhase.MIGRATING, status.phase)
         assertEquals(POPULATED_RECORDS - 4, status.remainingRecords)
-        assertEquals(mapOf(1 to 7, 2 to 4), recordKeyIds().groupingBy { it }.eachCount())
+        assertEquals(mapOf(1 to 10, 2 to 4), recordKeyIds().groupingBy { it }.eachCount())
 
         // Restart in the middle: both keys are needed and both work.
         val restarted = open()
-        assertEquals(StorageKeyRotationStatus(StorageKeyRotationPhase.MIGRATING, K2, null, K1, 7), restarted.storageKeyRotationStatus())
+        assertEquals(StorageKeyRotationStatus(StorageKeyRotationPhase.MIGRATING, K2, null, K1, POPULATED_RECORDS - 4), restarted.storageKeyRotationStatus())
         assertEquals(before, contents(restarted))
 
         // New writes after the restart still use key 2.
@@ -455,7 +461,7 @@ class StorageKeyRotationTest {
         storage.resumeStorageKeyRotation(1) // signed prekey 2
         storage.resumeStorageKeyRotation(1) // one-time prekey 10
         repeat(2) { assertFailsWith<StorageEncryptionException.AuthenticationFailed> { storage.resumeStorageKeyRotation(1) } }
-        assertEquals(mapOf(1 to 6, 2 to 5), recordKeyIds().groupingBy { it }.eachCount())
+        assertEquals(mapOf(1 to 9, 2 to 5), recordKeyIds().groupingBy { it }.eachCount())
         assertEquals(StorageKeyRotationPhase.MIGRATING, storage.storageKeyRotationStatus().phase)
         assertEquals(setOf(K1, K2), keys.ids(namespace), "the old key is kept")
     }
@@ -502,7 +508,7 @@ class StorageKeyRotationTest {
         val migrating = created.last()
         migrating.cancelAtSeal = migrating.seals + 3
         assertFailsWith<CancellationException> { storage.resumeStorageKeyRotation(5) }
-        assertEquals(mapOf(1 to 9, 2 to 2), recordKeyIds().groupingBy { it }.eachCount(), "only the cancelled batch rolled back")
+        assertEquals(mapOf(1 to 12, 2 to 2), recordKeyIds().groupingBy { it }.eachCount(), "only the cancelled batch rolled back")
         assertEquals(StorageKeyRotationPhase.MIGRATING, storage.storageKeyRotationStatus().phase)
 
         migrating.cancelAtSeal = null
@@ -602,6 +608,7 @@ class StorageKeyRotationTest {
             "retired_session_initiation" to "initiation_id",
             "pending_outbound_message" to "message_id",
             "processed_inbound_message" to "message_id",
+            "pending_inbound_message" to "message_id",
         )
         val blobColumns = driver.tables().flatMap { table ->
             driver.strings("SELECT name FROM pragma_table_info('$table') WHERE type = 'BLOB'").map { table to it!! }

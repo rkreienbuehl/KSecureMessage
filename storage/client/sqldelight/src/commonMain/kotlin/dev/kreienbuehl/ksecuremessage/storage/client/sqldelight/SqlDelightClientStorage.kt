@@ -7,10 +7,12 @@ import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
+import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair
@@ -21,9 +23,12 @@ import dev.kreienbuehl.ksecuremessage.protocol.VerificationState
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.DeviceAuthenticationKeyStore
 import dev.kreienbuehl.ksecuremessage.storage.IdentityStore
+import dev.kreienbuehl.ksecuremessage.storage.PendingInboundMessage
+import dev.kreienbuehl.ksecuremessage.storage.PendingInboundStore
 import dev.kreienbuehl.ksecuremessage.storage.PendingOutboundMessage
 import dev.kreienbuehl.ksecuremessage.storage.PendingOutboundStore
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyStore
+import dev.kreienbuehl.ksecuremessage.storage.ProcessedInboundMessage
 import dev.kreienbuehl.ksecuremessage.storage.ProcessedInboundStore
 import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityRecord
 import dev.kreienbuehl.ksecuremessage.storage.RemoteIdentityStore
@@ -68,10 +73,11 @@ import kotlin.time.Instant
  *
  * The local identity, the device authentication key, signed and one-time
  * prekeys (whole key pairs), session
- * state and pending message frames are stored as AES-256-GCM records bound
- * to their record type and row key. IDs, addresses, timestamps, high-water
- * marks, remote identity pins, retired initiations and processed message IDs
- * stay plaintext metadata. There is no unencrypted mode. A record that does
+ * state, pending message frames (sent and received) and the content digests
+ * of committed received messages are stored as AES-256-GCM records bound
+ * to their record type and row key. IDs, addresses, timestamps, sequence
+ * numbers, high-water marks, remote identity pins, retired initiations and
+ * processed message IDs stay plaintext metadata. There is no unencrypted mode. A record that does
  * not authenticate throws [StorageEncryptionException]; it is never treated
  * as missing.
  *
@@ -89,7 +95,9 @@ import kotlin.time.Instant
  * `device_authentication_rotation_key` table (milestone 16,
  * docs/device-authentication-rotation.md), version 12 the
  * `device_authentication_last_device_recovery_key` table (milestone 18,
- * docs/last-device-recovery.md). A driver created with
+ * docs/last-device-recovery.md), version 13 the `pending_inbound_message`
+ * table and the `processed_inbound_message` commit time and digest
+ * (milestone 20, docs/application-delivery.md). A driver created with
  * [Schema] upgrades an older database on open; an application that manages
  * versions itself calls `Schema.migrate(driver, oldVersion, Schema.version)`. An upgraded database still holds
  * its milestone 8 plaintext until [open] encrypts it. Session state written
@@ -198,11 +206,24 @@ class SqlDelightClientStorage private constructor(
             transaction { pendingOutbound.remove(recipient, id) }
     }
 
+    override val pendingInbound: PendingInboundStore = object : PendingInboundStore {
+        override suspend fun store(sender: DeviceAddress, id: LogicalMessageId, frame: ByteArray, receivedAt: Instant) =
+            transaction { pendingInbound.store(sender, id, frame, receivedAt) }
+        override suspend fun contains(sender: DeviceAddress, id: LogicalMessageId) = transaction { pendingInbound.contains(sender, id) }
+        override suspend fun get(sender: DeviceAddress, id: LogicalMessageId) = transaction { pendingInbound.get(sender, id) }
+        override suspend fun list() = transaction { pendingInbound.list() }
+        override suspend fun list(sender: DeviceAddress) = transaction { pendingInbound.list(sender) }
+        override suspend fun remove(sender: DeviceAddress, id: LogicalMessageId) = transaction { pendingInbound.remove(sender, id) }
+    }
+
     override val processedInbound: ProcessedInboundStore = object : ProcessedInboundStore {
         override suspend fun isProcessed(sender: DeviceAddress, id: LogicalMessageId) =
             transaction { processedInbound.isProcessed(sender, id) }
-        override suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId) =
-            transaction { processedInbound.markProcessed(sender, id) }
+        override suspend fun get(sender: DeviceAddress, id: LogicalMessageId) = transaction { processedInbound.get(sender, id) }
+        override suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId, digest: ByteArray, committedAt: Instant) =
+            transaction { processedInbound.markProcessed(sender, id, digest, committedAt) }
+        override suspend fun stampLegacyCommitTimes(at: Instant) = transaction { processedInbound.stampLegacyCommitTimes(at) }
+        override suspend fun pruneCommittedAtOrBefore(cutoff: Instant) = transaction { processedInbound.pruneCommittedAtOrBefore(cutoff) }
     }
 
     override suspend fun <T> transaction(block: suspend ClientStorage.() -> T): T {
@@ -465,13 +486,77 @@ private class DatabaseView(private val queries: ClientStateQueries, private val 
         }
     }
 
+    override val pendingInbound: PendingInboundStore = object : PendingInboundStore {
+        override suspend fun store(sender: DeviceAddress, id: LogicalMessageId, frame: ByteArray, receivedAt: Instant): Long {
+            require(!contains(sender, id)) { "Message is already pending" }
+            val sealed = records.sealPendingInboundFrame(sender, id, frame)
+            queries.insertPendingInbound(sender.userId.value, sender.deviceId.value, id.toByteArray(), receivedAt.toEpochMilliseconds(), sealed)
+            return queries.selectPendingInbound(sender.userId.value, sender.deviceId.value, id.toByteArray()).awaitAsOne().sequence
+        }
+
+        override suspend fun contains(sender: DeviceAddress, id: LogicalMessageId): Boolean =
+            queries.countPendingInbound(sender.userId.value, sender.deviceId.value, id.toByteArray()).awaitAsOne() > 0
+
+        override suspend fun get(sender: DeviceAddress, id: LogicalMessageId): PendingInboundMessage? {
+            val row = queries.selectPendingInbound(sender.userId.value, sender.deviceId.value, id.toByteArray())
+                .awaitAsOneOrNull() ?: return null
+            return message(sender, id, row.sequence, row.received_at, row.sealed_frame)
+        }
+
+        override suspend fun list(): List<PendingInboundMessage> =
+            queries.selectAllPendingInbound().awaitAsList().map { row ->
+                val sender = DeviceAddress(UserId(row.sender_user_id), DeviceId(row.sender_device_id))
+                message(sender, LogicalMessageId.fromByteArray(row.message_id), row.sequence, row.received_at, row.sealed_frame)
+            }
+
+        override suspend fun list(sender: DeviceAddress): List<PendingInboundMessage> =
+            queries.selectPendingInboundFrom(sender.userId.value, sender.deviceId.value).awaitAsList().map { row ->
+                message(sender, LogicalMessageId.fromByteArray(row.message_id), row.sequence, row.received_at, row.sealed_frame)
+            }
+
+        override suspend fun remove(sender: DeviceAddress, id: LogicalMessageId): Boolean {
+            // Existence only: an entry is removed without being opened.
+            if (!contains(sender, id)) return false
+            queries.deletePendingInbound(sender.userId.value, sender.deviceId.value, id.toByteArray())
+            return true
+        }
+
+        private suspend fun message(sender: DeviceAddress, id: LogicalMessageId, sequence: Long, receivedAt: Long, sealed: ByteArray) =
+            PendingInboundMessage(
+                sender,
+                id,
+                sequence,
+                Instant.fromEpochMilliseconds(receivedAt),
+                records.openPendingInboundFrame(sender, id, sealed),
+            )
+    }
+
     override val processedInbound: ProcessedInboundStore = object : ProcessedInboundStore {
         override suspend fun isProcessed(sender: DeviceAddress, id: LogicalMessageId): Boolean =
             queries.countProcessedInbound(sender.userId.value, sender.deviceId.value, id.toByteArray()).awaitAsOne() > 0
 
-        override suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId) {
-            queries.insertProcessedInbound(sender.userId.value, sender.deviceId.value, id.toByteArray())
+        override suspend fun get(sender: DeviceAddress, id: LogicalMessageId): ProcessedInboundMessage? {
+            val row = queries.selectProcessedInbound(sender.userId.value, sender.deviceId.value, id.toByteArray())
+                .awaitAsOneOrNull() ?: return null
+            return ProcessedInboundMessage(
+                sender,
+                id,
+                row.sealed_digest?.let { records.openProcessedDigest(sender, id, it) },
+                row.committed_at?.let(Instant::fromEpochMilliseconds),
+            )
         }
+
+        override suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId, digest: ByteArray, committedAt: Instant) {
+            require(!isProcessed(sender, id)) { "Message is already processed" }
+            val sealed = records.sealProcessedDigest(sender, id, digest)
+            queries.insertProcessedInbound(sender.userId.value, sender.deviceId.value, id.toByteArray(), committedAt.toEpochMilliseconds(), sealed)
+        }
+
+        override suspend fun stampLegacyCommitTimes(at: Instant): Int =
+            queries.stampLegacyProcessedInbound(at.toEpochMilliseconds()).toInt()
+
+        override suspend fun pruneCommittedAtOrBefore(cutoff: Instant): Int =
+            queries.pruneProcessedInbound(cutoff.toEpochMilliseconds()).toInt()
     }
 
     override val identity: IdentityStore = object : IdentityStore {

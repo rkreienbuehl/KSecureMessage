@@ -52,7 +52,7 @@ Shared serializable value types such as user/device addresses, prekey metadata, 
 Protocol-facing orchestration and Kodium dependency. Keep Kodium-specific types internal where possible so the public API remains stable.
 
 ### `client:core`
-Client lifecycle contracts such as transport, session access, sending, receiving, acknowledgements and resend.
+Client lifecycle contracts such as transport, session access, sending, receiving, the application commit of received messages, acknowledgements and resend.
 
 ### `client:ktor`
 Kotlin Multiplatform Ktor client transport adapter.
@@ -76,7 +76,7 @@ Non-persistent `InMemoryServerStorage` (prekey, mailbox, device registration and
 Persistent `SqlDelightServerStorage` on SQLite via SQLDelight, JVM only. The host application creates, configures and closes the `SqlDriver`; the adapter only runs the repository logic, each operation in one SQLite transaction. SQLite dialect only: a configurable driver does not mean support for arbitrary SQL databases. See [docs/server-storage.md](docs/server-storage.md).
 
 ### `storage:client:sqldelight`
-Persistent `ClientStorage` on SQLite via SQLDelight, for all client targets. The application supplies the platform driver and a `StorageKeyProvider`; key pairs, session state and pending message plaintext are stored as encrypted records, see [docs/storage.md](docs/storage.md) and [docs/storage-encryption.md](docs/storage-encryption.md). The storage key can be rotated explicitly, see [docs/storage-key-rotation.md](docs/storage-key-rotation.md).
+Persistent `ClientStorage` on SQLite via SQLDelight, for all client targets. The application supplies the platform driver and a `StorageKeyProvider`; key pairs, session state, pending message plaintext (sent and received) and committed message digests are stored as encrypted records, see [docs/storage.md](docs/storage.md) and [docs/storage-encryption.md](docs/storage-encryption.md). The storage key can be rotated explicitly, see [docs/storage-key-rotation.md](docs/storage-key-rotation.md).
 
 ### `storage:encryption`
 Record-level encryption of sensitive client storage records: AES-256-GCM (cryptography-kotlin) with associated data bound to record type and row key, the versioned record format, `StorageKeyProvider` and `StorageEncryptionKey`. Used by `storage:client:sqldelight`.
@@ -246,9 +246,23 @@ client.revokeLastDeviceRecoveryKey(currentKey)                // or: turn last-d
 client.registerLastDeviceRecoveryKey(client.createLastDeviceRecoveryKey()) // after a revocation; the epoch continues
 ```
 
+Milestone 20 done: application commit boundary and bounded inbound deduplication. A received message is no longer acknowledged when it is decrypted: `decrypt` stores it as pending (sealed at rest, record type 11) in the same transaction as its ratchet step and returns `ReceiveResult.Delivery`; retries before the commit return the same delivery again and are not acknowledged; `pendingReceivedMessages()` returns every uncommitted message after a restart, in local acceptance order. Once the application has applied a message durably, `commitReceivedMessage` moves it from pending to processed in one transaction (commit time plus a sealed SHA-256 body digest, record type 12, domain `KSecureMessage-ProcessedMessage-v1`) and only then sends the ACK; an ACK failure never undoes the commit, and a later retry is answered with `AlreadyCommitted` and a new ACK. So an ACK now means the receiving application committed the message. A reused logical ID with another body fails with `LogicalMessageConflict`. Processed IDs are pruned only by an explicit `pruneProcessedMessages(ProcessedInboundRetentionPolicy(maxAge))` (no default, wall clock, age ≥ maxAge pruned); pending messages never expire. Delivery is at least once, not exactly once: apply messages idempotently keyed by sender and logical ID. `ReceiveResult.Message`/`Duplicate` are replaced by `Delivery`/`AlreadyCommitted` (breaking). Client SQLDelight schema version 13 (`12.sqm`; processed IDs from before are kept and stamped once by `initialize()`); no server or wire change. See [docs/application-delivery.md](docs/application-delivery.md).
+
+```kotlin
+when (val result = client.decrypt(envelope)) {
+    is ReceiveResult.Delivery -> {
+        app.applyIdempotently(result.sender, result.id, result.message.plaintext) // the app's own transaction
+        client.commitReceivedMessage(result.message)                              // then the ACK is sent
+    }
+    is ReceiveResult.AlreadyCommitted, is ReceiveResult.Acknowledgement -> Unit
+}
+client.pendingReceivedMessages().forEach { /* after a restart: apply, then commit */ }
+client.pruneProcessedMessages(ProcessedInboundRetentionPolicy(90.days))
+```
+
 ## Next implementation steps
 
-1. An application commit boundary for received messages and bounded dedup retention.
+1. Bounded handling of uncommitted received messages: paged enumeration and an explicit, application-driven discard (dead-letter) of pending inbound messages with a reason, so a poison message cannot grow storage forever.
 2. A deliberate, policy-controlled recovery key reset for a lost offline key (delay plus notification of every device), if applications need one; a PostgreSQL server adapter if multi-node deployment is needed.
 3. Sealed sender.
 

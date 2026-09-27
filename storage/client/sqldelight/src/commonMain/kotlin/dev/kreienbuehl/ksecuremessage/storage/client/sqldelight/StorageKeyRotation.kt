@@ -22,6 +22,8 @@ internal val SEALED_COLUMNS: List<Pair<String, String>> = listOf(
     "one_time_pre_key" to "sealed_key_pair",
     "session" to "sealed_state",
     "pending_outbound_message" to "sealed_frame",
+    "pending_inbound_message" to "sealed_frame",
+    "processed_inbound_message" to "sealed_digest",
     "storage_encryption" to "key_check",
     "storage_encryption" to "retiring_key_check",
 )

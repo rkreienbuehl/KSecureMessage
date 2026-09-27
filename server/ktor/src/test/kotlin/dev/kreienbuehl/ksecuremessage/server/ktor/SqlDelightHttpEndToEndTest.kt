@@ -67,7 +67,7 @@ class SqlDelightHttpEndToEndTest {
         assertEquals(4, server.preKeys.oneTimePreKeyCount(bobAddress), "the consumed one-time prekey stays consumed")
         val first = bob.receive().single()
         assertEquals(OneTimePreKeyId(0), assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(first.payload)).oneTimePreKeyId)
-        val received = assertIs<ReceiveResult.Message>(bob.decrypt(first))
+        val received = bob.accept(first)
         assertEquals("Hello Bob", received.plaintext.decodeToString())
         assertTrue(received.ackSent)
 
@@ -80,7 +80,7 @@ class SqlDelightHttpEndToEndTest {
 
         bob.send(aliceAddress, "Hello Alice".encodeToByteArray())
         server.restart()
-        val reply = assertIs<ReceiveResult.Message>(alice.decrypt(alice.receive().single()))
+        val reply = alice.accept(alice.receive().single())
         assertEquals("Hello Alice", reply.plaintext.decodeToString())
         assertTrue(reply.ackSent)
 

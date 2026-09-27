@@ -24,6 +24,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
 
 /**
@@ -898,30 +899,141 @@ abstract class ClientStorageContractTest {
     }
 
     @Test
-    fun processedMessagesAreScopedBySenderAndIdempotent() = runTest {
+    fun processedMessagesAreScopedBySenderAndRecordedOnce() = runTest {
         val storage = newStorage()
         assertFalse(storage.processedInbound.isProcessed(alice, messageId(1)))
+        assertNull(storage.processedInbound.get(alice, messageId(1)))
 
-        storage.processedInbound.markProcessed(alice, messageId(1))
-        storage.processedInbound.markProcessed(alice, messageId(1))
+        storage.processedInbound.markProcessed(alice, messageId(1), bytes(1), at(1))
+        assertFailsWith<IllegalArgumentException> { storage.processedInbound.markProcessed(alice, messageId(1), bytes(2), at(2)) }
 
         assertTrue(storage.processedInbound.isProcessed(alice, messageId(1)))
         assertFalse(storage.processedInbound.isProcessed(bob, messageId(1)))
         assertFalse(storage.processedInbound.isProcessed(alice, messageId(2)))
+        val entry = assertNotNull(storage.processedInbound.get(alice, messageId(1)))
+        assertEquals(alice, entry.sender)
+        assertEquals(messageId(1), entry.id)
+        assertContentEquals(bytes(1), entry.digest, "the first entry is kept")
+        assertEquals(at(1), entry.committedAt)
+    }
+
+    @Test
+    fun processedDigestsAreNotAliased() = runTest {
+        val storage = newStorage()
+        val digest = bytes(1)
+        storage.processedInbound.markProcessed(alice, messageId(1), digest, at(1))
+        digest.fill(0)
+        storage.processedInbound.get(alice, messageId(1))!!.digest!!.fill(0)
+        assertContentEquals(bytes(1), storage.processedInbound.get(alice, messageId(1))?.digest)
+    }
+
+    @Test
+    fun pruningRemovesEntriesCommittedAtOrBeforeTheCutoffOnly() = runTest {
+        val storage = newStorage()
+        storage.processedInbound.markProcessed(alice, messageId(1), bytes(1), at(10))
+        storage.processedInbound.markProcessed(bob, messageId(2), bytes(2), at(20))
+        storage.processedInbound.markProcessed(alice, messageId(3), bytes(3), at(30))
+        storage.pendingInbound.store(alice, messageId(4), bytes(4), at(0))
+
+        assertEquals(0, storage.processedInbound.pruneCommittedAtOrBefore(at(10) - 1.milliseconds))
+        assertEquals(2, storage.processedInbound.pruneCommittedAtOrBefore(at(20)), "the cutoff itself is included")
+        assertFalse(storage.processedInbound.isProcessed(alice, messageId(1)))
+        assertFalse(storage.processedInbound.isProcessed(bob, messageId(2)))
+        assertTrue(storage.processedInbound.isProcessed(alice, messageId(3)))
+        assertEquals(0, storage.processedInbound.pruneCommittedAtOrBefore(at(20)))
+        assertEquals(1, storage.processedInbound.pruneCommittedAtOrBefore(at(1_000)))
+        assertTrue(storage.pendingInbound.contains(alice, messageId(4)), "pending messages are never pruned")
+    }
+
+    @Test
+    fun stampingLegacyCommitTimesNeverChangesAStampedTime() = runTest {
+        val storage = newStorage()
+        storage.processedInbound.markProcessed(alice, messageId(1), bytes(1), at(10))
+        // New entries always have a time; adapters with legacy rows test them separately.
+        assertEquals(0, storage.processedInbound.stampLegacyCommitTimes(at(99)))
+        assertEquals(at(10), storage.processedInbound.get(alice, messageId(1))?.committedAt)
+    }
+
+    @Test
+    fun pendingInboundMessagesAreListedInAcceptanceOrder() = runTest {
+        val storage = newStorage()
+        val first = storage.pendingInbound.store(bob, messageId(3), bytes(3), at(3))
+        val other = storage.pendingInbound.store(alice, messageId(1), bytes(1), at(1))
+        val second = storage.pendingInbound.store(bob, messageId(1), bytes(5), at(5))
+
+        assertTrue(first < other && other < second)
+        assertEquals(listOf(bob to messageId(3), alice to messageId(1), bob to messageId(1)), storage.pendingInbound.list().map { it.sender to it.id })
+        assertEquals(listOf(messageId(3), messageId(1)), storage.pendingInbound.list(bob).map { it.id })
+        assertEquals(listOf(first, second), storage.pendingInbound.list(bob).map { it.sequence })
+        val loaded = assertNotNull(storage.pendingInbound.get(bob, messageId(1)))
+        assertEquals(bob, loaded.sender)
+        assertEquals(second, loaded.sequence)
+        assertEquals(at(5), loaded.receivedAt)
+        assertContentEquals(bytes(5), loaded.frame)
+        assertTrue(storage.pendingInbound.contains(bob, messageId(1)))
+        assertFalse(storage.pendingInbound.contains(DeviceAddress(UserId("bob"), DeviceId("phone")), messageId(1)))
+    }
+
+    @Test
+    fun pendingInboundMessageIsStoredOncePerSender() = runTest {
+        val storage = newStorage()
+        storage.pendingInbound.store(bob, messageId(1), bytes(1), at(1))
+        assertFailsWith<IllegalArgumentException> { storage.pendingInbound.store(bob, messageId(1), bytes(2), at(2)) }
+        val kept = assertNotNull(storage.pendingInbound.get(bob, messageId(1)))
+        assertContentEquals(bytes(1), kept.frame)
+        assertEquals(at(1), kept.receivedAt)
+        assertEquals(1, storage.pendingInbound.list().size)
+        // Another sender with the same ID is another message.
+        storage.pendingInbound.store(alice, messageId(1), bytes(2), at(2))
+        assertEquals(2, storage.pendingInbound.list().size)
+    }
+
+    @Test
+    fun removingAPendingInboundMessageIsIdempotentAndSequencesAreNotReused() = runTest {
+        val storage = newStorage()
+        val first = storage.pendingInbound.store(bob, messageId(1), bytes(1), at(1))
+        val second = storage.pendingInbound.store(bob, messageId(2), bytes(2), at(2))
+        assertTrue(storage.pendingInbound.remove(bob, messageId(2)))
+        assertFalse(storage.pendingInbound.remove(bob, messageId(2)))
+        assertFalse(storage.pendingInbound.remove(alice, messageId(1)))
+        val third = storage.pendingInbound.store(bob, messageId(3), bytes(3), at(3))
+        assertTrue(third > second)
+        assertEquals(listOf(first, third), storage.pendingInbound.list().map { it.sequence })
+        // Pending inbound and outbound sequences are independent stores.
+        storage.pendingOutbound.store(bob, messageId(1), bytes(1))
+        assertTrue(storage.pendingInbound.store(bob, messageId(4), bytes(4), at(4)) > third)
+    }
+
+    @Test
+    fun pendingInboundFramesAreNotAliased() = runTest {
+        val storage = newStorage()
+        val frame = bytes(1)
+        storage.pendingInbound.store(bob, messageId(1), frame, at(1))
+        frame.fill(0)
+        storage.pendingInbound.get(bob, messageId(1))!!.frame.fill(0)
+        storage.pendingInbound.list().single().frame.fill(0)
+        storage.pendingInbound.list(bob).single().frame.fill(0)
+        assertContentEquals(bytes(1), storage.pendingInbound.get(bob, messageId(1))?.frame)
     }
 
     @Test
     fun rolledBackTransactionLeavesNoReliabilityState() = runTest {
         val storage = newStorage()
         storage.pendingOutbound.store(bob, messageId(1), bytes(1))
-        storage.processedInbound.markProcessed(bob, messageId(1))
+        storage.processedInbound.markProcessed(bob, messageId(1), bytes(1), at(1))
+        val pending = storage.pendingInbound.store(bob, messageId(3), bytes(3), at(3))
 
         assertFailsWith<Failure> {
             storage.transaction {
                 pendingOutbound.store(bob, messageId(2), bytes(2))
                 assertTrue(pendingOutbound.remove(bob, messageId(1)))
-                processedInbound.markProcessed(bob, messageId(2))
+                processedInbound.markProcessed(bob, messageId(2), bytes(2), at(2))
                 assertTrue(processedInbound.isProcessed(bob, messageId(2)))
+                // A commit: pending inbound to processed.
+                assertTrue(pendingInbound.remove(bob, messageId(3)))
+                processedInbound.markProcessed(bob, messageId(3), bytes(3), at(4))
+                pendingInbound.store(bob, messageId(5), bytes(5), at(5))
+                assertEquals(1, processedInbound.pruneCommittedAtOrBefore(at(1)))
                 throw Failure()
             }
         }
@@ -929,6 +1041,9 @@ abstract class ClientStorageContractTest {
         assertEquals(listOf(messageId(1)), storage.pendingOutbound.list(bob).map { it.id })
         assertTrue(storage.processedInbound.isProcessed(bob, messageId(1)))
         assertFalse(storage.processedInbound.isProcessed(bob, messageId(2)))
+        assertFalse(storage.processedInbound.isProcessed(bob, messageId(3)))
+        assertEquals(listOf(pending), storage.pendingInbound.list().map { it.sequence })
+        assertContentEquals(bytes(3), storage.pendingInbound.get(bob, messageId(3))?.frame)
     }
 
     @Test

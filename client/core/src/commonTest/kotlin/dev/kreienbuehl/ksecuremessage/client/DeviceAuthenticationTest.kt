@@ -111,9 +111,9 @@ class DeviceAuthenticationTest {
         assertEquals(3, network.server.preKeys.oneTimePreKeyCount(BOB))
 
         val sent = alice.send(BOB, "Hello Bob".encodeToByteArray()) // fetches Bob's bundle publicly
-        val message = assertIs<ReceiveResult.Message>(bob.decrypt(bob.receive().single()))
+        val message = bob.decrypt(bob.receive().single()).delivery()
         assertEquals("Hello Bob", message.plaintext.decodeToString())
-        assertTrue(message.ackSent)
+        assertTrue(bob.commitReceivedMessage(message).ackSent)
         assertEquals(listOf(sent.id), alice.pendingMessages(BOB).map { it.id })
 
         val ack = assertIs<ReceiveResult.Acknowledgement>(alice.decrypt(alice.receive().single()))

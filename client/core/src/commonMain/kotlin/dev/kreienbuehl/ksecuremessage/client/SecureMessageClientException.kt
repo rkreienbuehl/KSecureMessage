@@ -108,6 +108,24 @@ sealed class SecureMessageClientException(message: String, cause: Throwable? = n
         SecureMessageClientException("Message $messageId was stored as pending but not handed to the transport", cause)
 
     /**
+     * [sender] sent logical message [messageId] again with another body than
+     * the one this device accepted first (docs/application-delivery.md). A
+     * correct sender never does this. The envelope was rejected: nothing was
+     * stored, the pending or committed message is unchanged, and nothing was
+     * acknowledged.
+     */
+    class LogicalMessageConflict(val sender: DeviceAddress, val messageId: LogicalMessageId) :
+        SecureMessageClientException("Message $messageId from $sender was received again with another body")
+
+    /**
+     * [SecureMessageClient.commitReceivedMessage] for a message that is
+     * neither awaiting its commit nor committed (docs/application-delivery.md).
+     * Nothing was changed.
+     */
+    class ReceivedMessageNotPending(val sender: DeviceAddress, val messageId: LogicalMessageId) :
+        SecureMessageClientException("Message $messageId from $sender is not pending")
+
+    /**
      * A device recovery request or authorization is not acceptable for this
      * device (docs/device-recovery.md): wrong device or user, self
      * authorization, outside the validity window, invalid proof of

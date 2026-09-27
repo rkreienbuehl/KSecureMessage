@@ -150,6 +150,42 @@ class ClientRecordCipherTest {
     }
 
     @Test
+    fun pendingInboundFrameIsItsOwnRecordType() = runTest {
+        // Same fields and plaintext as a pending outbound frame; only the record type differs.
+        val inbound = cipher.sealPendingInboundFrame(BOB, m1, bytes(8, 40))
+        val outbound = cipher.sealPendingFrame(BOB, m1, bytes(8, 40))
+        assertEquals(outbound.size, inbound.size)
+        assertContentEquals(bytes(8, 40), cipher.openPendingInboundFrame(BOB, m1, inbound))
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openPendingFrame(BOB, m1, inbound) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openPendingInboundFrame(BOB, m1, outbound) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openPendingInboundFrame(CAROL, m1, inbound) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openPendingInboundFrame(BOB, m2, inbound) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openPendingInboundFrame(BOB, m1, inbound.flipped(inbound.size - 1)) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { ClientRecordCipher(testKey(1, 100)).openPendingInboundFrame(BOB, m1, inbound) }
+        val secret = "super-secret-received-message".encodeToByteArray()
+        assertFalse(cipher.sealPendingInboundFrame(BOB, m1, secret).toHex().contains(secret.toHex()))
+    }
+
+    @Test
+    fun processedDigestIsItsOwnRecordType() = runTest {
+        val digest = bytes(40, 32)
+        val sealed = cipher.sealProcessedDigest(BOB, m1, digest)
+        assertContentEquals(digest, cipher.openProcessedDigest(BOB, m1, sealed))
+        assertFalse(sealed.toHex().contains(digest.toHex()))
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openProcessedDigest(CAROL, m1, sealed) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openProcessedDigest(BOB, m2, sealed) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openPendingInboundFrame(BOB, m1, sealed) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openPendingFrame(BOB, m1, sealed) }
+        // A pending frame of digest size is not a digest record.
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> {
+            cipher.openProcessedDigest(BOB, m1, cipher.sealPendingInboundFrame(BOB, m1, bytes(1, 33)))
+        }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { cipher.openProcessedDigest(BOB, m1, sealed.flipped(sealed.size - 1)) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { ClientRecordCipher(testKey(1, 100)).openProcessedDigest(BOB, m1, sealed) }
+        assertFailsWith<IllegalArgumentException> { cipher.sealProcessedDigest(BOB, m1, bytes(1, 31)) }
+    }
+
+    @Test
     fun sealedRecordsDoNotContainPlaintext() = runTest {
         val secret = "super-secret-pending-message".encodeToByteArray()
         val sealed = cipher.sealPendingFrame(BOB, m1, secret)
@@ -216,6 +252,8 @@ class ClientRecordCipherTest {
             cipher.sealSession(SecureSession(BOB, bytes(1))) to { r -> cipher.openSession(BOB, r) },
             cipher.sealPendingFrame(BOB, m1, bytes(1)) to { r -> cipher.openPendingFrame(BOB, m1, r) },
             cipher.sealDeviceAuthenticationKey(DeviceAuthenticationKeyPair(bytes(1), bytes(2))) to { r -> cipher.openDeviceAuthenticationKey(r) },
+            cipher.sealPendingInboundFrame(BOB, m1, bytes(1)) to { r -> cipher.openPendingInboundFrame(BOB, m1, r) },
+            cipher.sealProcessedDigest(BOB, m1, bytes(1, 32)) to { r -> cipher.openProcessedDigest(BOB, m1, r) },
         )
         for ((record, open) in records) {
             for (index in listOf(10, 21, 22, record.size - 17, record.size - 1)) {
