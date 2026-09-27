@@ -386,7 +386,7 @@ class SqlDelightMigrationTest {
 
         val storage = reopen()
         assertEquals(StorageKeyRotationStatus(StorageKeyRotationPhase.STABLE, StorageKeyId(1), null, null, 0), storage.storageKeyRotationStatus())
-        assertEquals(listOf(13L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(14L), driver.longs("PRAGMA user_version"))
         // Every row is unchanged; storage_encryption only gained the rotation columns, the
         // device authentication tables of schema version 8 mark the identity as awaiting its key,
         // and the recovery table of schema version 9, the rotation table of version 11 and the

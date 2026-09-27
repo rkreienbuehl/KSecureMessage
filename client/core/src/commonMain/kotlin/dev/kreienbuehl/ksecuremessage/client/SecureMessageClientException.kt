@@ -111,16 +111,17 @@ sealed class SecureMessageClientException(message: String, cause: Throwable? = n
      * [sender] sent logical message [messageId] again with another body than
      * the one this device accepted first (docs/application-delivery.md). A
      * correct sender never does this. The envelope was rejected: nothing was
-     * stored, the pending or committed message is unchanged, and nothing was
-     * acknowledged.
+     * stored, the pending, committed or discarded message is unchanged, and
+     * nothing was acknowledged.
      */
     class LogicalMessageConflict(val sender: DeviceAddress, val messageId: LogicalMessageId) :
         SecureMessageClientException("Message $messageId from $sender was received again with another body")
 
     /**
-     * [SecureMessageClient.commitReceivedMessage] for a message that is
-     * neither awaiting its commit nor committed (docs/application-delivery.md).
-     * Nothing was changed.
+     * [SecureMessageClient.commitReceivedMessage] or
+     * [SecureMessageClient.discardReceivedMessage] for a message that is
+     * neither pending nor finalized (docs/application-delivery.md,
+     * docs/message-discard.md). Nothing was changed or recorded.
      */
     class ReceivedMessageNotPending(val sender: DeviceAddress, val messageId: LogicalMessageId) :
         SecureMessageClientException("Message $messageId from $sender is not pending")

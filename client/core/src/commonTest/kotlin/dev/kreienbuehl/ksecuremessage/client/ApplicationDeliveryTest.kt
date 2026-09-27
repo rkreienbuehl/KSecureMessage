@@ -31,7 +31,7 @@ class ApplicationDeliveryTest {
 
     private suspend fun device(address: DeviceAddress) = ReliableDevice(address, network, clock = clock).start()
 
-    private suspend fun ReliableDevice.pendingReceived() = client.pendingReceivedMessages()
+    private suspend fun ReliableDevice.pendingReceived() = client.allPendingReceivedMessages()
 
     // Delivery and commit
 
@@ -60,7 +60,7 @@ class ApplicationDeliveryTest {
         assertTrue(commit.ackSent)
         assertEquals(emptyList(), bob.pendingReceived())
         val processed = assertNotNull(bob.storage.processedInbound.get(ALICE, sent.id))
-        assertEquals(clock.now, processed.committedAt)
+        assertEquals(clock.now, processed.finalizedAt)
         assertContentEquals(ApplicationMessageDigest.of("hello".encodeToByteArray()), processed.digest)
 
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice.receiveOne()).cleared)
@@ -118,7 +118,7 @@ class ApplicationDeliveryTest {
         val again = bob.client.commitReceivedMessage(ALICE, sent.id)
         assertEquals(CommitStatus.ALREADY_COMMITTED, again.status)
         assertTrue(again.ackSent)
-        assertEquals(clock.now - 1.days, bob.storage.processedInbound.get(ALICE, sent.id)?.committedAt, "not written again")
+        assertEquals(clock.now - 1.days, bob.storage.processedInbound.get(ALICE, sent.id)?.finalizedAt, "not written again")
 
         val acks = alice.inbox().map { assertIs<ReceiveResult.Acknowledgement>(alice.receive(it)) }
         assertEquals(listOf(true, false), acks.map { it.cleared })
@@ -169,8 +169,8 @@ class ApplicationDeliveryTest {
         val all = bob.pendingReceived()
         assertEquals(listOf("a1", "c1", "a2"), all.map { it.plaintext.decodeToString() })
         assertEquals(all.map { it.sequence }.sorted(), all.map { it.sequence })
-        assertEquals(listOf("a1", "a2"), bob.client.pendingReceivedMessages(ALICE).map { it.plaintext.decodeToString() })
-        assertEquals(listOf("c1"), bob.client.pendingReceivedMessages(CAROL).map { it.plaintext.decodeToString() })
+        assertEquals(listOf("a1", "a2"), bob.client.allPendingReceivedMessages(ALICE).map { it.plaintext.decodeToString() })
+        assertEquals(listOf("c1"), bob.client.allPendingReceivedMessages(CAROL).map { it.plaintext.decodeToString() })
 
         all[0].plaintext.fill(0)
         assertEquals("a1", bob.pendingReceived()[0].plaintext.decodeToString(), "returned plaintext is a copy")
@@ -185,7 +185,7 @@ class ApplicationDeliveryTest {
     @Test
     fun enumerationNeedsAnInitializedClient() = runTest {
         val client = ReliableDevice(ALICE, network).client
-        assertFailsWith<SecureMessageClientException.NotInitialized> { client.pendingReceivedMessages() }
+        assertFailsWith<SecureMessageClientException.NotInitialized> { client.allPendingReceivedMessages() }
         assertFailsWith<SecureMessageClientException.NotInitialized> { client.commitReceivedMessage(BOB, LogicalMessageId.random()) }
         assertFailsWith<SecureMessageClientException.NotInitialized> {
             client.pruneProcessedMessages(ProcessedInboundRetentionPolicy(1.days))
@@ -365,6 +365,7 @@ class ApplicationDeliveryTest {
         when (val result = received.await()) {
             is ReceiveResult.Delivery -> assertEquals("retry race", result.message.plaintext.decodeToString())
             is ReceiveResult.AlreadyCommitted -> assertEquals(sent.id, result.id)
+            is ReceiveResult.AlreadyDiscarded -> error("never discarded")
             is ReceiveResult.Acknowledgement -> error("not an acknowledgement")
         }
         assertEquals(emptyList(), bob.pendingReceived())

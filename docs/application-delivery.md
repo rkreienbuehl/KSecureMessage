@@ -15,6 +15,13 @@ The guarantee is:
   ID; committed IDs acknowledged, not delivered again),
 - **an ACK means that the receiving application committed the message.**
 
+Milestone 21 adds a second terminal outcome, explicit discard, and cursor
+pagination of pending messages; see [message-discard.md](message-discard.md).
+Since then an ACK means that the receiving application durably **finalized**
+the message (committed or discarded). The sections below describe the commit
+path; everything said about a committed tombstone holds for a discarded one
+unless message-discard.md says otherwise.
+
 It is **not** exactly-once processing. The application still owns its own
 durable transaction, and there is a gap between that transaction and the
 library commit (see [Crash windows](#crash-windows)).
@@ -58,10 +65,10 @@ sealed interface ReceiveResult {
 class ReceivedMessage(sender, id, sequence: Long, receivedAt: Instant, plaintext: ByteArray)
 
 suspend fun decrypt(envelope): ReceiveResult
-suspend fun pendingReceivedMessages(sender: DeviceAddress? = null): List<ReceivedMessage>
+suspend fun pendingReceivedMessages(afterSequence: Long? = null, limit: Int, sender: DeviceAddress? = null): PendingReceivedPage  // M21
 suspend fun commitReceivedMessage(message: ReceivedMessage): CommitResult
 suspend fun commitReceivedMessage(sender: DeviceAddress, id: LogicalMessageId): CommitResult
-class CommitResult(sender, id, status: CommitStatus /* COMMITTED, ALREADY_COMMITTED */, ackSent: Boolean)
+class CommitResult(sender, id, status: CommitStatus /* COMMITTED, ALREADY_COMMITTED, ALREADY_DISCARDED (M21) */, ackSent: Boolean)
 suspend fun pruneProcessedMessages(policy: ProcessedInboundRetentionPolicy): Int
 class ProcessedInboundRetentionPolicy(maxAge: Duration)   // maxAge > 0, INFINITE = keep
 ```
@@ -79,6 +86,12 @@ entry was pruned) throws `ReceivedMessageNotPending` and changes nothing.
 Committing twice is idempotent: `ALREADY_COMMITTED`, and the ACK is sent
 again, which helps an application that is unsure whether its first commit
 call completed.
+
+Milestone 21 replaced the unbounded list with a page (at most
+`PendingReceivedPage.MAX_SIZE` = 100 messages, cursor = the last sequence
+seen; see [message-discard.md](message-discard.md#pagination)) and added
+`ReceiveResult.AlreadyDiscarded`, `discardReceivedMessage` and
+`pendingReceivedMessageCount`.
 
 `pendingReceivedMessages` lists in `sequence` order: the local order in which
 this device first accepted pending messages. It is persisted, strictly
@@ -127,8 +140,12 @@ Delivery received (decrypt or pendingReceivedMessages)
   → commitReceivedMessage(sender, id)
 ```
 
-On start, call `initialize()`, then `pendingReceivedMessages()` and process
-what is there: a message persisted before a crash stays there even if its
+A message the application can never apply is discarded instead of committed
+([message-discard.md](message-discard.md#recommended-application-flow)); a
+temporary failure leaves it pending.
+
+On start, call `initialize()`, then page through `pendingReceivedMessages`
+and process what is there: a message persisted before a crash stays there even if its
 sender never retries. The library cannot make the application's database and
 its own storage commit atomically; a future adapter or callback bridge could,
 milestone 20 does not.
@@ -153,7 +170,10 @@ commits it, which can take longer. There is still no automatic retry.
 
 After milestone 20, an ACK for M from B means: B decrypted M on a session
 authenticated by B's pinned identity, the frame was valid, and **B's
-application called `commitReceivedMessage` for M** (now or earlier). It is
+application called `commitReceivedMessage` for M** (now or earlier). Since
+milestone 21 the last part reads: B's application durably finalized M, by
+`commitReceivedMessage` or `discardReceivedMessage`, and B will not
+redeliver it; A cannot tell which ([message-discard.md](message-discard.md#ack-meaning)). It is
 not a read receipt. The ACK frame format (SecurePayload v1, type 0x02) is
 unchanged. Retries before the commit are never acknowledged, so the sender's
 pending entry survives until the application commit.
@@ -184,8 +204,9 @@ construction, never sent.
 - `PendingInboundStore`: (sender, logical ID) → sequence, `received_at`,
   the SecurePayload ApplicationMessage frame. Unique per (sender, ID); a
   second `store` throws. Never expires.
-- `ProcessedInboundStore`: (sender, logical ID) → `committedAt`, digest.
-  `markProcessed` never replaces an entry.
+- `ProcessedInboundStore`: (sender, logical ID) → finalization (M21),
+  `finalizedAt`, digest, discard reason (M21). `markCommitted` and
+  `markDiscarded` never replace an entry.
 - SQLDelight schema version 13 (`12.sqm`): `pending_inbound_message`
   (`sequence` AUTOINCREMENT, sender, `message_id`, `received_at`,
   `sealed_frame`, unique per sender and ID) and
@@ -242,8 +263,8 @@ retrying.
   idempotently keyed by (sender, logical ID).
 - The commit is an explicit application call; forgetting it keeps the sender
   retrying and the message pending.
-- Uncommitted pending inbound messages grow without bound; there is no expiry
-  or dead-letter handling.
+- Pending inbound messages grow without bound until the application commits
+  or discards them (milestone 21); there is no expiry.
 - Processed retention uses the wall clock; old logical IDs are accepted again
   after their retention expired.
 - No automatic pruning or retry scheduler; no server-side commit tracking; no

@@ -1,7 +1,9 @@
 package dev.kreienbuehl.ksecuremessage.storage
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.InboundFinalization
 import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
+import dev.kreienbuehl.ksecuremessage.model.MessageDiscardReason
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
@@ -17,7 +19,7 @@ import kotlin.time.Instant
 // Every store below except RemoteIdentityStore and SessionInitiationStore holds secret key material, ratchet
 // state or application message content (ProcessedInboundStore: a content digest). The interfaces exchange them
 // as plaintext; PendingOutboundStore holds the plaintext of sent messages until the recipient acknowledges them,
-// PendingInboundStore the plaintext of received messages until the application commits them.
+// PendingInboundStore the plaintext of received messages until the application commits or discards them.
 // A persistent adapter must encrypt them at rest (SqlDelightClientStorage seals them with storage:encryption,
 // see docs/storage-encryption.md) and must fail, never return null, when a stored record cannot be read.
 // InMemoryClientStorage persists nothing and does not encrypt. See docs/storage.md.
@@ -363,8 +365,8 @@ interface PendingOutboundStore {
 }
 
 /**
- * A received application message the application has not committed yet
- * (docs/application-delivery.md).
+ * A received application message the application has not finalized
+ * (committed or discarded) yet (docs/application-delivery.md).
  *
  * @property sequence local acceptance order, assigned by
  *   [PendingInboundStore.store]. Reliability metadata only; not a
@@ -383,13 +385,13 @@ class PendingInboundMessage(
 )
 
 /**
- * Received application messages kept until the application commits them, so
- * they can be delivered again, also after a restart. Keyed by (sender,
- * logical ID).
+ * Received application messages kept until the application commits or
+ * discards them, so they can be delivered again, also after a restart. Keyed
+ * by (sender, logical ID).
  *
  * **Holds application plaintext** (encrypted at rest by persistent adapters,
  * see docs/storage-encryption.md). Entries are removed only when the
- * application commits the message; nothing expires them.
+ * application finalizes the message; nothing expires them.
  */
 interface PendingInboundStore {
     /**
@@ -405,53 +407,77 @@ interface PendingInboundStore {
 
     suspend fun get(sender: DeviceAddress, id: LogicalMessageId): PendingInboundMessage?
 
-    /** Every pending message, in [PendingInboundMessage.sequence] order. */
-    suspend fun list(): List<PendingInboundMessage>
+    /**
+     * At most [limit] pending messages with a sequence number greater than
+     * [afterSequence], from [sender] only if given, in ascending
+     * [PendingInboundMessage.sequence] order (docs/message-discard.md). Opens
+     * only the records it returns. Throws [IllegalArgumentException] if
+     * [limit] is not positive or [afterSequence] is negative.
+     */
+    suspend fun page(afterSequence: Long, limit: Int, sender: DeviceAddress? = null): List<PendingInboundMessage>
 
-    /** The messages pending from [sender], in [PendingInboundMessage.sequence] order. */
-    suspend fun list(sender: DeviceAddress): List<PendingInboundMessage>
+    /** The number of pending messages, from [sender] only if given. Never opens a stored record. */
+    suspend fun count(sender: DeviceAddress? = null): Long
 
     /** Removes the entry; returns `false` if it was not pending. */
     suspend fun remove(sender: DeviceAddress, id: LogicalMessageId): Boolean
 }
 
 /**
- * A committed received message (docs/application-delivery.md).
+ * A finalized received message: its terminal tombstone
+ * (docs/application-delivery.md, docs/message-discard.md).
  *
- * @property digest `ApplicationMessageDigest` of the committed body; `null`
+ * @property finalization how the application finalized it. Entries recorded
+ *   before milestone 21 are [InboundFinalization.COMMITTED].
+ * @property digest `ApplicationMessageDigest` of the finalized body; `null`
  *   for entries recorded before milestone 20.
- * @property committedAt when the application committed it (local clock);
- *   `null` for entries recorded before milestone 20 until
+ * @property finalizedAt when the application committed or discarded it
+ *   (local clock); `null` for entries recorded before milestone 20 until
  *   [ProcessedInboundStore.stampLegacyCommitTimes] runs.
+ * @property discardReason set exactly for [InboundFinalization.DISCARDED].
  */
 class ProcessedInboundMessage(
     val sender: DeviceAddress,
     val id: LogicalMessageId,
+    val finalization: InboundFinalization,
     val digest: ByteArray?,
-    val committedAt: Instant?,
+    val finalizedAt: Instant?,
+    val discardReason: MessageDiscardReason?,
 )
 
 /**
- * Logical messages the application committed, for duplicate suppression
- * (docs/message-reliability.md, docs/application-delivery.md). Keyed by
- * (sender, logical ID): the same ID from another sender is a different
- * message. Entries are removed only by [pruneCommittedAtOrBefore].
+ * Terminal tombstones of the logical messages the application committed or
+ * discarded, for duplicate suppression (docs/message-reliability.md,
+ * docs/application-delivery.md, docs/message-discard.md). Keyed by (sender,
+ * logical ID): the same ID from another sender is a different message. An
+ * entry is never replaced, so its outcome never changes; entries are removed
+ * only by [pruneFinalizedAtOrBefore].
  *
  * The digest is sensitive (a fingerprint of the message content): persistent
- * adapters encrypt it at rest.
+ * adapters encrypt it at rest. Finalization, time and discard reason are
+ * plaintext metadata.
  */
 interface ProcessedInboundStore {
-    /** Whether [id] from [sender] is recorded. Never opens a stored record. */
+    /** Whether [id] from [sender] is recorded, with either outcome. Never opens a stored record. */
     suspend fun isProcessed(sender: DeviceAddress, id: LogicalMessageId): Boolean
 
     suspend fun get(sender: DeviceAddress, id: LogicalMessageId): ProcessedInboundMessage?
 
     /**
-     * Records [id] from [sender] with the body [digest] (32 bytes) and the
-     * commit time. Throws [IllegalArgumentException] if it is already
-     * recorded: an entry is never replaced.
+     * Records [id] from [sender] as [InboundFinalization.COMMITTED] with the
+     * body [digest] (32 bytes) and the commit time. Throws
+     * [IllegalArgumentException] if it is already recorded, with either
+     * outcome: an entry is never replaced.
      */
-    suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId, digest: ByteArray, committedAt: Instant)
+    suspend fun markCommitted(sender: DeviceAddress, id: LogicalMessageId, digest: ByteArray, committedAt: Instant)
+
+    /**
+     * Records [id] from [sender] as [InboundFinalization.DISCARDED] with the
+     * body [digest] (32 bytes), the discard time and [reason]. Throws
+     * [IllegalArgumentException] if it is already recorded, with either
+     * outcome: an entry is never replaced.
+     */
+    suspend fun markDiscarded(sender: DeviceAddress, id: LogicalMessageId, digest: ByteArray, discardedAt: Instant, reason: MessageDiscardReason)
 
     /**
      * Sets the commit time of every entry without one (recorded before
@@ -461,10 +487,11 @@ interface ProcessedInboundStore {
     suspend fun stampLegacyCommitTimes(at: Instant): Int
 
     /**
-     * Removes every entry committed at or before [cutoff] and returns their
-     * number. Entries without a commit time are kept.
+     * Removes every entry, committed or discarded, finalized at or before
+     * [cutoff] and returns their number. Entries without a finalization time
+     * are kept. Never touches pending messages.
      */
-    suspend fun pruneCommittedAtOrBefore(cutoff: Instant): Int
+    suspend fun pruneFinalizedAtOrBefore(cutoff: Instant): Int
 }
 
 /**
@@ -478,9 +505,10 @@ interface ProcessedInboundStore {
  * replaced session and the retired initiation are written together. A sent
  * message becomes pending together with the ratchet step that encrypted it; a
  * received message becomes pending inbound together with the ratchet step
- * that decrypted it. A commit removes the pending inbound message and marks
- * it processed together. An accepted identity change replaces the pin, removes the
- * session and retires its initiation together.
+ * that decrypted it. A commit or a discard removes the pending inbound
+ * message and records its terminal tombstone together. An accepted identity
+ * change replaces the pin, removes the session and retires its initiation
+ * together.
  *
  * Rules for the block:
  * - Use the receiver's stores, not those of the outer storage object.

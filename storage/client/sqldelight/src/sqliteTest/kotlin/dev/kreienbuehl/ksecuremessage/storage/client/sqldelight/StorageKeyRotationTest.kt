@@ -97,7 +97,7 @@ class StorageKeyRotationTest {
         storage.pendingOutbound.store(BOB, messageId(1), "pending-1".encodeToByteArray())
         storage.pendingOutbound.store(BOB, messageId(2), "pending-2".encodeToByteArray())
         storage.pendingOutbound.store(CAROL, messageId(1), "pending-3".encodeToByteArray())
-        storage.processedInbound.markProcessed(ALICE, messageId(3), ByteArray(32) { 0x33 }, Instant.fromEpochMilliseconds(3_000))
+        storage.processedInbound.markCommitted(ALICE, messageId(3), ByteArray(32) { 0x33 }, Instant.fromEpochMilliseconds(3_000))
         storage.pendingInbound.store(ALICE, messageId(4), "received-4".encodeToByteArray(), Instant.fromEpochMilliseconds(4_000))
         storage.pendingInbound.store(BOB, messageId(5), "received-5".encodeToByteArray(), Instant.fromEpochMilliseconds(5_000))
         storage.remoteIdentities.store(BOB, ByteArray(32) { 0x77 })
@@ -122,11 +122,11 @@ class StorageKeyRotationTest {
             for (pending in storage.pendingOutbound.list(remote)) append("pending=$remote/${pending.id}/${pending.sequence}/${pending.frame.toHex()};")
             append("pin=$remote/${storage.remoteIdentities.identityKey(remote)?.toHex()};")
         }
-        for (pending in storage.pendingInbound.list()) {
+        for (pending in storage.pendingInbound.page(0, 1_000)) {
             append("received=${pending.sender}/${pending.id}/${pending.sequence}/${pending.receivedAt}/${pending.frame.toHex()};")
         }
         val processed = storage.processedInbound.get(ALICE, messageId(3))
-        append("processed=${processed?.digest?.toHex()}/${processed?.committedAt}")
+        append("processed=${processed?.digest?.toHex()}/${processed?.finalizedAt}")
     }
 
     /** Key IDs of every sealed value, per column, from the raw record headers. */

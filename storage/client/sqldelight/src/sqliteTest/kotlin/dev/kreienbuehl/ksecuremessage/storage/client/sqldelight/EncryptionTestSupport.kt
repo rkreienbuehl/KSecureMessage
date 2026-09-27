@@ -5,6 +5,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
+import dev.kreienbuehl.ksecuremessage.client.PendingReceivedPage
 import dev.kreienbuehl.ksecuremessage.client.ReceiveResult
 import dev.kreienbuehl.ksecuremessage.client.ReceivedMessage
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageClient
@@ -183,4 +184,16 @@ suspend fun completeStorageKeyRotation(
             "phase=${last.phase}, currentKeyId=${last.currentKeyId.value}, nextKeyId=${last.nextKeyId?.value}, " +
             "retiringKeyId=${last.retiringKeyId?.value}, remainingRecords=${last.remainingRecords}",
     )
+}
+
+/** Every pending received message, page by page. */
+suspend fun SecureMessageClient.allPendingReceivedMessages(): List<ReceivedMessage> {
+    val all = mutableListOf<ReceivedMessage>()
+    var after: Long? = null
+    do {
+        val page = pendingReceivedMessages(after, PendingReceivedPage.MAX_SIZE)
+        all += page.messages
+        after = page.nextAfterSequence
+    } while (after != null)
+    return all
 }

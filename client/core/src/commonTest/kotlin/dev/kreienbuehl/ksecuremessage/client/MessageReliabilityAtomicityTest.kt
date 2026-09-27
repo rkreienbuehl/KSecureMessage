@@ -89,7 +89,7 @@ class MessageReliabilityAtomicityTest {
         assertTrue(bob.isPendingInbound(alice, sent.id), "still pending")
         assertFalse(bob.isProcessed(alice, sent.id))
         assertEquals(emptyList(), alice.inbox(), "nothing acknowledged")
-        assertEquals("hello", bob.client.pendingReceivedMessages().single().plaintext.decodeToString())
+        assertEquals("hello", bob.client.allPendingReceivedMessages().single().plaintext.decodeToString())
 
         bob.failing.failMarkProcessed = false
         assertEquals(CommitStatus.COMMITTED, bob.commit(delivery).status)

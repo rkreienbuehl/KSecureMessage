@@ -53,11 +53,25 @@ fun Map<String, List<String?>>.withUnverifiedPins(): Map<String, List<String?>> 
 }
 
 /**
- * Removes what schema version 13 (milestone 20, 12.sqm) added, for tests that
- * turn a new database into an older one: the pending inbound table and the
- * processed commit time and digest.
+ * Removes what schema version 14 (milestone 21, 13.sqm) added, for tests that
+ * turn a new database into an older one: the processed finalization and
+ * discard reason and the pending inbound sender index. `discard_reason`
+ * goes first: its CHECK constraint names `finalization`.
+ */
+fun SqlDriver.dropVersion14Additions() {
+    exec("DROP INDEX pending_inbound_message_sender")
+    exec("ALTER TABLE processed_inbound_message DROP COLUMN discard_reason")
+    exec("ALTER TABLE processed_inbound_message DROP COLUMN finalization")
+}
+
+/**
+ * Removes what schema versions 13 (milestone 20, 12.sqm) and 14 added, for
+ * tests that turn a new database into an older one: the pending inbound
+ * table and the processed commit time and digest (after
+ * [dropVersion14Additions]).
  */
 fun SqlDriver.dropVersion13Additions() {
+    dropVersion14Additions()
     exec("DROP TABLE pending_inbound_message")
     exec("DELETE FROM sqlite_sequence WHERE name = 'pending_inbound_message'")
     exec("DROP INDEX processed_inbound_message_committed_at")
@@ -67,11 +81,22 @@ fun SqlDriver.dropVersion13Additions() {
 
 /**
  * A [dump] of a database from before schema version 13 as migration leaves
- * it: every processed message ID gained a `NULL` commit time and digest.
+ * it: every processed message ID gained a `NULL` commit time and digest, and
+ * (schema version 14) finalization 0 (committed) without a discard reason.
  */
 fun Map<String, List<String?>>.withLegacyProcessedMessages(): Map<String, List<String?>> {
     val processed = get("processed_inbound_message") ?: return this
-    return this + ("processed_inbound_message" to processed.map { "$it|NULL|NULL" }) + ("pending_inbound_message" to emptyList())
+    return this + ("processed_inbound_message" to processed.map { "$it|NULL|NULL|0|NULL" }) + ("pending_inbound_message" to emptyList())
+}
+
+/**
+ * A [dump] of a schema version 13 database as migration leaves it: every
+ * processed message ID gained finalization 0 (committed) without a discard
+ * reason.
+ */
+fun Map<String, List<String?>>.withCommittedFinalization(): Map<String, List<String?>> {
+    val processed = get("processed_inbound_message") ?: return this
+    return this + ("processed_inbound_message" to processed.map { "$it|0|NULL" })
 }
 
 fun ByteArray.toHex(): String = joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }

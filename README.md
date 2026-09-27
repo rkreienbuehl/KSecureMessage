@@ -248,21 +248,29 @@ client.registerLastDeviceRecoveryKey(client.createLastDeviceRecoveryKey()) // af
 
 Milestone 20 done: application commit boundary and bounded inbound deduplication. A received message is no longer acknowledged when it is decrypted: `decrypt` stores it as pending (sealed at rest, record type 11) in the same transaction as its ratchet step and returns `ReceiveResult.Delivery`; retries before the commit return the same delivery again and are not acknowledged; `pendingReceivedMessages()` returns every uncommitted message after a restart, in local acceptance order. Once the application has applied a message durably, `commitReceivedMessage` moves it from pending to processed in one transaction (commit time plus a sealed SHA-256 body digest, record type 12, domain `KSecureMessage-ProcessedMessage-v1`) and only then sends the ACK; an ACK failure never undoes the commit, and a later retry is answered with `AlreadyCommitted` and a new ACK. So an ACK now means the receiving application committed the message. A reused logical ID with another body fails with `LogicalMessageConflict`. Processed IDs are pruned only by an explicit `pruneProcessedMessages(ProcessedInboundRetentionPolicy(maxAge))` (no default, wall clock, age ≥ maxAge pruned); pending messages never expire. Delivery is at least once, not exactly once: apply messages idempotently keyed by sender and logical ID. `ReceiveResult.Message`/`Duplicate` are replaced by `Delivery`/`AlreadyCommitted` (breaking). Client SQLDelight schema version 13 (`12.sqm`; processed IDs from before are kept and stamped once by `initialize()`); no server or wire change. See [docs/application-delivery.md](docs/application-delivery.md).
 
+Milestone 21 done: explicit discard and pending-inbound pagination. A pending received message now ends in one of two immutable terminal states, both chosen explicitly by the application: `commitReceivedMessage` (COMMITTED) or `discardReceivedMessage(message, reason)` (DISCARDED); nothing discards automatically, and a message may stay pending indefinitely. A discard removes the pending plaintext and writes a tombstone (sealed body digest, record type 12 as for commits, discard time and a closed `MessageDiscardReason` code) in one transaction, then sends the same ACK as a commit; an ACK failure never undoes it. A later copy is answered with `ReceiveResult.AlreadyDiscarded` and a new ACK, never redelivered; a copy with another body fails with `LogicalMessageConflict`. The outcome never flips: commit after discard is `ALREADY_DISCARDED`, discard after commit `ALREADY_COMMITTED`, and racing calls have one winner. An ACK now means the receiving application durably finalized the message; the sender cannot tell commit from discard and never learns the reason. `pendingReceivedMessages(afterSequence, limit, sender)` returns a `PendingReceivedPage` (cursor = sequence, ascending, `sequence > afterSequence`, at most 100, stable when messages are finalized between pages; the unbounded list is gone, breaking), plus `pendingReceivedMessageCount`. `pruneProcessedMessages` prunes committed and discarded tombstones alike. Client SQLDelight schema version 14 (`13.sqm`: existing processed rows become COMMITTED, nothing else changes); no server, wire or frame change. See [docs/message-discard.md](docs/message-discard.md).
+
 ```kotlin
 when (val result = client.decrypt(envelope)) {
-    is ReceiveResult.Delivery -> {
-        app.applyIdempotently(result.sender, result.id, result.message.plaintext) // the app's own transaction
-        client.commitReceivedMessage(result.message)                              // then the ACK is sent
+    is ReceiveResult.Delivery -> when (app.apply(result.sender, result.id, result.message.plaintext)) { // the app's own transaction
+        Applied -> client.commitReceivedMessage(result.message)                                         // then the ACK is sent
+        PermanentlyRejected -> client.discardReceivedMessage(result.message, MessageDiscardReason.UNSUPPORTED_CONTENT)
+        TemporaryFailure -> Unit                                                                        // stays pending
     }
-    is ReceiveResult.AlreadyCommitted, is ReceiveResult.Acknowledgement -> Unit
+    is ReceiveResult.AlreadyCommitted, is ReceiveResult.AlreadyDiscarded, is ReceiveResult.Acknowledgement -> Unit
 }
-client.pendingReceivedMessages().forEach { /* after a restart: apply, then commit */ }
+var after: Long? = null
+do { // after a restart: page through what is still pending
+    val page = client.pendingReceivedMessages(after, limit = 50)
+    page.messages.forEach { /* apply, then commit or discard */ }
+    after = page.nextAfterSequence
+} while (after != null)
 client.pruneProcessedMessages(ProcessedInboundRetentionPolicy(90.days))
 ```
 
 ## Next implementation steps
 
-1. Bounded handling of uncommitted received messages: paged enumeration and an explicit, application-driven discard (dead-letter) of pending inbound messages with a reason, so a poison message cannot grow storage forever.
+1. Bounded handling of the sender side: paged enumeration of pending outbound messages and an explicit, application-driven abandon of one pending outbound message (for a recipient that never acknowledges), so pending outbound plaintext cannot grow forever either.
 2. A deliberate, policy-controlled recovery key reset for a lost offline key (delay plus notification of every device), if applications need one; a PostgreSQL server adapter if multi-node deployment is needed.
 3. Sealed sender.
 

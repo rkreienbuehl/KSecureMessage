@@ -4,8 +4,10 @@ import dev.kreienbuehl.ksecuremessage.model.CiphertextMessage
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
+import dev.kreienbuehl.ksecuremessage.model.InboundFinalization
 import dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus
 import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
+import dev.kreienbuehl.ksecuremessage.model.MessageDiscardReason
 import dev.kreienbuehl.ksecuremessage.model.MessageId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyMessage
@@ -65,18 +67,20 @@ import kotlin.uuid.Uuid
  * plaintext from older peers is rejected.
  *
  * Received messages are delivered at least once, until the application
- * commits them (docs/application-delivery.md). [decrypt] stores a new
- * message as pending and returns it as [ReceiveResult.Delivery];
- * [pendingReceivedMessages] returns every uncommitted message again, also
- * after a restart. Once the application has applied a message durably, it
- * calls [commitReceivedMessage], which records the message as processed and
- * only then sends the encrypted acknowledgement. An acknowledgement therefore
- * means that the receiving application committed the message. This is not
- * exactly-once processing: an application that crashes between its own
- * commit and [commitReceivedMessage] sees the message again, so it should
- * apply messages idempotently, keyed by sender and logical ID. Committed IDs
- * are kept for duplicate suppression until [pruneProcessedMessages] removes
- * them.
+ * finalizes them (docs/application-delivery.md, docs/message-discard.md).
+ * [decrypt] stores a new message as pending and returns it as
+ * [ReceiveResult.Delivery]; [pendingReceivedMessages] pages through every
+ * pending message again, also after a restart. Once the application has
+ * applied a message durably, it calls [commitReceivedMessage]; for a message
+ * it can never apply, it calls [discardReceivedMessage]. Either records a
+ * terminal tombstone and only then sends the encrypted acknowledgement. An
+ * acknowledgement therefore means that the receiving application durably
+ * finalized the message and will not have it redelivered; the sender cannot
+ * tell a commit from a discard. This is not exactly-once processing: an
+ * application that crashes between its own commit and [commitReceivedMessage]
+ * sees the message again, so it should apply messages idempotently, keyed by
+ * sender and logical ID. Finalized IDs are kept for duplicate suppression
+ * until [pruneProcessedMessages] removes them.
  *
  * The client owns its local protocol state in [storage]: identity key,
  * signed prekeys, one-time prekeys and sessions. Call [initialize] once per
@@ -1305,14 +1309,16 @@ class SecureMessageClient(
      *   acknowledged, and not stored twice.
      * - A message whose logical ID was committed is returned as
      *   [ReceiveResult.AlreadyCommitted] without its plaintext and
-     *   acknowledged again.
+     *   acknowledged again; one that was discarded likewise as
+     *   [ReceiveResult.AlreadyDiscarded].
      * - An acknowledgement removes the matching pending message sent to this
      *   sender ([ReceiveResult.Acknowledgement]). It is never acknowledged.
      *
      * A logical ID that arrives again with another body fails with
      * [SecureMessageClientException.LogicalMessageConflict] and changes
-     * nothing. For IDs committed before milestone 20 no digest is stored, so
-     * such a mismatch is not detected; they count as committed.
+     * nothing and is not acknowledged, also after a discard. For IDs
+     * committed before milestone 20 no digest is stored, so such a mismatch
+     * is not detected; they count as committed.
      *
      * A failed acknowledgement does not fail this call: the result says
      * `ackSent = false` and the sender's next retry triggers a new one.
@@ -1344,23 +1350,53 @@ class SecureMessageClient(
         return when (processed) {
             is Processed.Delivered -> ReceiveResult.Delivery(processed.message)
             is Processed.AlreadyCommitted -> ReceiveResult.AlreadyCommitted(sender, processed.id, acknowledge(sender, processed.id))
+            is Processed.AlreadyDiscarded -> ReceiveResult.AlreadyDiscarded(sender, processed.id, acknowledge(sender, processed.id))
             is Processed.Acknowledged -> ReceiveResult.Acknowledgement(sender, processed.id, processed.cleared)
         }
     }
 
     /**
-     * The received messages the application has not committed yet, in the
-     * order this device accepted them ([ReceivedMessage.sequence]), from
-     * [sender] only if given. Contains their plaintext. Call it after a
-     * restart: a message stays here until [commitReceivedMessage], whether or
-     * not its sender sends it again.
+     * One page of the received messages the application has not finalized
+     * yet, with their plaintext (docs/message-discard.md): at most [limit]
+     * (1..[PendingReceivedPage.MAX_SIZE]) messages with a
+     * [ReceivedMessage.sequence] greater than [afterSequence] (from the
+     * start if `null`), from [sender] only if given, in ascending sequence
+     * order. Call it after a restart: a message stays pending until
+     * [commitReceivedMessage] or [discardReceivedMessage], whether or not its
+     * sender sends it again.
+     *
+     * The cursor is the sequence number, never an offset: messages finalized
+     * between pages do not shift later pages, and no message is returned
+     * twice by one enumeration. Each page is read in its own transaction; an
+     * enumeration is not a snapshot, so messages accepted meanwhile (higher
+     * sequence numbers) can appear on later pages. A sender filter uses the
+     * same global sequence as cursor.
+     *
+     * Throws [IllegalArgumentException] for a [limit] outside
+     * 1..[PendingReceivedPage.MAX_SIZE] or a negative [afterSequence].
      */
-    suspend fun pendingReceivedMessages(sender: DeviceAddress? = null): List<ReceivedMessage> {
+    suspend fun pendingReceivedMessages(
+        afterSequence: Long? = null,
+        limit: Int,
+        sender: DeviceAddress? = null,
+    ): PendingReceivedPage {
+        require(limit in 1..PendingReceivedPage.MAX_SIZE) { "limit must be in 1..${PendingReceivedPage.MAX_SIZE}" }
+        require(afterSequence == null || afterSequence >= 0) { "afterSequence must not be negative" }
         val pending = storage.transaction {
             requireIdentity()
-            if (sender == null) pendingInbound.list() else pendingInbound.list(sender)
+            // One more than asked: tells whether another page exists.
+            pendingInbound.page(afterSequence ?: 0, limit + 1, sender)
         }
-        return pending.map { it.toReceivedMessage() }
+        val more = pending.size > limit
+        val messages = pending.take(limit).map { it.toReceivedMessage() }
+        pending.drop(limit).forEach { it.frame.fill(0) }
+        return PendingReceivedPage(messages, if (more) messages.last().sequence else null)
+    }
+
+    /** The number of received messages not finalized yet, from [sender] only if given. Opens no record. */
+    suspend fun pendingReceivedMessageCount(sender: DeviceAddress? = null): Long = storage.transaction {
+        requireIdentity()
+        pendingInbound.count(sender)
     }
 
     /**
@@ -1374,7 +1410,7 @@ class SecureMessageClient(
      * [sender] and acknowledges it (docs/application-delivery.md).
      *
      * In one transaction the pending message is removed and its logical ID
-     * recorded as processed, with the commit time and a digest of its body
+     * recorded as committed, with the commit time and a digest of its body
      * ([CommitStatus.COMMITTED]). Only after that commit, outside it, the
      * encrypted acknowledgement is sent on the existing session. A failed
      * acknowledgement never undoes the commit: [CommitResult.ackSent] is
@@ -1382,8 +1418,9 @@ class SecureMessageClient(
      *
      * Idempotent: for a message committed before, nothing changes and the
      * acknowledgement is sent again ([CommitStatus.ALREADY_COMMITTED]). A
-     * message that is neither pending nor committed (never received, or its
-     * processed entry was pruned) throws
+     * discarded message stays discarded ([CommitStatus.ALREADY_DISCARDED],
+     * acknowledged again). A message that is neither pending nor finalized
+     * (never received, or its entry was pruned) throws
      * [SecureMessageClientException.ReceivedMessageNotPending].
      *
      * Call it only after the application's own transaction committed. If the
@@ -1391,38 +1428,97 @@ class SecureMessageClient(
      * it idempotently, keyed by ([sender], [id]).
      */
     suspend fun commitReceivedMessage(sender: DeviceAddress, id: LogicalMessageId): CommitResult {
-        val status = storage.transaction {
-            requireIdentity()
-            val pending = pendingInbound.get(sender, id)
-            when {
-                pending != null -> {
-                    val body = pending.body()
-                    val digest = try {
-                        ApplicationMessageDigest.of(body)
-                    } finally {
-                        body.fill(0)
-                    }
-                    pendingInbound.remove(sender, id)
-                    processedInbound.markProcessed(sender, id, digest, preKeyManager.now())
-                    CommitStatus.COMMITTED
-                }
-                processedInbound.isProcessed(sender, id) -> CommitStatus.ALREADY_COMMITTED
-                else -> throw SecureMessageClientException.ReceivedMessageNotPending(sender, id)
-            }
+        val status = when (finalizeReceived(sender, id, null)) {
+            Finalized.NOW -> CommitStatus.COMMITTED
+            Finalized.BEFORE_COMMITTED -> CommitStatus.ALREADY_COMMITTED
+            Finalized.BEFORE_DISCARDED -> CommitStatus.ALREADY_DISCARDED
         }
         return CommitResult(sender, id, status, acknowledge(sender, id))
     }
 
     /**
-     * Removes the processed entries of committed messages whose age (the
-     * [clock] now minus their commit time) is at least [ProcessedInboundRetentionPolicy.maxAge],
-     * and returns their number (docs/application-delivery.md). Pending
+     * Discards [message] for good and acknowledges it to its sender
+     * (docs/message-discard.md).
+     */
+    suspend fun discardReceivedMessage(message: ReceivedMessage, reason: MessageDiscardReason): DiscardResult =
+        discardReceivedMessage(message.sender, message.id, reason)
+
+    /**
+     * Discards message [id] from [sender] for good: the application will never
+     * apply it (docs/message-discard.md). Only for permanent decisions; leave
+     * a message that failed for a temporary reason pending.
+     *
+     * In one transaction the pending message, plaintext included, is removed
+     * and a discarded tombstone recorded with the discard time, a digest of
+     * its body and [reason] ([DiscardStatus.DISCARDED]). The plaintext is not
+     * kept anywhere; store it yourself first if you need it. Only after that
+     * commit, outside it, the encrypted acknowledgement is sent on the
+     * existing session, the same acknowledgement a commit sends: the sender
+     * learns only that the message was finalized, never that it was discarded
+     * or why. A failed acknowledgement never undoes the discard:
+     * [DiscardResult.ackSent] is `false`, and the sender's next retry is
+     * acknowledged. A later copy of the message is not delivered again
+     * ([ReceiveResult.AlreadyDiscarded]).
+     *
+     * Idempotent: a message discarded before stays as it is, with its first
+     * reason ([DiscardStatus.ALREADY_DISCARDED]); a committed message stays
+     * committed ([DiscardStatus.ALREADY_COMMITTED]); both are acknowledged
+     * again. A message that is neither pending nor finalized throws
+     * [SecureMessageClientException.ReceivedMessageNotPending] and records
+     * nothing.
+     */
+    suspend fun discardReceivedMessage(sender: DeviceAddress, id: LogicalMessageId, reason: MessageDiscardReason): DiscardResult {
+        val status = when (finalizeReceived(sender, id, reason)) {
+            Finalized.NOW -> DiscardStatus.DISCARDED
+            Finalized.BEFORE_COMMITTED -> DiscardStatus.ALREADY_COMMITTED
+            Finalized.BEFORE_DISCARDED -> DiscardStatus.ALREADY_DISCARDED
+        }
+        return DiscardResult(sender, id, status, acknowledge(sender, id))
+    }
+
+    /**
+     * In one transaction: commits (no [discardReason]) or discards a pending
+     * message, or reports the outcome recorded before. A terminal outcome is
+     * never changed. Sends nothing.
+     */
+    private suspend fun finalizeReceived(sender: DeviceAddress, id: LogicalMessageId, discardReason: MessageDiscardReason?): Finalized =
+        storage.transaction {
+            requireIdentity()
+            val pending = pendingInbound.get(sender, id)
+            if (pending != null) {
+                val body = pending.body()
+                val digest = try {
+                    ApplicationMessageDigest.of(body)
+                } finally {
+                    body.fill(0)
+                }
+                pendingInbound.remove(sender, id)
+                val now = preKeyManager.now()
+                if (discardReason == null) {
+                    processedInbound.markCommitted(sender, id, digest, now)
+                } else {
+                    processedInbound.markDiscarded(sender, id, digest, now, discardReason)
+                }
+                return@transaction Finalized.NOW
+            }
+            when (processedInbound.get(sender, id)?.finalization) {
+                InboundFinalization.COMMITTED -> Finalized.BEFORE_COMMITTED
+                InboundFinalization.DISCARDED -> Finalized.BEFORE_DISCARDED
+                null -> throw SecureMessageClientException.ReceivedMessageNotPending(sender, id)
+            }
+        }
+
+    /**
+     * Removes the tombstones of finalized (committed or discarded) messages
+     * whose age (the [clock] now minus their commit or discard time) is at
+     * least [ProcessedInboundRetentionPolicy.maxAge], and returns their number
+     * (docs/application-delivery.md, docs/message-discard.md). Pending
      * messages are never removed. Entries from before milestone 20 without a
      * commit time are kept until [initialize] stamps them.
      *
-     * Nothing calls this implicitly. After an entry is removed, a copy of
-     * that message the sender sends later is no longer recognized: it is
-     * delivered again as new (unless the ratchet rejects the old ciphertext,
+     * Nothing calls this implicitly. After an entry is removed, committed or
+     * discarded, a copy of that message the sender sends later is no longer
+     * recognized: it is delivered again as new (unless the ratchet rejects the old ciphertext,
      * which it does for a replayed envelope). The retention uses the wall
      * clock: a clock set back removes less, a clock set forward removes
      * earlier.
@@ -1436,7 +1532,7 @@ class SecureMessageClient(
         if (maxAgeMillis.milliseconds < policy.maxAge) maxAgeMillis++
         // Nothing can be older than the earliest representable time.
         if (now < Long.MIN_VALUE + maxAgeMillis) return@transaction 0
-        processedInbound.pruneCommittedAtOrBefore(Instant.fromEpochMilliseconds(now - maxAgeMillis))
+        processedInbound.pruneFinalizedAtOrBefore(Instant.fromEpochMilliseconds(now - maxAgeMillis))
     }
 
     /**
@@ -1469,7 +1565,10 @@ class SecureMessageClient(
                 if (digest != null && !constantTimeEquals(digest, ApplicationMessageDigest.of(body))) {
                     throw SecureMessageClientException.LogicalMessageConflict(sender, id)
                 }
-                return Processed.AlreadyCommitted(id)
+                return when (processed.finalization) {
+                    InboundFinalization.COMMITTED -> Processed.AlreadyCommitted(id)
+                    InboundFinalization.DISCARDED -> Processed.AlreadyDiscarded(id)
+                }
             }
             val pending = pendingInbound.get(sender, id)
             if (pending != null) {
@@ -1762,12 +1861,17 @@ class SecureMessageClient(
         data object CollisionLost : Received
     }
 
+    /** What [finalizeReceived] found: finalized by this call, or before with that outcome. */
+    private enum class Finalized { NOW, BEFORE_COMMITTED, BEFORE_DISCARDED }
+
     /** What a received reliability frame did. Acknowledgements are sent after the commit. */
     private sealed interface Processed {
         /** New or still pending: delivered to the application, not acknowledged. */
         class Delivered(val message: ReceivedMessage) : Processed
 
         class AlreadyCommitted(val id: LogicalMessageId) : Processed
+
+        class AlreadyDiscarded(val id: LogicalMessageId) : Processed
 
         class Acknowledged(val id: LogicalMessageId, val cleared: Boolean) : Processed
     }

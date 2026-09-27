@@ -105,7 +105,7 @@ class SqlDelightEncryptionTest {
         storage.pendingOutbound.store(BOB, messageId(1), SECRET_MESSAGE)
         storage.pendingOutbound.store(BOB, messageId(2), SECRET_MESSAGE)
         storage.pendingOutbound.store(CAROL, messageId(1), SECRET_MESSAGE)
-        storage.processedInbound.markProcessed(ALICE, messageId(3), DIGEST, Instant.fromEpochMilliseconds(3_000))
+        storage.processedInbound.markCommitted(ALICE, messageId(3), DIGEST, Instant.fromEpochMilliseconds(3_000))
         storage.pendingInbound.store(ALICE, messageId(4), RECEIVED_SECRET, Instant.fromEpochMilliseconds(4_000))
     }
 

@@ -8,7 +8,9 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
+import dev.kreienbuehl.ksecuremessage.model.InboundFinalization
 import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
+import dev.kreienbuehl.ksecuremessage.model.MessageDiscardReason
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
@@ -74,10 +76,11 @@ import kotlin.time.Instant
  * The local identity, the device authentication key, signed and one-time
  * prekeys (whole key pairs), session
  * state, pending message frames (sent and received) and the content digests
- * of committed received messages are stored as AES-256-GCM records bound
+ * of finalized (committed or discarded) received messages are stored as AES-256-GCM records bound
  * to their record type and row key. IDs, addresses, timestamps, sequence
- * numbers, high-water marks, remote identity pins, retired initiations and
- * processed message IDs stay plaintext metadata. There is no unencrypted mode. A record that does
+ * numbers, high-water marks, remote identity pins, retired initiations,
+ * processed message IDs, their finalization and discard reason stay
+ * plaintext metadata. There is no unencrypted mode. A record that does
  * not authenticate throws [StorageEncryptionException]; it is never treated
  * as missing.
  *
@@ -97,7 +100,9 @@ import kotlin.time.Instant
  * `device_authentication_last_device_recovery_key` table (milestone 18,
  * docs/last-device-recovery.md), version 13 the `pending_inbound_message`
  * table and the `processed_inbound_message` commit time and digest
- * (milestone 20, docs/application-delivery.md). A driver created with
+ * (milestone 20, docs/application-delivery.md), version 14 the
+ * `processed_inbound_message` finalization and discard reason and the
+ * sender pagination index (milestone 21, docs/message-discard.md). A driver created with
  * [Schema] upgrades an older database on open; an application that manages
  * versions itself calls `Schema.migrate(driver, oldVersion, Schema.version)`. An upgraded database still holds
  * its milestone 8 plaintext until [open] encrypts it. Session state written
@@ -211,8 +216,9 @@ class SqlDelightClientStorage private constructor(
             transaction { pendingInbound.store(sender, id, frame, receivedAt) }
         override suspend fun contains(sender: DeviceAddress, id: LogicalMessageId) = transaction { pendingInbound.contains(sender, id) }
         override suspend fun get(sender: DeviceAddress, id: LogicalMessageId) = transaction { pendingInbound.get(sender, id) }
-        override suspend fun list() = transaction { pendingInbound.list() }
-        override suspend fun list(sender: DeviceAddress) = transaction { pendingInbound.list(sender) }
+        override suspend fun page(afterSequence: Long, limit: Int, sender: DeviceAddress?) =
+            transaction { pendingInbound.page(afterSequence, limit, sender) }
+        override suspend fun count(sender: DeviceAddress?) = transaction { pendingInbound.count(sender) }
         override suspend fun remove(sender: DeviceAddress, id: LogicalMessageId) = transaction { pendingInbound.remove(sender, id) }
     }
 
@@ -220,10 +226,17 @@ class SqlDelightClientStorage private constructor(
         override suspend fun isProcessed(sender: DeviceAddress, id: LogicalMessageId) =
             transaction { processedInbound.isProcessed(sender, id) }
         override suspend fun get(sender: DeviceAddress, id: LogicalMessageId) = transaction { processedInbound.get(sender, id) }
-        override suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId, digest: ByteArray, committedAt: Instant) =
-            transaction { processedInbound.markProcessed(sender, id, digest, committedAt) }
+        override suspend fun markCommitted(sender: DeviceAddress, id: LogicalMessageId, digest: ByteArray, committedAt: Instant) =
+            transaction { processedInbound.markCommitted(sender, id, digest, committedAt) }
+        override suspend fun markDiscarded(
+            sender: DeviceAddress,
+            id: LogicalMessageId,
+            digest: ByteArray,
+            discardedAt: Instant,
+            reason: MessageDiscardReason,
+        ) = transaction { processedInbound.markDiscarded(sender, id, digest, discardedAt, reason) }
         override suspend fun stampLegacyCommitTimes(at: Instant) = transaction { processedInbound.stampLegacyCommitTimes(at) }
-        override suspend fun pruneCommittedAtOrBefore(cutoff: Instant) = transaction { processedInbound.pruneCommittedAtOrBefore(cutoff) }
+        override suspend fun pruneFinalizedAtOrBefore(cutoff: Instant) = transaction { processedInbound.pruneFinalizedAtOrBefore(cutoff) }
     }
 
     override suspend fun <T> transaction(block: suspend ClientStorage.() -> T): T {
@@ -503,15 +516,25 @@ private class DatabaseView(private val queries: ClientStateQueries, private val 
             return message(sender, id, row.sequence, row.received_at, row.sealed_frame)
         }
 
-        override suspend fun list(): List<PendingInboundMessage> =
-            queries.selectAllPendingInbound().awaitAsList().map { row ->
-                val sender = DeviceAddress(UserId(row.sender_user_id), DeviceId(row.sender_device_id))
-                message(sender, LogicalMessageId.fromByteArray(row.message_id), row.sequence, row.received_at, row.sealed_frame)
+        override suspend fun page(afterSequence: Long, limit: Int, sender: DeviceAddress?): List<PendingInboundMessage> {
+            require(limit > 0) { "limit must be positive" }
+            require(afterSequence >= 0) { "afterSequence must not be negative" }
+            if (sender == null) {
+                return queries.selectPendingInboundPage(afterSequence, limit.toLong()).awaitAsList().map { row ->
+                    val from = DeviceAddress(UserId(row.sender_user_id), DeviceId(row.sender_device_id))
+                    message(from, LogicalMessageId.fromByteArray(row.message_id), row.sequence, row.received_at, row.sealed_frame)
+                }
             }
+            return queries.selectPendingInboundPageFrom(sender.userId.value, sender.deviceId.value, afterSequence, limit.toLong())
+                .awaitAsList()
+                .map { row -> message(sender, LogicalMessageId.fromByteArray(row.message_id), row.sequence, row.received_at, row.sealed_frame) }
+        }
 
-        override suspend fun list(sender: DeviceAddress): List<PendingInboundMessage> =
-            queries.selectPendingInboundFrom(sender.userId.value, sender.deviceId.value).awaitAsList().map { row ->
-                message(sender, LogicalMessageId.fromByteArray(row.message_id), row.sequence, row.received_at, row.sealed_frame)
+        override suspend fun count(sender: DeviceAddress?): Long =
+            if (sender == null) {
+                queries.countAllPendingInbound().awaitAsOne()
+            } else {
+                queries.countPendingInboundFrom(sender.userId.value, sender.deviceId.value).awaitAsOne()
             }
 
         override suspend fun remove(sender: DeviceAddress, id: LogicalMessageId): Boolean {
@@ -538,24 +561,56 @@ private class DatabaseView(private val queries: ClientStateQueries, private val 
         override suspend fun get(sender: DeviceAddress, id: LogicalMessageId): ProcessedInboundMessage? {
             val row = queries.selectProcessedInbound(sender.userId.value, sender.deviceId.value, id.toByteArray())
                 .awaitAsOneOrNull() ?: return null
+            // Codes first: an unknown outcome fails before anything is opened.
+            val finalization = finalization(row.finalization)
+            val reason = row.discard_reason?.let(::discardReason)
+            check((finalization == InboundFinalization.DISCARDED) == (reason != null)) { "Inconsistent inbound finalization" }
             return ProcessedInboundMessage(
                 sender,
                 id,
+                finalization,
                 row.sealed_digest?.let { records.openProcessedDigest(sender, id, it) },
                 row.committed_at?.let(Instant::fromEpochMilliseconds),
+                reason,
             )
         }
 
-        override suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId, digest: ByteArray, committedAt: Instant) {
-            require(!isProcessed(sender, id)) { "Message is already processed" }
+        override suspend fun markCommitted(sender: DeviceAddress, id: LogicalMessageId, digest: ByteArray, committedAt: Instant) =
+            insert(sender, id, digest, committedAt, InboundFinalization.COMMITTED, null)
+
+        override suspend fun markDiscarded(
+            sender: DeviceAddress,
+            id: LogicalMessageId,
+            digest: ByteArray,
+            discardedAt: Instant,
+            reason: MessageDiscardReason,
+        ) = insert(sender, id, digest, discardedAt, InboundFinalization.DISCARDED, reason)
+
+        private suspend fun insert(
+            sender: DeviceAddress,
+            id: LogicalMessageId,
+            digest: ByteArray,
+            finalizedAt: Instant,
+            finalization: InboundFinalization,
+            reason: MessageDiscardReason?,
+        ) {
+            require(!isProcessed(sender, id)) { "Message is already finalized" }
             val sealed = records.sealProcessedDigest(sender, id, digest)
-            queries.insertProcessedInbound(sender.userId.value, sender.deviceId.value, id.toByteArray(), committedAt.toEpochMilliseconds(), sealed)
+            queries.insertProcessedInbound(
+                sender.userId.value,
+                sender.deviceId.value,
+                id.toByteArray(),
+                finalizedAt.toEpochMilliseconds(),
+                sealed,
+                finalizationCode(finalization),
+                reason?.let(::discardReasonCode),
+            )
         }
 
         override suspend fun stampLegacyCommitTimes(at: Instant): Int =
             queries.stampLegacyProcessedInbound(at.toEpochMilliseconds()).toInt()
 
-        override suspend fun pruneCommittedAtOrBefore(cutoff: Instant): Int =
+        override suspend fun pruneFinalizedAtOrBefore(cutoff: Instant): Int =
             queries.pruneProcessedInbound(cutoff.toEpochMilliseconds()).toInt()
     }
 
@@ -864,4 +919,38 @@ private fun verificationState(code: Long): VerificationState = when (code) {
     UNVERIFIED_CODE -> VerificationState.UNVERIFIED
     VERIFIED_CODE -> VerificationState.VERIFIED
     else -> throw IllegalStateException("Unknown remote identity verification state")
+}
+
+// Stored codes of processed_inbound_message.finalization and .discard_reason (schema version 14, 13.sqm).
+private const val COMMITTED_CODE = 0L
+private const val DISCARDED_CODE = 1L
+
+private fun finalizationCode(finalization: InboundFinalization): Long = when (finalization) {
+    InboundFinalization.COMMITTED -> COMMITTED_CODE
+    InboundFinalization.DISCARDED -> DISCARDED_CODE
+}
+
+/** Fails closed: an unknown outcome is never read as absent or as another outcome. */
+private fun finalization(code: Long): InboundFinalization = when (code) {
+    COMMITTED_CODE -> InboundFinalization.COMMITTED
+    DISCARDED_CODE -> InboundFinalization.DISCARDED
+    else -> throw IllegalStateException("Unknown inbound finalization")
+}
+
+private fun discardReasonCode(reason: MessageDiscardReason): Long = when (reason) {
+    MessageDiscardReason.UNSUPPORTED_CONTENT -> 1L
+    MessageDiscardReason.INVALID_APPLICATION_STATE -> 2L
+    MessageDiscardReason.USER_REJECTED -> 3L
+    MessageDiscardReason.POLICY_REJECTED -> 4L
+    MessageDiscardReason.OTHER -> 5L
+}
+
+/** Fails closed on an unknown code. */
+private fun discardReason(code: Long): MessageDiscardReason = when (code) {
+    1L -> MessageDiscardReason.UNSUPPORTED_CONTENT
+    2L -> MessageDiscardReason.INVALID_APPLICATION_STATE
+    3L -> MessageDiscardReason.USER_REJECTED
+    4L -> MessageDiscardReason.POLICY_REJECTED
+    5L -> MessageDiscardReason.OTHER
+    else -> throw IllegalStateException("Unknown message discard reason")
 }

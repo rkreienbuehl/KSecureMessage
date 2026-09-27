@@ -17,6 +17,9 @@ explicit, and no exactly-once guarantee for application side effects exists.
 > hold (frames, logical IDs, pending outbound, retry, collisions) and point to
 > [application-delivery.md](application-delivery.md) for the receive
 > lifecycle, the commit, the ACK meaning and processed-ID retention.
+> **Milestone 21** added explicit discard as the second terminal outcome and
+> paginated the pending list ([message-discard.md](message-discard.md)); an
+> ACK now means the application durably finalized the message.
 
 Code: `client/core/.../client/SecureMessageClient.kt` (`send`, `decrypt`,
 `retryPendingMessages`, `pendingMessages`), `ReliableMessages.kt`,
@@ -38,7 +41,7 @@ Code: `client/core/.../client/SecureMessageClient.kt` (`send`, `decrypt`,
 | Transport accepted the envelope (`send` returns, HTTP 202) | the relay queued one ciphertext | no |
 | Recipient decrypted the ciphertext | ratchet step succeeded | no |
 | Recipient accepted the logical message | frame valid, stored as pending inbound, returned as `ReceiveResult.Delivery` (again for every retry until committed) | no |
-| Recipient's application committed it (M20) | `commitReceivedMessage`: pending inbound → processed, then ACK sent | no |
+| Recipient's application committed it (M20) or discarded it (M21) | `commitReceivedMessage` / `discardReceivedMessage`: pending inbound → terminal tombstone, then ACK sent | no |
 | Sender processed the recipient's acknowledgement | encrypted ACK arrived on the session | **yes** |
 
 ## Logical message ID vs. envelope ID
@@ -139,12 +142,16 @@ unchanged, then, in the same transaction, decodes the frame:
   `ReceiveResult.AlreadyCommitted(sender, id, ackSent)` without the
   plaintext and ACK again; a body whose digest differs from the committed one
   fails with `LogicalMessageConflict`, without ACK.
+- **ApplicationMessage, ID already discarded (M21):** the same, as
+  `ReceiveResult.AlreadyDiscarded(sender, id, ackSent)`; the plaintext was
+  deleted at the discard and is not delivered again.
 - **Acknowledgement:** remove the pending message (recipient = this sender,
   id) and return `ReceiveResult.Acknowledgement(sender, id, cleared)`.
   `cleared = false` for an unknown or repeated ACK, which is harmless.
   ACKs are never acknowledged.
 
-For `AlreadyCommitted`, and after `commitReceivedMessage`, the client sends
+For `AlreadyCommitted`, `AlreadyDiscarded`, and after `commitReceivedMessage`
+or `discardReceivedMessage`, the client sends
 an encrypted ACK frame to the sender, after the storage commit, through the
 same send mutex and transport as any message, on the **existing** session
 only (it never fetches a bundle or starts a session) and never stored as
@@ -160,10 +167,15 @@ is exactly the message its sender must resend).
 
 ## What an ACK means
 
-Since milestone 20 an ACK for M from device B means: **B's application
-explicitly committed M** (`commitReceivedMessage`), after B decrypted M on a
-session authenticated by B's pinned identity with a valid frame. Before
-milestone 20 it meant only that B's client recorded M as processed. It still
+Since milestone 21 an ACK for M from device B means: **B's application
+durably finalized M and B will not redeliver it**, by an explicit commit
+(`commitReceivedMessage`, milestone 20) or an explicit discard
+(`discardReceivedMessage`, milestone 21), after B decrypted M on a session
+authenticated by B's pinned identity with a valid frame. The sender cannot
+tell a commit from a discard; the ACK frame is unchanged
+([message-discard.md](message-discard.md#ack-meaning)). In milestone 20 it
+meant the commit only; before milestone 20 only that B's client recorded M
+as processed. It still
 does not mean that a user read M. There are no read receipts or
 delivered/read UI states.
 

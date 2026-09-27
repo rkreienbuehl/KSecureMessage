@@ -16,6 +16,7 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
+import dev.kreienbuehl.ksecuremessage.model.MessageDiscardReason
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
@@ -765,9 +766,20 @@ internal class FailingClientStorage(private val delegate: ClientStorage) : Clien
         }
 
         override val processedInbound: ProcessedInboundStore = object : ProcessedInboundStore by tx.processedInbound {
-            override suspend fun markProcessed(sender: DeviceAddress, id: LogicalMessageId, digest: ByteArray, committedAt: Instant) {
+            override suspend fun markCommitted(sender: DeviceAddress, id: LogicalMessageId, digest: ByteArray, committedAt: Instant) {
                 if (failMarkProcessed) throw StorageFailure()
-                tx.processedInbound.markProcessed(sender, id, digest, committedAt)
+                tx.processedInbound.markCommitted(sender, id, digest, committedAt)
+            }
+
+            override suspend fun markDiscarded(
+                sender: DeviceAddress,
+                id: LogicalMessageId,
+                digest: ByteArray,
+                discardedAt: Instant,
+                reason: MessageDiscardReason,
+            ) {
+                if (failMarkProcessed) throw StorageFailure()
+                tx.processedInbound.markDiscarded(sender, id, digest, discardedAt, reason)
             }
         }
 

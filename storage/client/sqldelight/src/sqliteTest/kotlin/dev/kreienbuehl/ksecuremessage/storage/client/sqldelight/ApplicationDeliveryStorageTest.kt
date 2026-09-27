@@ -85,7 +85,7 @@ class ApplicationDeliveryStorageTest {
         // Crash before the application applied anything.
         val restarted = bob()
         restarted.initialize()
-        val pending = restarted.pendingReceivedMessages()
+        val pending = restarted.allPendingReceivedMessages()
         assertEquals(ids, pending.map { it.id })
         assertEquals(delivered.map { it.sequence }, pending.map { it.sequence }, "order survives the restart")
         assertEquals(delivered.map { it.receivedAt }, pending.map { it.receivedAt })
@@ -94,7 +94,7 @@ class ApplicationDeliveryStorageTest {
         clock.now += 1.days
         assertEquals(CommitStatus.COMMITTED, restarted.commitReceivedMessage(pending[0]).status)
         val afterCommit = bob()
-        assertEquals(listOf(ids[1]), afterCommit.pendingReceivedMessages().map { it.id })
+        assertEquals(listOf(ids[1]), afterCommit.allPendingReceivedMessages().map { it.id })
         assertEquals(listOf(1L), driver.longs("SELECT count(*) FROM processed_inbound_message"))
         assertEquals(listOf(clock.now.toEpochMilliseconds()), driver.longs("SELECT committed_at FROM processed_inbound_message"))
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice.decrypt(network.receive(ALICE).single())).cleared)
@@ -113,7 +113,7 @@ class ApplicationDeliveryStorageTest {
         assertEquals(listOf(sent.id), alice.retryPendingMessages(BOB))
         val again = assertIs<ReceiveResult.AlreadyCommitted>(bob().decrypt(network.receive(BOB).single()))
         assertTrue(again.ackSent)
-        assertEquals(emptyList(), bob().pendingReceivedMessages())
+        assertEquals(emptyList(), bob().allPendingReceivedMessages())
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice.decrypt(network.receive(ALICE).single())).cleared)
         assertEquals(emptyList(), alice.pendingMessages(BOB))
     }
@@ -142,7 +142,7 @@ class ApplicationDeliveryStorageTest {
         driver.exec("UPDATE pending_inbound_message SET sealed_frame = ?", driver.blob("SELECT sealed_frame FROM pending_inbound_message").flipped(30))
         val before = driver.dump()
 
-        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { bob().pendingReceivedMessages() }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { bob().allPendingReceivedMessages() }
         assertFailsWith<StorageEncryptionException.AuthenticationFailed> { bob().commitReceivedMessage(ALICE, sent.id) }
         // A retry of the message must compare against the damaged record: it fails instead of storing a new one.
         alice.retryPendingMessages(BOB)
@@ -160,7 +160,7 @@ class ApplicationDeliveryStorageTest {
         network.receive(BOB).forEach { bob().decrypt(it) }
         val records = driver.blobs("SELECT sealed_frame FROM pending_inbound_message ORDER BY sequence")
         driver.exec("UPDATE pending_inbound_message SET sealed_frame = ? WHERE sequence = (SELECT min(sequence) FROM pending_inbound_message)", records[1])
-        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { bob().pendingReceivedMessages() }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { bob().allPendingReceivedMessages() }
     }
 
     @Test
@@ -195,7 +195,7 @@ class ApplicationDeliveryStorageTest {
         assertEquals(listOf(2), driver.blobs("SELECT sealed_digest FROM processed_inbound_message").map { dev.kreienbuehl.ksecuremessage.storage.encryption.SealedRecords.keyId(it).value })
 
         val restarted = bob()
-        assertContentEquals(SECRET, restarted.pendingReceivedMessages().single().plaintext)
+        assertContentEquals(SECRET, restarted.allPendingReceivedMessages().single().plaintext)
         assertEquals(sequence, driver.longs("SELECT sequence FROM pending_inbound_message"))
         assertEquals(committedAt, driver.longs("SELECT committed_at FROM processed_inbound_message"), "metadata unchanged")
         assertContentEquals(ApplicationMessageDigest.of("committed".encodeToByteArray()), reopen().processedInbound.get(ALICE, committed)?.digest)
@@ -213,7 +213,7 @@ class ApplicationDeliveryStorageTest {
         clock.now += 30.days
         assertEquals(1, bob().pruneProcessedMessages(ProcessedInboundRetentionPolicy(30.days)))
         assertFalse(reopen().processedInbound.isProcessed(ALICE, old))
-        assertEquals(listOf("uncommitted"), bob().pendingReceivedMessages().map { it.text() })
+        assertEquals(listOf("uncommitted"), bob().allPendingReceivedMessages().map { it.text() })
     }
 
     /**
@@ -240,13 +240,13 @@ class ApplicationDeliveryStorageTest {
         val before = driver.dump()
 
         val migrated = reopen()
-        assertEquals(listOf(13L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(14L), driver.longs("PRAGMA user_version"))
         assertEquals(before.withLegacyProcessedMessages(), driver.dump(), "no existing row changes")
         val entry = assertNotNull(migrated.processedInbound.get(ALICE, legacy))
         assertNull(entry.digest)
-        assertNull(entry.committedAt)
+        assertNull(entry.finalizedAt)
         // Unstamped entries are never pruned.
-        assertEquals(0, migrated.processedInbound.pruneCommittedAtOrBefore(Instant.fromEpochMilliseconds(Long.MAX_VALUE)))
+        assertEquals(0, migrated.processedInbound.pruneFinalizedAtOrBefore(Instant.fromEpochMilliseconds(Long.MAX_VALUE)))
 
         val stampedAt = clock.now
         bob().initialize()
@@ -258,7 +258,7 @@ class ApplicationDeliveryStorageTest {
         assertEquals(listOf(legacy), alice.retryPendingMessages(BOB))
         val retried = assertIs<ReceiveResult.AlreadyCommitted>(bob().decrypt(network.receive(BOB).single()))
         assertTrue(retried.ackSent)
-        assertEquals(emptyList(), bob().pendingReceivedMessages())
+        assertEquals(emptyList(), bob().allPendingReceivedMessages())
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice.decrypt(network.receive(ALICE).single())).cleared)
         assertEquals(CommitStatus.ALREADY_COMMITTED, bob().commitReceivedMessage(ALICE, legacy).status)
     }

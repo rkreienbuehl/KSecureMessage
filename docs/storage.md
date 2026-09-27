@@ -17,10 +17,13 @@ message content: the plaintext of every sent message stays in
 `PendingOutboundStore` until the recipient acknowledges it
 ([message-reliability.md](message-reliability.md)), and since milestone 20
 the plaintext of every received message stays in `PendingInboundStore` until
-the application commits it ([application-delivery.md](application-delivery.md)).
-`ProcessedInboundStore` holds sender addresses, logical message IDs and
-commit times (metadata) and, since milestone 20, a digest of each committed
-body (a content fingerprint, so it is sealed too).
+the application commits it ([application-delivery.md](application-delivery.md))
+or, since milestone 21, discards it ([message-discard.md](message-discard.md));
+a discard deletes the plaintext. `ProcessedInboundStore` holds the terminal
+tombstones: sender addresses, logical message IDs, finalization times and,
+since milestone 21, the outcome (committed or discarded) and discard reason
+(metadata), and, since milestone 20, a digest of each finalized body (a
+content fingerprint, so it is sealed too).
 
 **Since milestone 9 `SqlDelightClientStorage` encrypts these records** with
 AES-256-GCM under a storage key from an application-supplied
@@ -268,8 +271,8 @@ Tables:
 - `remote_identity`: pinned remote identity public keys, keyed by remote user and device ID, with `verification` (0 unverified, 1 verified; schema version 10)
 - `retired_session_initiation`: retired 32-byte session initiation IDs, keyed by remote user, device ID and initiation ID, with the nullable local `signed_pre_key_id` used for pruning
 - `pending_outbound_message`: `sequence INTEGER PRIMARY KEY AUTOINCREMENT` (never reused), recipient user and device ID, 16-byte `message_id`, and the sealed frame (encrypted; the frame holds the application plaintext); unique per recipient and message ID
-- `processed_inbound_message`: sender user and device ID and 16-byte `message_id`; since schema version 13 `committed_at` (epoch milliseconds, nullable for legacy rows, indexed) and `sealed_digest` (record type 12, `NULL` for legacy rows)
-- `pending_inbound_message` (schema version 13, milestone 20): `sequence INTEGER PRIMARY KEY AUTOINCREMENT` (never reused), sender user and device ID, 16-byte `message_id`, `received_at` (epoch milliseconds) and the sealed frame (record type 11; holds the application plaintext); unique per sender and message ID
+- `processed_inbound_message`: the terminal tombstone per sender user and device ID and 16-byte `message_id`; since schema version 13 `committed_at` (the finalization time, commit or discard; epoch milliseconds, nullable for legacy rows, indexed) and `sealed_digest` (record type 12 for both outcomes, `NULL` for legacy rows); since schema version 14 `finalization` (0 committed, 1 discarded; CHECK, default 0) and `discard_reason` (1..5, set exactly for discarded rows, CHECK; plaintext metadata)
+- `pending_inbound_message` (schema version 13, milestone 20): `sequence INTEGER PRIMARY KEY AUTOINCREMENT` (never reused), sender user and device ID, 16-byte `message_id`, `received_at` (epoch milliseconds) and the sealed frame (record type 11; holds the application plaintext); unique per sender and message ID; since schema version 14 indexed by (sender, `sequence`) for sender-filtered pages
 
 Since schema version 6 the key pairs, session state and pending frames are
 in `sealed_*` columns holding encrypted storage records, and
@@ -281,7 +284,7 @@ does not depend on Kodium internals. All IDs have a
 Open the storage with `SqlDelightClientStorage.open(driver, keyProvider)`.
 There is no unencrypted mode.
 
-The schema version is 13. Version 1 (milestones 3 and 4) had no
+The schema version is 14. Version 1 (milestones 3 and 4) had no
 `remote_identity` table; `1.sqm` adds it and changes nothing else. Version 2
 (milestone 5) had no `retired_session_initiation` table; `2.sqm` adds it and
 changes nothing else. Version 3 (milestone 6) had no lifecycle columns;
@@ -325,7 +328,12 @@ Version 12 (milestones 18 and 19) had no application commit boundary;
 `committed_at`. Existing processed IDs are kept; the next `initialize()`
 stamps their commit time once with the client clock, their digest stays
 unknown ([application-delivery.md](application-delivery.md#migration)).
-Frozen copies of versions 1–12 (`Version1Schema` … `Version12Schema`) back the
+Version 13 (milestone 20) had no discard; `13.sqm` adds
+`processed_inbound_message.finalization` (default 0, so every existing row is
+committed) and `discard_reason` (`NULL`) and the pending sender index. No
+existing value changes, digests and times included
+([message-discard.md](message-discard.md#storage-and-migration)).
+Frozen copies of versions 1–13 (`Version1Schema` … `Version13Schema`) back the
 migration tests.
 A driver created with `SqlDelightClientStorage.Schema`,
 as in the table above, reads SQLite's `user_version` on open and runs the

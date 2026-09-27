@@ -309,7 +309,7 @@ class DeviceAuthenticationRotationStorageTest {
         val before = driver.dump()
 
         val migrated = reopen()
-        assertEquals(listOf(13L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(14L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
         assertEquals(before.withLegacyProcessedMessages(), after - "device_authentication_rotation_key" - "device_authentication_last_device_recovery_key", "no existing row changes")
         assertEquals(emptyList(), after.getValue("device_authentication_rotation_key"))

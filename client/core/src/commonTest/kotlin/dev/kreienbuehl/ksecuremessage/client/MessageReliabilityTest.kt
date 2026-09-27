@@ -99,7 +99,7 @@ class MessageReliabilityTest {
         assertEquals("before restart", bob.receiveOne().text())
         bob.restart()
         assertEquals(emptyList(), alice.inbox(), "not acknowledged before the commit")
-        bob.commit(ReceiveResult.Delivery(bob.client.pendingReceivedMessages().single()))
+        bob.commit(ReceiveResult.Delivery(bob.client.allPendingReceivedMessages().single()))
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice.receiveOne()).cleared)
         alice.restart()
         assertEquals(emptyList(), alice.pending(bob))
@@ -182,7 +182,7 @@ class MessageReliabilityTest {
 
         network.failingSenders -= BOB
         bob.restart()
-        assertEquals(emptyList(), bob.client.pendingReceivedMessages(), "a committed message is not delivered again")
+        assertEquals(emptyList(), bob.client.allPendingReceivedMessages(), "a committed message is not delivered again")
         alice.client.retryPendingMessages(BOB)
         val duplicate = assertIs<ReceiveResult.AlreadyCommitted>(bob.receiveOne())
         assertTrue(duplicate.ackSent)

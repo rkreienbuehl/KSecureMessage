@@ -157,24 +157,31 @@ CREATE TABLE pending_outbound_message (
     UNIQUE (recipient_user_id, recipient_device_id, message_id)
 );
 
--- Logical message IDs committed per sender, for duplicate suppression.
--- Added in schema version 5, see 4.sqm. committed_at (epoch milliseconds,
--- local clock) and sealed_digest (record type 12) were added in schema
--- version 13, see 12.sqm; both are NULL for rows from before it until
--- initialize() stamps committed_at, and sealed_digest stays NULL for them.
--- Rows are deleted only by explicit pruning of committed_at.
+-- Terminal tombstones of the logical messages finalized per sender, for
+-- duplicate suppression. Added in schema version 5, see 4.sqm. committed_at
+-- (epoch milliseconds, local clock; the finalization time, commit or
+-- discard) and sealed_digest (record type 12) were added in schema version
+-- 13, see 12.sqm; both are NULL for rows from before it until initialize()
+-- stamps committed_at, and sealed_digest stays NULL for them. finalization
+-- (0 = committed, 1 = discarded) and discard_reason (1..5, set exactly for
+-- discarded rows; plaintext metadata) were added in schema version 14, see
+-- 13.sqm. A row is never updated except for the legacy time stamp and
+-- re-sealing; rows are deleted only by explicit pruning of committed_at.
 CREATE TABLE processed_inbound_message (
     sender_user_id TEXT NOT NULL,
     sender_device_id TEXT NOT NULL,
     message_id BLOB NOT NULL CHECK (length(message_id) = 16),
     committed_at INTEGER,
     sealed_digest BLOB,
+    finalization INTEGER NOT NULL DEFAULT 0 CHECK (finalization IN (0, 1)),
+    discard_reason INTEGER
+        CHECK ((finalization = 0 AND discard_reason IS NULL) OR (finalization = 1 AND discard_reason IS NOT NULL AND discard_reason BETWEEN 1 AND 5)),
     PRIMARY KEY (sender_user_id, sender_device_id, message_id)
 );
 
 CREATE INDEX processed_inbound_message_committed_at ON processed_inbound_message (committed_at);
 
--- Received application messages awaiting the application's commit.
+-- Received application messages awaiting the application's commit or discard.
 -- sealed_frame is the encrypted reliability frame (record type 11; it
 -- contains application plaintext). AUTOINCREMENT keeps sequence numbers from
 -- being reused after deletes, so they give the local acceptance order. Added
@@ -188,6 +195,9 @@ CREATE TABLE pending_inbound_message (
     sealed_frame BLOB NOT NULL,
     UNIQUE (sender_user_id, sender_device_id, message_id)
 );
+
+-- Sender-filtered pagination by sequence. Added in schema version 14, see 13.sqm.
+CREATE INDEX pending_inbound_message_sender ON pending_inbound_message (sender_user_id, sender_device_id, sequence);
 
 selectStorageEncryption:
 SELECT format, key_id, key_check, highest_key_id, rotation_phase, next_key_id, retiring_key_id, retiring_key_check
@@ -479,18 +489,20 @@ DELETE FROM pending_outbound_message WHERE recipient_user_id = ? AND recipient_d
 countProcessedInbound:
 SELECT count(*) FROM processed_inbound_message WHERE sender_user_id = ? AND sender_device_id = ? AND message_id = ?;
 
--- Plain INSERT: the primary key rejects a second entry.
+-- Plain INSERT: the primary key rejects a second entry, so a terminal
+-- outcome is never replaced.
 insertProcessedInbound:
-INSERT INTO processed_inbound_message (sender_user_id, sender_device_id, message_id, committed_at, sealed_digest)
-VALUES (?, ?, ?, ?, ?);
+INSERT INTO processed_inbound_message (sender_user_id, sender_device_id, message_id, committed_at, sealed_digest, finalization, discard_reason)
+VALUES (?, ?, ?, ?, ?, ?, ?);
 
 selectProcessedInbound:
-SELECT committed_at, sealed_digest FROM processed_inbound_message
+SELECT committed_at, sealed_digest, finalization, discard_reason FROM processed_inbound_message
 WHERE sender_user_id = ? AND sender_device_id = ? AND message_id = ?;
 
 stampLegacyProcessedInbound:
 UPDATE processed_inbound_message SET committed_at = ? WHERE committed_at IS NULL;
 
+-- Committed and discarded rows alike.
 pruneProcessedInbound:
 DELETE FROM processed_inbound_message WHERE committed_at IS NOT NULL AND committed_at <= ?;
 
@@ -505,12 +517,21 @@ WHERE sender_user_id = ? AND sender_device_id = ? AND message_id = ?;
 countPendingInbound:
 SELECT count(*) FROM pending_inbound_message WHERE sender_user_id = ? AND sender_device_id = ? AND message_id = ?;
 
-selectAllPendingInbound:
-SELECT sequence, sender_user_id, sender_device_id, message_id, received_at, sealed_frame FROM pending_inbound_message ORDER BY sequence;
+-- Cursor pagination: strictly after the last sequence seen, never OFFSET.
+selectPendingInboundPage:
+SELECT sequence, sender_user_id, sender_device_id, message_id, received_at, sealed_frame FROM pending_inbound_message
+WHERE sequence > :afterSequence ORDER BY sequence LIMIT :limit;
 
-selectPendingInboundFrom:
+selectPendingInboundPageFrom:
 SELECT sequence, message_id, received_at, sealed_frame FROM pending_inbound_message
-WHERE sender_user_id = ? AND sender_device_id = ? ORDER BY sequence;
+WHERE sender_user_id = :senderUserId AND sender_device_id = :senderDeviceId AND sequence > :afterSequence
+ORDER BY sequence LIMIT :limit;
+
+countAllPendingInbound:
+SELECT count(*) FROM pending_inbound_message;
+
+countPendingInboundFrom:
+SELECT count(*) FROM pending_inbound_message WHERE sender_user_id = ? AND sender_device_id = ?;
 
 deletePendingInbound:
 DELETE FROM pending_inbound_message WHERE sender_user_id = ? AND sender_device_id = ? AND message_id = ?;

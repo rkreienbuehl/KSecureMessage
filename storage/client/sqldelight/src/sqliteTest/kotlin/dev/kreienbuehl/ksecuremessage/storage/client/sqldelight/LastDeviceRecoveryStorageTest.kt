@@ -335,7 +335,7 @@ class LastDeviceRecoveryStorageTest {
         val before = driver.dump()
 
         val migrated = reopen()
-        assertEquals(listOf(13L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(14L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
         assertEquals(before.withLegacyProcessedMessages(), after - TABLE, "no existing row changes")
         assertEquals(emptyList(), after.getValue(TABLE))

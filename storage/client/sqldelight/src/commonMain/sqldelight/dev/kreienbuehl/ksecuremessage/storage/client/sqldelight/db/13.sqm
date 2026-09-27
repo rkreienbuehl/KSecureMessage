@@ -1,0 +1,17 @@
+-- Schema version 13 to 14 (milestone 21): explicit discard and pending
+-- inbound pagination (docs/message-discard.md).
+--
+-- processed_inbound_message becomes the terminal tombstone of a finalized
+-- message. finalization: 0 = committed, 1 = discarded. discard_reason: the
+-- application's discard code (1..5), set exactly for discarded rows;
+-- plaintext metadata. Every existing row was committed: it becomes 0 with
+-- a NULL reason; committed_at and sealed_digest are not touched.
+--
+-- pending_inbound_message gains an index for sender-filtered pagination by
+-- sequence.
+ALTER TABLE processed_inbound_message ADD COLUMN finalization INTEGER NOT NULL DEFAULT 0 CHECK (finalization IN (0, 1));
+
+ALTER TABLE processed_inbound_message ADD COLUMN discard_reason INTEGER
+    CHECK ((finalization = 0 AND discard_reason IS NULL) OR (finalization = 1 AND discard_reason IS NOT NULL AND discard_reason BETWEEN 1 AND 5));
+
+CREATE INDEX pending_inbound_message_sender ON pending_inbound_message (sender_user_id, sender_device_id, sequence);

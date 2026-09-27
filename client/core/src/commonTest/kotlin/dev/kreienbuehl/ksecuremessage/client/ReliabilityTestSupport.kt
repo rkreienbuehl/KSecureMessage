@@ -210,3 +210,15 @@ internal suspend fun SecureMessageClient.accept(envelope: EncryptedEnvelope): By
 internal fun ReceiveResult.delivery(): ReceivedMessage = assertIs<ReceiveResult.Delivery>(this).message
 
 internal fun ReceiveResult.text(): String = delivery().plaintext.decodeToString()
+
+/** Every pending received message, page by page (test helper; applications should page themselves). */
+internal suspend fun SecureMessageClient.allPendingReceivedMessages(sender: DeviceAddress? = null): List<ReceivedMessage> {
+    val all = mutableListOf<ReceivedMessage>()
+    var after: Long? = null
+    do {
+        val page = pendingReceivedMessages(after, PendingReceivedPage.MAX_SIZE, sender)
+        all += page.messages
+        after = page.nextAfterSequence
+    } while (after != null)
+    return all
+}

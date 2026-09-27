@@ -134,7 +134,7 @@ class DeviceAuthenticationStorageTest {
         database.closeOpenDrivers()
 
         val storage = reopen()
-        assertEquals(listOf(13L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(14L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
         assertEquals(before.withUnverifiedPins().withLegacyProcessedMessages(), after - AUTH_TABLES, "no existing row changes")
         assertEquals(emptyList(), after.getValue("device_authentication_key"), "SQL creates no key material")
