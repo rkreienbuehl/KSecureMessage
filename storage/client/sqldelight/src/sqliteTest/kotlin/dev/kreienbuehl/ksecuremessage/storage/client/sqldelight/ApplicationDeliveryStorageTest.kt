@@ -98,7 +98,7 @@ class ApplicationDeliveryStorageTest {
         assertEquals(listOf(1L), driver.longs("SELECT count(*) FROM processed_inbound_message"))
         assertEquals(listOf(clock.now.toEpochMilliseconds()), driver.longs("SELECT committed_at FROM processed_inbound_message"))
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice.decrypt(network.receive(ALICE).single())).cleared)
-        assertEquals(listOf(ids[1]), alice.pendingMessages(BOB).map { it.id })
+        assertEquals(listOf(ids[1]), alice.pendingMessages(limit = 100, recipient = BOB).messages.map { it.id })
     }
 
     @Test
@@ -115,7 +115,7 @@ class ApplicationDeliveryStorageTest {
         assertTrue(again.ackSent)
         assertEquals(emptyList(), bob().allPendingReceivedMessages())
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice.decrypt(network.receive(ALICE).single())).cleared)
-        assertEquals(emptyList(), alice.pendingMessages(BOB))
+        assertEquals(emptyList(), alice.pendingMessages(limit = 100, recipient = BOB).messages)
     }
 
     @Test
@@ -240,7 +240,7 @@ class ApplicationDeliveryStorageTest {
         val before = driver.dump()
 
         val migrated = reopen()
-        assertEquals(listOf(14L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(15L), driver.longs("PRAGMA user_version"))
         assertEquals(before.withLegacyProcessedMessages(), driver.dump(), "no existing row changes")
         val entry = assertNotNull(migrated.processedInbound.get(ALICE, legacy))
         assertNull(entry.digest)

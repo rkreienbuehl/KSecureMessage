@@ -12,8 +12,55 @@ import kotlin.time.Instant
  */
 class SentMessage(val id: LogicalMessageId, val envelope: EncryptedEnvelope)
 
-/** A sent message that [recipient] has not acknowledged yet. [plaintext] is a copy. */
-class PendingMessage(val recipient: DeviceAddress, val id: LogicalMessageId, val plaintext: ByteArray)
+/**
+ * A sent message that [recipient] has not acknowledged yet
+ * (docs/outbound-message-lifecycle.md). [plaintext] is a copy.
+ *
+ * @property sequence local send order of pending messages, across all
+ *   recipients. Stable across restarts and never reused; not a cryptographic
+ *   value.
+ */
+class PendingMessage(
+    val recipient: DeviceAddress,
+    val id: LogicalMessageId,
+    val sequence: Long,
+    val plaintext: ByteArray,
+)
+
+/**
+ * One page of [SecureMessageClient.pendingMessages]
+ * (docs/outbound-message-lifecycle.md): [messages] in ascending
+ * [PendingMessage.sequence] order.
+ *
+ * [nextAfterSequence] is the sequence of the last message if more pending
+ * messages existed when the page was read; pass it as `afterSequence` for the
+ * next page. `null` means the enumeration reached the end; messages sent
+ * later have higher sequence numbers, so to see them, continue after the last
+ * sequence you received.
+ */
+class PendingMessagePage(val messages: List<PendingMessage>, val nextAfterSequence: Long?) {
+    companion object {
+        /** The largest page [SecureMessageClient.pendingMessages] returns. */
+        const val MAX_SIZE: Int = 100
+    }
+}
+
+/**
+ * What [SecureMessageClient.abandonPendingMessage] did
+ * (docs/outbound-message-lifecycle.md). Abandoning is local: nothing is sent,
+ * and it is not a recall.
+ */
+enum class AbandonStatus {
+    /** The message was pending; this call removed it. It is never sent again. */
+    ABANDONED,
+
+    /**
+     * The message was not pending: acknowledged, abandoned before, or never
+     * sent to this recipient. Nothing changed; the client does not remember
+     * which it was.
+     */
+    NOT_PENDING,
+}
 
 /**
  * A received application message that waits for the application's decision
@@ -101,7 +148,8 @@ sealed interface ReceiveResult {
      * [sender] acknowledged message [id]: its application finalized it
      * (committed or discarded; this device cannot tell which).
      * [cleared] is `true` if it was pending for [sender] and is now removed;
-     * `false` for a repeated or unknown acknowledgement, which is harmless.
+     * `false` for a repeated or unknown acknowledgement, or one for a message
+     * this device abandoned, which is harmless.
      */
     class Acknowledgement(
         override val sender: DeviceAddress,

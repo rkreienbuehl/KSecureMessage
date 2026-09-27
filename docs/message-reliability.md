@@ -20,6 +20,9 @@ explicit, and no exactly-once guarantee for application side effects exists.
 > **Milestone 21** added explicit discard as the second terminal outcome and
 > paginated the pending list ([message-discard.md](message-discard.md)); an
 > ACK now means the application durably finalized the message.
+> **Milestone 22** did the same on the sender side: pending sent messages are
+> paginated, and the application can abandon one locally, the second way a
+> pending sent message ends ([outbound-message-lifecycle.md](outbound-message-lifecycle.md)).
 
 Code: `client/core/.../client/SecureMessageClient.kt` (`send`, `decrypt`,
 `retryPendingMessages`, `pendingMessages`), `ReliableMessages.kt`,
@@ -198,11 +201,13 @@ once application side effects are still not provided; see
 `retryPendingMessages(remote): List<LogicalMessageId>` (under the send
 mutex):
 
-1. Read the pending IDs for `remote` in send order.
-2. For each: fetch a bundle if there is no session (outside transactions);
-   in one transaction, skip it if it was acknowledged meanwhile, else encrypt
-   the stored frame **fresh** under the current session and store the
-   session; hand the new envelope (new `MessageId`) to the transport.
+1. In one transaction, read the next message pending for `remote` after the
+   last one handled (send order, one at a time since milestone 22; messages
+   acknowledged or abandoned meanwhile are skipped). If it needs a session
+   and there is none, fetch a bundle outside the transaction first.
+2. In that transaction, encrypt the stored frame **fresh** under the current
+   session and store the session; hand the new envelope (new `MessageId`) to
+   the transport.
 3. Stop at the first hand-off failure with `MessageNotSent`; later messages
    are not sent ahead of it. Encryption failures are thrown unchanged and
    leave that message pending and the session unchanged.
@@ -213,8 +218,10 @@ after the recipient's application committed them, so a message can stay
 pending longer than before. Old ciphertext is never reused. There
 is no scheduler: the application decides when to call it, for example after
 processing received envelopes, after a `SessionCollision`, or when it
-suspects a lost ACK. `pendingMessages(remote)` lists what is still pending
-(with plaintext copies).
+suspects a lost ACK. `pendingMessages(afterSequence, limit, recipient)` pages
+through what is still pending (with plaintext copies), and
+`abandonPendingMessage` removes a message the application gives up on
+([outbound-message-lifecycle.md](outbound-message-lifecycle.md)).
 
 **Identity changes.** Accepting a changed remote identity
 (`acceptRemoteIdentityChange`, [identity-verification.md](identity-verification.md#pending-and-processed-messages))
@@ -294,13 +301,14 @@ Receiver:
 
 ACKs are not stored for resending. If an ACK is lost and the sender never
 retries, the sender keeps the message pending indefinitely; the recovery path
-is the sender's explicit retry.
+is the sender's explicit retry, or an explicit abandon (milestone 22).
 
 ## Storage
 
 - `PendingOutboundStore`: (recipient, id) → sequence and encoded
   ApplicationMessage frame. Stored in the same transaction as the first
-  encryption; removed only by a valid ACK from that recipient. The frame, not
+  encryption; removed only by a valid ACK from that recipient or, since
+  milestone 22, by the application's explicit abandon. The frame, not
   the ciphertext, is kept, so every retry encrypts the same bytes fresh and
   the logical ID cannot drift. No tombstone after removal.
 - `PendingInboundStore` (milestone 20): (sender, id) → sequence, receive
@@ -328,6 +336,11 @@ afterwards.
   `Delivery` and `AlreadyCommitted`; `decrypt` no longer ACKs new messages;
   new `pendingReceivedMessages`, `commitReceivedMessage`,
   `pruneProcessedMessages` ([application-delivery.md](application-delivery.md#public-api)).
+- Milestone 22: `pendingMessages(remote)` is replaced by the paginated
+  `pendingMessages(afterSequence, limit, recipient)` returning
+  `PendingMessagePage`; `PendingMessage` gained `sequence`; new
+  `pendingMessageCount` and `abandonPendingMessage`
+  ([outbound-message-lifecycle.md](outbound-message-lifecycle.md#public-api)).
 - The raw session layer (`encryptRaw`, `sendRaw`, `decryptRaw`: raw
   plaintext, no frame, no ACK) is `internal`. The public `encrypt` is gone:
   an envelope encrypted outside the reliability layer would not be
@@ -346,6 +359,8 @@ afterwards.
   free pages, journals and backups.
 - Retry is explicit; no background scheduler, no automatic retry after
   convergence.
+- Pending sent messages never expire: without an ACK they stay until the
+  application abandons them (milestone 22); abandon is local, not a recall.
 - A lost ACK is only recovered by a sender retry.
 - No persistent server mailbox, no server delivery receipts, no read
   receipts.

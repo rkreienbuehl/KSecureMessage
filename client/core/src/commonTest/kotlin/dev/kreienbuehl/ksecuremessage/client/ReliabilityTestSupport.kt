@@ -118,8 +118,13 @@ internal class FlakyNetwork(val fake: FakeNetwork = FakeNetwork()) : SecureMessa
         fake.publishPreKeys(publication, signer)
     }
 
+    /** How many prekey bundles were fetched. */
+    var bundleFetches = 0
+        private set
+
     override suspend fun fetchPreKeyBundle(address: DeviceAddress): PreKeyBundle {
         checkNoTransaction()
+        bundleFetches++
         return fake.fetchPreKeyBundle(address)
     }
 
@@ -174,7 +179,7 @@ internal class ReliableDevice(
     /** Decrypts the single envelope waiting for this device. */
     suspend fun receiveOne(): ReceiveResult = receive(inbox().single())
 
-    suspend fun pending(to: ReliableDevice): List<LogicalMessageId> = client.pendingMessages(to.address).map { it.id }
+    suspend fun pending(to: ReliableDevice): List<LogicalMessageId> = client.allPendingMessages(to.address).map { it.id }
 
     suspend fun isProcessed(from: ReliableDevice, id: LogicalMessageId) = storage.processedInbound.isProcessed(from.address, id)
 
@@ -217,6 +222,18 @@ internal suspend fun SecureMessageClient.allPendingReceivedMessages(sender: Devi
     var after: Long? = null
     do {
         val page = pendingReceivedMessages(after, PendingReceivedPage.MAX_SIZE, sender)
+        all += page.messages
+        after = page.nextAfterSequence
+    } while (after != null)
+    return all
+}
+
+/** Every pending sent message, page by page (test helper; applications should page themselves). */
+internal suspend fun SecureMessageClient.allPendingMessages(recipient: DeviceAddress? = null): List<PendingMessage> {
+    val all = mutableListOf<PendingMessage>()
+    var after: Long? = null
+    do {
+        val page = pendingMessages(after, PendingMessagePage.MAX_SIZE, recipient)
         all += page.messages
         after = page.nextAfterSequence
     } while (after != null)

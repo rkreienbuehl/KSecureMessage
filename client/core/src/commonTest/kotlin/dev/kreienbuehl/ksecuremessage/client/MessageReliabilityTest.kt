@@ -50,7 +50,7 @@ class MessageReliabilityTest {
         val sent = alice.send(bob, "hello")
         // The transport took the envelope; that is not an acknowledgement.
         assertEquals(listOf(sent.id), alice.pending(bob))
-        assertEquals("hello", alice.client.pendingMessages(BOB).single().plaintext.decodeToString())
+        assertEquals("hello", alice.client.pendingMessages(limit = 100, recipient = BOB).messages.single().plaintext.decodeToString())
 
         val result = bob.receiveOne()
         val received = result.delivery()
@@ -266,7 +266,7 @@ class MessageReliabilityTest {
         bob.inbox() // lost in transit
         alice.restart()
         assertEquals(ids, alice.pending(bob))
-        assertEquals(listOf("m1", "m2", "m3"), alice.client.pendingMessages(BOB).map { it.plaintext.decodeToString() })
+        assertEquals(listOf("m1", "m2", "m3"), alice.client.pendingMessages(limit = 100, recipient = BOB).messages.map { it.plaintext.decodeToString() })
 
         assertEquals(ids, alice.client.retryPendingMessages(BOB))
         val retried = bob.inbox()

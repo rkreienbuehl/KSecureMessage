@@ -268,11 +268,21 @@ do { // after a restart: page through what is still pending
 client.pruneProcessedMessages(ProcessedInboundRetentionPolicy(90.days))
 ```
 
+Milestone 22 done: pending outbound pagination and explicit abandon, the sender-side counterpart. A pending sent message now ends in one of two ways, both a plain removal of its row: the recipient's ACK, or `abandonPendingMessage(recipient, id)`, a local application decision (`AbandonStatus.ABANDONED`, or `NOT_PENDING` if it was acknowledged, abandoned before or never sent; idempotent). Abandon sends nothing (no envelope, no bundle fetch, no new frame type), changes nothing but that one row (not the session, other messages, receiver-side state or sequences) and is **not a recall**: envelopes already handed off can still be delivered and finalized, and their late ACK is harmless (`cleared = false`). It runs under the send mutex, so it never interleaves with a send or retry (it waits for a running hand-off); an ACK racing an abandon has exactly one winner. `retryPendingMessages` now reads one pending message per transaction and never resends an abandoned one; a message abandoned while a collision had not converged is never resent. `pendingMessages(afterSequence, limit, recipient)` returns a `PendingMessagePage` (cursor = the global never-reused sequence, ascending, `sequence > afterSequence`, at most 100, stable under ACKs and abandons between pages; the unbounded `pendingMessages(remote)` is gone, breaking; `PendingMessage` gained `sequence`), plus `pendingMessageCount`. Removal is logical, not forensic erasure. No expiry, scheduler or bulk abandon. Client SQLDelight schema version 15 (`14.sqm`: only the recipient pagination index); no server, wire, frame or record format change. See [docs/outbound-message-lifecycle.md](docs/outbound-message-lifecycle.md).
+
+```kotlin
+var after: Long? = null
+do { // decide about messages a recipient never acknowledged
+    val page = client.pendingMessages(after, limit = 50, recipient = bob)
+    page.messages.filter { app.givesUpOn(it) }.forEach { client.abandonPendingMessage(it) } // local only, not a recall
+    after = page.nextAfterSequence
+} while (after != null)
+```
+
 ## Next implementation steps
 
-1. Bounded handling of the sender side: paged enumeration of pending outbound messages and an explicit, application-driven abandon of one pending outbound message (for a recipient that never acknowledges), so pending outbound plaintext cannot grow forever either.
-2. A deliberate, policy-controlled recovery key reset for a lost offline key (delay plus notification of every device), if applications need one; a PostgreSQL server adapter if multi-node deployment is needed.
-3. Sealed sender.
+1. A deliberate, policy-controlled recovery key reset for a lost offline key (delay plus notification of every device), if applications need one; a PostgreSQL server adapter if multi-node deployment is needed.
+2. Sealed sender.
 
 ## Gradle wrapper
 

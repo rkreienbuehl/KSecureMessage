@@ -119,7 +119,7 @@ class StorageKeyRotationTest {
         }
         for (remote in listOf(BOB, CAROL, DAVE)) {
             append("session=$remote/${storage.sessions.load(remote)?.state?.toHex()};")
-            for (pending in storage.pendingOutbound.list(remote)) append("pending=$remote/${pending.id}/${pending.sequence}/${pending.frame.toHex()};")
+            for (pending in storage.pendingOutbound.page(0, Int.MAX_VALUE, remote)) append("pending=$remote/${pending.id}/${pending.sequence}/${pending.frame.toHex()};")
             append("pin=$remote/${storage.remoteIdentities.identityKey(remote)?.toHex()};")
         }
         for (pending in storage.pendingInbound.page(0, 1_000)) {

@@ -1209,7 +1209,7 @@ class SecureMessageClient(
      * step that encrypts it; the envelope is handed to the transport after
      * the commit. It stays pending until [remote] acknowledges it; a
      * successful hand-off does not remove it. Use [retryPendingMessages] to
-     * send pending messages again.
+     * send pending messages again, [abandonPendingMessage] to give one up.
      *
      * Failures: an exception other than
      * [SecureMessageClientException.MessageNotSent] means nothing was stored.
@@ -1259,40 +1259,123 @@ class SecureMessageClient(
      * [SecureMessageClientException.MessageNotSent]: sending later messages
      * first would change their order. Encryption failures are thrown as they
      * are and leave that message pending and its session unchanged.
+     *
+     * Each message is read and encrypted in its own transaction, so a message
+     * acknowledged meanwhile is skipped. An abandoned message
+     * ([abandonPendingMessage]) is never sent again; one abandoned after its
+     * envelope was handed off may still be delivered
+     * (docs/outbound-message-lifecycle.md).
      */
     suspend fun retryPendingMessages(remote: DeviceAddress): List<LogicalMessageId> = sendMutex.withLock {
-        val ids = storage.transaction {
-            requireIdentity()
-            pendingOutbound.list(remote).map { it.id }
-        }
         val sent = mutableListOf<LogicalMessageId>()
-        for (id in ids) {
-            val bundle = fetchBundleIfNoSession(remote)
-            val envelope = storage.transaction {
-                // Acknowledged since the list was read: nothing to resend.
-                val pending = pendingOutbound.get(remote, id) ?: return@transaction null
+        var afterSequence = 0L
+        // Fetched outside any transaction, only when a message waits and
+        // there is no session; used for at most one encryption.
+        var bundle: PreKeyBundle? = null
+        while (true) {
+            val step = storage.transaction {
+                requireIdentity()
+                // The next pending message as of now: acknowledged or
+                // abandoned ones are gone and skipped.
+                val pending = pendingOutbound.page(afterSequence, 1, remote).singleOrNull() ?: return@transaction RetryStep.Done
                 try {
-                    encryptOn(remote, bundle, pending.frame)
+                    if (bundle == null && sessions.load(remote) == null) return@transaction RetryStep.NeedsBundle
+                    RetryStep.Encrypted(pending.id, pending.sequence, encryptOn(remote, bundle, pending.frame))
                 } finally {
                     pending.frame.fill(0)
                 }
-            } ?: continue
-            handOff(id, envelope)
-            sent += id
+            }
+            when (step) {
+                RetryStep.Done -> break
+                RetryStep.NeedsBundle -> bundle = transport.fetchPreKeyBundle(remote)
+                is RetryStep.Encrypted -> {
+                    bundle = null
+                    afterSequence = step.sequence
+                    handOff(step.id, step.envelope)
+                    sent += step.id
+                }
+            }
         }
         sent
     }
 
-    /** The messages to [remote] that are not acknowledged yet, oldest first. Contains their plaintext. */
-    suspend fun pendingMessages(remote: DeviceAddress): List<PendingMessage> {
+    private sealed interface RetryStep {
+        data object Done : RetryStep
+        data object NeedsBundle : RetryStep
+        class Encrypted(val id: LogicalMessageId, val sequence: Long, val envelope: EncryptedEnvelope) : RetryStep
+    }
+
+    /**
+     * One page of the sent messages not acknowledged yet, with their plaintext
+     * (docs/outbound-message-lifecycle.md): at most [limit]
+     * (1..[PendingMessagePage.MAX_SIZE]) messages with a
+     * [PendingMessage.sequence] greater than [afterSequence] (from the start
+     * if `null`), to [recipient] only if given, in ascending sequence order.
+     *
+     * The cursor is the sequence number, never an offset: messages
+     * acknowledged or abandoned between pages do not shift later pages, and no
+     * message is returned twice by one enumeration. Each page is read in its
+     * own transaction; an enumeration is not a snapshot, so messages sent
+     * meanwhile (higher sequence numbers) can appear on later pages. A
+     * recipient filter uses the same global sequence as cursor.
+     *
+     * Throws [IllegalArgumentException] for a [limit] outside
+     * 1..[PendingMessagePage.MAX_SIZE] or a negative [afterSequence].
+     */
+    suspend fun pendingMessages(
+        afterSequence: Long? = null,
+        limit: Int,
+        recipient: DeviceAddress? = null,
+    ): PendingMessagePage {
+        require(limit in 1..PendingMessagePage.MAX_SIZE) { "limit must be in 1..${PendingMessagePage.MAX_SIZE}" }
+        require(afterSequence == null || afterSequence >= 0) { "afterSequence must not be negative" }
         val pending = storage.transaction {
             requireIdentity()
-            pendingOutbound.list(remote)
+            // One more than asked: tells whether another page exists.
+            pendingOutbound.page(afterSequence ?: 0, limit + 1, recipient)
         }
-        return pending.map {
+        val more = pending.size > limit
+        val messages = pending.take(limit).map {
             val payload = SecurePayloadCodec.decode(it.frame) as SecurePayload.ApplicationMessage
             it.frame.fill(0)
-            PendingMessage(it.recipient, it.id, payload.body)
+            PendingMessage(it.recipient, it.id, it.sequence, payload.body)
+        }
+        pending.drop(limit).forEach { it.frame.fill(0) }
+        return PendingMessagePage(messages, if (more) messages.last().sequence else null)
+    }
+
+    /** The number of sent messages not acknowledged yet, to [recipient] only if given. Opens no record. */
+    suspend fun pendingMessageCount(recipient: DeviceAddress? = null): Long = storage.transaction {
+        requireIdentity()
+        pendingOutbound.count(recipient)
+    }
+
+    /** Abandons [message] (docs/outbound-message-lifecycle.md). */
+    suspend fun abandonPendingMessage(message: PendingMessage): AbandonStatus = abandonPendingMessage(message.recipient, message.id)
+
+    /**
+     * Gives up on delivering message [id] to [recipient]: removes it, plaintext
+     * included, from the pending messages in one transaction
+     * ([AbandonStatus.ABANDONED]), so no retry sends it again
+     * (docs/outbound-message-lifecycle.md). Only this message changes; the
+     * session and every other message stay as they are.
+     *
+     * Local only: nothing is sent, the recipient and the server are not told,
+     * and it is not a recall. Envelopes already handed to the transport can
+     * still be delivered, and the recipient can still finalize the message and
+     * acknowledge it; such an acknowledgement is harmless
+     * ([ReceiveResult.Acknowledgement.cleared] is `false`).
+     *
+     * Idempotent: a message that is not pending (acknowledged, abandoned
+     * before, or never sent) changes nothing ([AbandonStatus.NOT_PENDING]).
+     * Runs after a send or retry in progress has handed off its envelope,
+     * never between its steps. The removal is logical: earlier copies of the
+     * sealed record can remain in database files (docs/storage-encryption.md).
+     */
+    suspend fun abandonPendingMessage(recipient: DeviceAddress, id: LogicalMessageId): AbandonStatus = sendMutex.withLock {
+        storage.transaction {
+            requireIdentity()
+            if (pendingOutbound.remove(recipient, id)) AbandonStatus.ABANDONED else AbandonStatus.NOT_PENDING
         }
     }
 

@@ -278,7 +278,7 @@ class DeviceAuthenticationRotationStorageTest {
         val authTables = setOf("device_authentication_key", "device_authentication_rotation_key", "authentication_nonce")
         assertEquals(before - authTables, after - authTables, "no messaging row changed")
         assertEquals(VerificationState.VERIFIED, alice(reopen()).remoteIdentityTrust(BOB)?.verification)
-        assertEquals("pending", alice(reopen()).pendingMessages(BOB).single().plaintext.decodeToString())
+        assertEquals("pending", alice(reopen()).pendingMessages(limit = 100, recipient = BOB).messages.single().plaintext.decodeToString())
     }
 
     @Test
@@ -309,7 +309,7 @@ class DeviceAuthenticationRotationStorageTest {
         val before = driver.dump()
 
         val migrated = reopen()
-        assertEquals(listOf(14L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(15L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
         assertEquals(before.withLegacyProcessedMessages(), after - "device_authentication_rotation_key" - "device_authentication_last_device_recovery_key", "no existing row changes")
         assertEquals(emptyList(), after.getValue("device_authentication_rotation_key"))
@@ -320,7 +320,7 @@ class DeviceAuthenticationRotationStorageTest {
         assertNull(migrated.deviceAuthentication.pendingRotationKeyPair())
         assertEquals(rotation, migrated.storageKeyRotationStatus())
         assertEquals(VerificationState.VERIFIED, alice(migrated).remoteIdentityTrust(BOB)?.verification, "verification kept")
-        assertEquals("pending at the upgrade", alice(migrated).pendingMessages(BOB).single().plaintext.decodeToString())
+        assertEquals("pending at the upgrade", alice(migrated).pendingMessages(limit = 100, recipient = BOB).messages.single().plaintext.decodeToString())
 
         // After the upgrade, a rotation works (once the recovery is cancelled).
         alice(migrated).cancelDeviceAuthenticationRecovery()

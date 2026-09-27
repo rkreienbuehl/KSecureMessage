@@ -53,12 +53,22 @@ fun Map<String, List<String?>>.withUnverifiedPins(): Map<String, List<String?>> 
 }
 
 /**
- * Removes what schema version 14 (milestone 21, 13.sqm) added, for tests that
- * turn a new database into an older one: the processed finalization and
- * discard reason and the pending inbound sender index. `discard_reason`
- * goes first: its CHECK constraint names `finalization`.
+ * Removes what schema version 15 (milestone 22, 14.sqm) added, for tests that
+ * turn a new database into an older one: the pending outbound recipient index.
+ */
+fun SqlDriver.dropVersion15Additions() {
+    exec("DROP INDEX pending_outbound_message_recipient")
+}
+
+/**
+ * Removes what schema versions 14 (milestone 21, 13.sqm) and 15 added, for
+ * tests that turn a new database into an older one: the processed
+ * finalization and discard reason and the pending inbound sender index (after
+ * [dropVersion15Additions]). `discard_reason` goes first: its CHECK
+ * constraint names `finalization`.
  */
 fun SqlDriver.dropVersion14Additions() {
+    dropVersion15Additions()
     exec("DROP INDEX pending_inbound_message_sender")
     exec("ALTER TABLE processed_inbound_message DROP COLUMN discard_reason")
     exec("ALTER TABLE processed_inbound_message DROP COLUMN finalization")

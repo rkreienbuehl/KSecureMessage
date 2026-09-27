@@ -134,7 +134,7 @@ class DeviceAuthenticationStorageTest {
         database.closeOpenDrivers()
 
         val storage = reopen()
-        assertEquals(listOf(14L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(15L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
         assertEquals(before.withUnverifiedPins().withLegacyProcessedMessages(), after - AUTH_TABLES, "no existing row changes")
         assertEquals(emptyList(), after.getValue("device_authentication_key"), "SQL creates no key material")
@@ -217,7 +217,7 @@ class DeviceAuthenticationStorageTest {
 
         // Messaging continues on the kept session, and the pending message is still pending.
         val upgraded = client(BOB, reopen())
-        assertEquals(1, upgraded.pendingMessages(ALICE).size)
+        assertEquals(1, upgraded.pendingMessages(limit = 100, recipient = ALICE).messages.size)
         upgraded.send(ALICE, "after the upgrade".encodeToByteArray())
         val received = network.receive(ALICE).map { alice.decrypt(it) }
         assertEquals(listOf("after the upgrade"), received.filterIsInstance<ReceiveResult.Delivery>().map { it.message.plaintext.decodeToString() })

@@ -114,12 +114,12 @@ class DeviceAuthenticationTest {
         val message = bob.decrypt(bob.receive().single()).delivery()
         assertEquals("Hello Bob", message.plaintext.decodeToString())
         assertTrue(bob.commitReceivedMessage(message).ackSent)
-        assertEquals(listOf(sent.id), alice.pendingMessages(BOB).map { it.id })
+        assertEquals(listOf(sent.id), alice.pendingMessages(limit = 100, recipient = BOB).messages.map { it.id })
 
         val ack = assertIs<ReceiveResult.Acknowledgement>(alice.decrypt(alice.receive().single()))
         assertEquals(sent.id, ack.id)
         assertTrue(ack.cleared)
-        assertEquals(emptyList(), alice.pendingMessages(BOB))
+        assertEquals(emptyList(), alice.pendingMessages(limit = 100, recipient = BOB).messages)
         assertEquals(emptyList(), bob.receive())
     }
 

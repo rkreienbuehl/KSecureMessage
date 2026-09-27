@@ -72,20 +72,20 @@ class HttpEndToEndTest {
         assertContentEquals(aliceIdentity, bob.remoteIdentityKey(aliceAddress), "Bob pinned Alice")
 
         // The encrypted acknowledgement travels like any other message.
-        assertEquals(listOf(hello.id), alice.pendingMessages(bobAddress).map { it.id }, "HTTP 202 is not an acknowledgement")
+        assertEquals(listOf(hello.id), alice.pendingMessages(limit = 100, recipient = bobAddress).messages.map { it.id }, "HTTP 202 is not an acknowledgement")
         val ack = alice.receive().single()
         assertIs<RatchetMessage>(CiphertextMessageCodec.decode(ack.payload))
         val acknowledged = assertIs<ReceiveResult.Acknowledgement>(alice.decrypt(ack))
         assertEquals(hello.id, acknowledged.id)
         assertTrue(acknowledged.cleared)
-        assertEquals(emptyList(), alice.pendingMessages(bobAddress))
+        assertEquals(emptyList(), alice.pendingMessages(limit = 100, recipient = bobAddress).messages)
 
         bob.send(aliceAddress, "Hello Alice".encodeToByteArray())
         val reply = alice.receive().single()
         assertIs<RatchetMessage>(CiphertextMessageCodec.decode(reply.payload))
         assertEquals("Hello Alice", alice.accept(reply).plaintext.decodeToString())
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(bob.decrypt(bob.receive().single())).cleared)
-        assertEquals(emptyList(), bob.pendingMessages(aliceAddress))
+        assertEquals(emptyList(), bob.pendingMessages(limit = 100, recipient = aliceAddress).messages)
 
         // Bob refills and republishes; the consumed #0 is not handed out again.
         bob.initialize()

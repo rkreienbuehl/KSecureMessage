@@ -513,12 +513,12 @@ class SqlDelightPersistenceTest {
         assertEquals(setOf(SignedPreKeyId(0)), migrated.sessionInitiations.retiredSignedPreKeyIds())
 
         // The new tables start empty: no message is invented as pending or processed.
-        assertEquals(emptyList(), migrated.pendingOutbound.list(ALICE))
+        assertEquals(emptyList(), migrated.pendingOutbound.page(0, Int.MAX_VALUE, ALICE))
         assertFalse(migrated.processedInbound.isProcessed(ALICE, messageId(1)))
         migrated.pendingOutbound.store(ALICE, messageId(1), bytes(1))
         migrated.processedInbound.markCommitted(ALICE, messageId(2), bytes(2), Instant.fromEpochMilliseconds(2_000))
         val reopened = reopen()
-        assertEquals(listOf(messageId(1)), reopened.pendingOutbound.list(ALICE).map { it.id })
+        assertEquals(listOf(messageId(1)), reopened.pendingOutbound.page(0, Int.MAX_VALUE, ALICE).map { it.id })
         assertTrue(reopened.processedInbound.isProcessed(ALICE, messageId(2)))
     }
 
@@ -541,8 +541,8 @@ class SqlDelightPersistenceTest {
         assertContentEquals(bytes(7), processed.digest)
         assertEquals(Instant.fromEpochMilliseconds(7_000), processed.finalizedAt)
         assertTrue(after.pendingInbound.remove(ALICE, messageId(8)))
-        assertEquals(listOf(messageId(5), messageId(1)), after.pendingOutbound.list(BOB).map { it.id })
-        assertEquals(listOf(first, second), after.pendingOutbound.list(BOB).map { it.sequence })
+        assertEquals(listOf(messageId(5), messageId(1)), after.pendingOutbound.page(0, Int.MAX_VALUE, BOB).map { it.id })
+        assertEquals(listOf(first, second), after.pendingOutbound.page(0, Int.MAX_VALUE, BOB).map { it.sequence })
         assertContentEquals(bytes(1), after.pendingOutbound.get(BOB, messageId(1))?.frame)
         assertTrue(after.processedInbound.isProcessed(ALICE, messageId(7)))
 
@@ -550,7 +550,7 @@ class SqlDelightPersistenceTest {
         assertTrue(after.pendingOutbound.remove(BOB, messageId(1)))
         val third = reopen().pendingOutbound.store(BOB, messageId(9), bytes(9))
         assertTrue(third > second)
-        assertEquals(listOf(messageId(5), messageId(9)), reopen().pendingOutbound.list(BOB).map { it.id })
+        assertEquals(listOf(messageId(5), messageId(9)), reopen().pendingOutbound.page(0, Int.MAX_VALUE, BOB).map { it.id })
 
         assertTrue(reopen().pendingInbound.store(ALICE, messageId(10), bytes(10), Instant.fromEpochMilliseconds(10_000)) > received)
         assertEquals(1, reopen().processedInbound.pruneFinalizedAtOrBefore(Instant.fromEpochMilliseconds(7_000)))
@@ -571,7 +571,7 @@ class SqlDelightPersistenceTest {
         // Bob's messages are lost in transit, then Bob restarts.
         val ids = listOf("one", "two").map { bob.send(ALICE, it.encodeToByteArray()).id }
         network.receive(ALICE)
-        assertEquals(ids, restartedBob().pendingMessages(ALICE).map { it.id })
+        assertEquals(ids, restartedBob().pendingMessages(limit = 100, recipient = ALICE).messages.map { it.id })
 
         assertEquals(ids, restartedBob().retryPendingMessages(ALICE))
         assertEquals(listOf("one", "two"), network.receive(ALICE).map { alice.accept(it).text() })
@@ -580,7 +580,7 @@ class SqlDelightPersistenceTest {
         val acks = network.receive(BOB).map { assertIs<ReceiveResult.Acknowledgement>(restartedBob().decrypt(it)) }
         assertEquals(ids, acks.map { it.id })
         assertTrue(acks.all { it.cleared })
-        assertEquals(emptyList(), restartedBob().pendingMessages(ALICE))
+        assertEquals(emptyList(), restartedBob().pendingMessages(limit = 100, recipient = ALICE).messages)
 
         // A retry of an already processed message after a restart is a duplicate.
         val sent = alice.send(BOB, "lost ack".encodeToByteArray())
@@ -591,7 +591,7 @@ class SqlDelightPersistenceTest {
         val duplicate = assertIs<ReceiveResult.AlreadyCommitted>(restartedBob().decrypt(network.receive(BOB).single()))
         assertEquals(sent.id, duplicate.id)
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice.decrypt(network.receive(ALICE).single())).cleared)
-        assertEquals(emptyList(), alice.pendingMessages(BOB))
+        assertEquals(emptyList(), alice.pendingMessages(limit = 100, recipient = BOB).messages)
     }
 
     @Test
@@ -620,25 +620,25 @@ class SqlDelightPersistenceTest {
             assertFailsWith<SecureMessageClientException.SessionCollision> { alice().decrypt(toAlice) }
             assertEquals("from Alice", bob.accept(toBob).text())
             assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice().decrypt(network.receive(ALICE).single())).cleared)
-            assertEquals(listOf(fromBob.id), bob.pendingMessages(ALICE).map { it.id })
+            assertEquals(listOf(fromBob.id), bob.pendingMessages(limit = 100, recipient = ALICE).messages.map { it.id })
             bob.retryPendingMessages(ALICE)
             val resent = alice().accept(network.receive(ALICE).single())
             assertEquals(fromBob.id, resent.id)
             assertEquals("from Bob", resent.plaintext.decodeToString())
             assertTrue(assertIs<ReceiveResult.Acknowledgement>(bob.decrypt(network.receive(BOB).single())).cleared)
-            assertEquals(emptyList(), bob.pendingMessages(ALICE))
+            assertEquals(emptyList(), bob.pendingMessages(limit = 100, recipient = ALICE).messages)
         } else {
             // Alice's message is lost; her pending copy is only on disk.
             assertFailsWith<SecureMessageClientException.SessionCollision> { bob.decrypt(toBob) }
             assertEquals("from Bob", alice().accept(toAlice).text())
             assertTrue(assertIs<ReceiveResult.Acknowledgement>(bob.decrypt(network.receive(BOB).single())).cleared)
-            assertEquals(listOf(fromAlice.id), alice().pendingMessages(BOB).map { it.id })
+            assertEquals(listOf(fromAlice.id), alice().pendingMessages(limit = 100, recipient = BOB).messages.map { it.id })
             alice().retryPendingMessages(BOB)
             val resent = bob.accept(network.receive(BOB).single())
             assertEquals(fromAlice.id, resent.id)
             assertEquals("from Alice", resent.plaintext.decodeToString())
             assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice().decrypt(network.receive(ALICE).single())).cleared)
-            assertEquals(emptyList(), alice().pendingMessages(BOB))
+            assertEquals(emptyList(), alice().pendingMessages(limit = 100, recipient = BOB).messages)
         }
     }
 

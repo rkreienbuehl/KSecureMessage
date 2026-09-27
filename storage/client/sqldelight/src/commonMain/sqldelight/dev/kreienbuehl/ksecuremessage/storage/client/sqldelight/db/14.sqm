@@ -1,0 +1,6 @@
+-- Schema version 14 to 15 (milestone 22): pending outbound pagination and
+-- explicit abandon (docs/outbound-message-lifecycle.md).
+--
+-- pending_outbound_message gains an index for recipient-filtered pagination
+-- by sequence. No table, column or sealed record changes.
+CREATE INDEX pending_outbound_message_recipient ON pending_outbound_message (recipient_user_id, recipient_device_id, sequence);

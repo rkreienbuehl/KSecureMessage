@@ -106,7 +106,7 @@ class DeviceAuthenticationRotationTest {
         val oneTimePreKeys = phoneStorage.preKeys.publicOneTimePreKeys().map { it.id }
         val pin = assertNotNull(phoneStorage.remoteIdentities.record(BOB))
         val session = assertNotNull(phoneStorage.sessions.load(BOB))
-        val pending = phone.pendingMessages(BOB).map { it.id }
+        val pending = phone.pendingMessages(limit = 100, recipient = BOB).messages.map { it.id }
         val retired = phoneStorage.sessionInitiations.retiredSignedPreKeyIds()
 
         phone.prepareDeviceAuthenticationRotation()
@@ -134,7 +134,7 @@ class DeviceAuthenticationRotationTest {
         assertContentEquals(pin.identityKey, pinAfter.identityKey)
         assertEquals(pin.verification, pinAfter.verification)
         assertContentEquals(session.state, phoneStorage.sessions.load(BOB)?.state)
-        assertEquals(pending, phone.pendingMessages(BOB).map { it.id })
+        assertEquals(pending, phone.pendingMessages(limit = 100, recipient = BOB).messages.map { it.id })
         assertEquals(retired, phoneStorage.sessionInitiations.retiredSignedPreKeyIds())
         val phone = phone
         assertEquals("queued", phone.accept(phone.receive().single()).decodeToString())

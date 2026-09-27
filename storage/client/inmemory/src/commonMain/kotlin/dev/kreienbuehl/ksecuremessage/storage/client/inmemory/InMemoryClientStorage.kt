@@ -129,7 +129,9 @@ class InMemoryClientStorage : ClientStorage {
         override suspend fun store(recipient: DeviceAddress, id: LogicalMessageId, frame: ByteArray) =
             transaction { pendingOutbound.store(recipient, id, frame) }
         override suspend fun get(recipient: DeviceAddress, id: LogicalMessageId) = transaction { pendingOutbound.get(recipient, id) }
-        override suspend fun list(recipient: DeviceAddress) = transaction { pendingOutbound.list(recipient) }
+        override suspend fun page(afterSequence: Long, limit: Int, recipient: DeviceAddress?) =
+            transaction { pendingOutbound.page(afterSequence, limit, recipient) }
+        override suspend fun count(recipient: DeviceAddress?) = transaction { pendingOutbound.count(recipient) }
         override suspend fun remove(recipient: DeviceAddress, id: LogicalMessageId) =
             transaction { pendingOutbound.remove(recipient, id) }
     }
@@ -245,10 +247,18 @@ private class TransactionView(var state: State) : ClientStorage {
         override suspend fun get(recipient: DeviceAddress, id: LogicalMessageId) =
             state.pendingOutbound[recipient to id]?.let { PendingOutboundMessage(recipient, id, it.sequence, it.frame.copyOf()) }
 
-        override suspend fun list(recipient: DeviceAddress) = state.pendingOutbound
-            .filterKeys { it.first == recipient }
-            .map { (key, entry) -> PendingOutboundMessage(recipient, key.second, entry.sequence, entry.frame.copyOf()) }
-            .sortedBy { it.sequence }
+        override suspend fun page(afterSequence: Long, limit: Int, recipient: DeviceAddress?): List<PendingOutboundMessage> {
+            require(limit > 0) { "limit must be positive" }
+            require(afterSequence >= 0) { "afterSequence must not be negative" }
+            return state.pendingOutbound.entries
+                .filter { (key, entry) -> (recipient == null || key.first == recipient) && entry.sequence > afterSequence }
+                .sortedBy { it.value.sequence }
+                .take(limit)
+                .map { (key, entry) -> PendingOutboundMessage(key.first, key.second, entry.sequence, entry.frame.copyOf()) }
+        }
+
+        override suspend fun count(recipient: DeviceAddress?) =
+            state.pendingOutbound.keys.count { recipient == null || it.first == recipient }.toLong()
 
         override suspend fun remove(recipient: DeviceAddress, id: LogicalMessageId): Boolean {
             if ((recipient to id) !in state.pendingOutbound) return false

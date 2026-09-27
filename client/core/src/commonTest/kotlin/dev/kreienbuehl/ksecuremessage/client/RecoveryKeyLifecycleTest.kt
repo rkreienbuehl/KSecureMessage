@@ -118,7 +118,7 @@ class RecoveryKeyLifecycleTest {
         assertContentEquals(registration.registration.publicKey, registrationAfter.registration.publicKey)
         assertEquals(registration.authEpoch, registrationAfter.authEpoch)
         assertEquals(registration.authKeyInstalledAt, registrationAfter.authKeyInstalledAt)
-        assertTrue(phone.pendingMessages(BOB).isEmpty())
+        assertTrue(phone.pendingMessages(limit = 100, recipient = BOB).messages.isEmpty())
         bob.send(ALICE, "still here".encodeToByteArray())
         assertEquals("still here", phone.accept(phone.receive().single()).decodeToString())
     }

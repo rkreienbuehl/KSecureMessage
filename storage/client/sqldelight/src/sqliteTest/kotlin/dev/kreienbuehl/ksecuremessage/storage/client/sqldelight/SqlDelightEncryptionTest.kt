@@ -130,7 +130,7 @@ class SqlDelightEncryptionTest {
         assertContentEquals(otpk(11).privateKey, after.preKeys.oneTimePreKey(OneTimePreKeyId(11))?.privateKey)
         assertEquals(listOf(10, 11), after.preKeys.publicOneTimePreKeys().map { it.id.value })
         assertContentEquals(SESSION_MARKER, after.sessions.load(CAROL)?.state)
-        assertEquals(listOf(messageId(1), messageId(2)), after.pendingOutbound.list(BOB).map { it.id })
+        assertEquals(listOf(messageId(1), messageId(2)), after.pendingOutbound.page(0, Int.MAX_VALUE, BOB).map { it.id })
         assertContentEquals(SECRET_MESSAGE, after.pendingOutbound.get(CAROL, messageId(1))?.frame)
         assertTrue(after.processedInbound.isProcessed(ALICE, messageId(3)))
         assertContentEquals(DIGEST, after.processedInbound.get(ALICE, messageId(3))?.digest)
@@ -265,7 +265,7 @@ class SqlDelightEncryptionTest {
         val bobM1 = "recipient_user_id = 'bob' AND sequence = 1"
         copy("pending_outbound_message", "sealed_frame", bobM1, "recipient_user_id = 'bob' AND sequence = 2")
         assertFailsWith<StorageEncryptionException.AuthenticationFailed> { storage.pendingOutbound.get(BOB, messageId(2)) }
-        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { storage.pendingOutbound.list(BOB) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { storage.pendingOutbound.page(0, Int.MAX_VALUE, BOB) }
         copy("pending_outbound_message", "sealed_frame", bobM1, "recipient_user_id = 'carol'")
         assertFailsWith<StorageEncryptionException.AuthenticationFailed> { storage.pendingOutbound.get(CAROL, messageId(1)) }
 
@@ -337,7 +337,7 @@ class SqlDelightEncryptionTest {
 
         val restarted = SecureMessageClient(ALICE, reopen(), engine, network, config)
         assertFailsWith<StorageEncryptionException.AuthenticationFailed> { restarted.retryPendingMessages(BOB) }
-        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { restarted.pendingMessages(BOB) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { restarted.pendingMessages(limit = 100, recipient = BOB).messages }
         assertEquals(0, network.waiting(BOB))
         assertEquals(before, driver.dump())
     }
@@ -408,7 +408,7 @@ class SqlDelightEncryptionTest {
         assertEquals(sent.id, received.id)
         assertContentEquals(SECRET_MESSAGE, received.plaintext)
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(alice().decrypt(network.receive(ALICE).single())).cleared)
-        assertEquals(emptyList(), alice().pendingMessages(BOB))
+        assertEquals(emptyList(), alice().pendingMessages(limit = 100, recipient = BOB).messages)
     }
 
     @Test

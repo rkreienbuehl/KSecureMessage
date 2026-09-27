@@ -344,7 +344,8 @@ class PendingOutboundMessage(
  *
  * **Holds application plaintext** (encrypted at rest by persistent adapters,
  * see docs/storage-encryption.md). Entries are removed when the
- * acknowledgement arrives, never because the transport accepted an envelope.
+ * acknowledgement arrives or the application abandons them, never because the
+ * transport accepted an envelope.
  */
 interface PendingOutboundStore {
     /**
@@ -357,10 +358,23 @@ interface PendingOutboundStore {
 
     suspend fun get(recipient: DeviceAddress, id: LogicalMessageId): PendingOutboundMessage?
 
-    /** The messages pending for [recipient], in [PendingOutboundMessage.sequence] order. */
-    suspend fun list(recipient: DeviceAddress): List<PendingOutboundMessage>
+    /**
+     * At most [limit] pending messages with a sequence number greater than
+     * [afterSequence], to [recipient] only if given, in ascending
+     * [PendingOutboundMessage.sequence] order (docs/outbound-message-lifecycle.md).
+     * Opens only the records it returns. Throws [IllegalArgumentException] if
+     * [limit] is not positive or [afterSequence] is negative.
+     */
+    suspend fun page(afterSequence: Long, limit: Int, recipient: DeviceAddress? = null): List<PendingOutboundMessage>
 
-    /** Removes the entry; returns `false` if it was not pending. */
+    /** The number of pending messages, to [recipient] only if given. Never opens a stored record. */
+    suspend fun count(recipient: DeviceAddress? = null): Long
+
+    /**
+     * Removes exactly this entry (acknowledged, or abandoned by the
+     * application) without opening it; returns `false` if it was not pending.
+     * Removal never lowers the sequence counter.
+     */
     suspend fun remove(recipient: DeviceAddress, id: LogicalMessageId): Boolean
 }
 

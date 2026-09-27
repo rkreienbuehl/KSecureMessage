@@ -208,7 +208,7 @@ class IdentityChangeAcceptanceTest {
         val (envelope, changed) = identityChange(alice, newBob)
         alice.client.acceptRemoteIdentityChange(changed.change)
         assertEquals(listOf(sent.id), alice.pending(newBob), "acceptance keeps pending messages")
-        assertEquals("lost with the old phone", alice.client.pendingMessages(BOB).single().plaintext.decodeToString())
+        assertEquals("lost with the old phone", alice.client.pendingMessages(limit = 100, recipient = BOB).messages.single().plaintext.decodeToString())
 
         assertTrue(alice.storage.processedInbound.isProcessed(BOB, processed), "processed IDs are kept")
 

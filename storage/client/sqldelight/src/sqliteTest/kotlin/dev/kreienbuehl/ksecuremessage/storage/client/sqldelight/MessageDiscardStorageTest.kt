@@ -325,7 +325,7 @@ class MessageDiscardStorageTest {
         val before = driver.dump()
 
         val migrated = reopen()
-        assertEquals(listOf(14L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(15L), driver.longs("PRAGMA user_version"))
         assertEquals(before.withCommittedFinalization(), driver.dump(), "no existing row changes")
         assertEquals(listOf(0L, 0L), driver.longs("SELECT finalization FROM processed_inbound_message"))
         assertEquals(listOf(null, null), driver.longs("SELECT discard_reason FROM processed_inbound_message"))
@@ -340,7 +340,7 @@ class MessageDiscardStorageTest {
         assertFailsWith<Exception> { driver.exec("UPDATE processed_inbound_message SET finalization = 2") }
 
         // Behavior is unchanged: the retry is acknowledged as committed, the pending one stays, retention is the same.
-        assertEquals(listOf(laterCommitted, alice.pendingMessages(BOB).last().id), alice.pendingMessages(BOB).map { it.id })
+        assertEquals(listOf(laterCommitted, alice.pendingMessages(limit = 100, recipient = BOB).messages.last().id), alice.pendingMessages(limit = 100, recipient = BOB).messages.map { it.id })
         alice.retryPendingMessages(BOB)
         val results = network.receive(BOB).map { bob().decrypt(it) }
         assertIs<ReceiveResult.AlreadyCommitted>(results[0])

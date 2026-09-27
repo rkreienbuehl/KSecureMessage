@@ -157,6 +157,9 @@ CREATE TABLE pending_outbound_message (
     UNIQUE (recipient_user_id, recipient_device_id, message_id)
 );
 
+-- Recipient-filtered pagination by sequence. Added in schema version 15, see 14.sqm.
+CREATE INDEX pending_outbound_message_recipient ON pending_outbound_message (recipient_user_id, recipient_device_id, sequence);
+
 -- Terminal tombstones of the logical messages finalized per sender, for
 -- duplicate suppression. Added in schema version 5, see 4.sqm. committed_at
 -- (epoch milliseconds, local clock; the finalization time, commit or
@@ -479,9 +482,21 @@ selectPendingOutbound:
 SELECT sequence, sealed_frame FROM pending_outbound_message
 WHERE recipient_user_id = ? AND recipient_device_id = ? AND message_id = ?;
 
-selectPendingOutboundFor:
+-- Cursor pagination: strictly after the last sequence seen, never OFFSET.
+selectPendingOutboundPage:
+SELECT sequence, recipient_user_id, recipient_device_id, message_id, sealed_frame FROM pending_outbound_message
+WHERE sequence > :afterSequence ORDER BY sequence LIMIT :limit;
+
+selectPendingOutboundPageTo:
 SELECT sequence, message_id, sealed_frame FROM pending_outbound_message
-WHERE recipient_user_id = ? AND recipient_device_id = ? ORDER BY sequence;
+WHERE recipient_user_id = :recipientUserId AND recipient_device_id = :recipientDeviceId AND sequence > :afterSequence
+ORDER BY sequence LIMIT :limit;
+
+countAllPendingOutbound:
+SELECT count(*) FROM pending_outbound_message;
+
+countPendingOutboundTo:
+SELECT count(*) FROM pending_outbound_message WHERE recipient_user_id = ? AND recipient_device_id = ?;
 
 deletePendingOutbound:
 DELETE FROM pending_outbound_message WHERE recipient_user_id = ? AND recipient_device_id = ? AND message_id = ?;

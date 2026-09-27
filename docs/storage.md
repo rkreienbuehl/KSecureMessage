@@ -185,10 +185,15 @@ Every implementation must provide:
 - **Pending outbound messages** (milestone 8). `store(recipient, id, frame)`
   fails with `IllegalArgumentException` if (recipient, id) is pending and
   returns a sequence number that is higher than every earlier one, also after
-  removals and restarts. `list(recipient)` is ordered by sequence.
-  `remove` returns whether it removed something. The client stores a message
-  in the transaction that first encrypts it and removes it in the transaction
-  that decrypts its acknowledgement.
+  removals and restarts. `page(afterSequence, limit, recipient?)` returns at
+  most `limit` entries with a greater sequence in ascending order, to one
+  recipient if given, and opens only those records (milestone 22; it
+  replaced the unbounded `list(recipient)`); `count(recipient?)` opens none.
+  `remove` deletes exactly (recipient, id) without opening it and returns
+  whether it removed something. The client stores a message in the
+  transaction that first encrypts it and removes it in the transaction that
+  decrypts its acknowledgement or in the abandon transaction
+  ([outbound-message-lifecycle.md](outbound-message-lifecycle.md)).
 - **Pending inbound messages** (milestone 20). `store` assigns a sequence
   number that increases with every call and is never reused, also after
   removals and restarts; a second `store` of the same (sender, ID) throws
@@ -270,7 +275,7 @@ Tables:
 - `session`: sealed state, keyed by remote user and device ID
 - `remote_identity`: pinned remote identity public keys, keyed by remote user and device ID, with `verification` (0 unverified, 1 verified; schema version 10)
 - `retired_session_initiation`: retired 32-byte session initiation IDs, keyed by remote user, device ID and initiation ID, with the nullable local `signed_pre_key_id` used for pruning
-- `pending_outbound_message`: `sequence INTEGER PRIMARY KEY AUTOINCREMENT` (never reused), recipient user and device ID, 16-byte `message_id`, and the sealed frame (encrypted; the frame holds the application plaintext); unique per recipient and message ID
+- `pending_outbound_message`: `sequence INTEGER PRIMARY KEY AUTOINCREMENT` (never reused), recipient user and device ID, 16-byte `message_id`, and the sealed frame (encrypted; the frame holds the application plaintext); unique per recipient and message ID; since schema version 15 indexed by (recipient, `sequence`) for recipient-filtered pages
 - `processed_inbound_message`: the terminal tombstone per sender user and device ID and 16-byte `message_id`; since schema version 13 `committed_at` (the finalization time, commit or discard; epoch milliseconds, nullable for legacy rows, indexed) and `sealed_digest` (record type 12 for both outcomes, `NULL` for legacy rows); since schema version 14 `finalization` (0 committed, 1 discarded; CHECK, default 0) and `discard_reason` (1..5, set exactly for discarded rows, CHECK; plaintext metadata)
 - `pending_inbound_message` (schema version 13, milestone 20): `sequence INTEGER PRIMARY KEY AUTOINCREMENT` (never reused), sender user and device ID, 16-byte `message_id`, `received_at` (epoch milliseconds) and the sealed frame (record type 11; holds the application plaintext); unique per sender and message ID; since schema version 14 indexed by (sender, `sequence`) for sender-filtered pages
 
@@ -284,7 +289,7 @@ does not depend on Kodium internals. All IDs have a
 Open the storage with `SqlDelightClientStorage.open(driver, keyProvider)`.
 There is no unencrypted mode.
 
-The schema version is 14. Version 1 (milestones 3 and 4) had no
+The schema version is 15. Version 1 (milestones 3 and 4) had no
 `remote_identity` table; `1.sqm` adds it and changes nothing else. Version 2
 (milestone 5) had no `retired_session_initiation` table; `2.sqm` adds it and
 changes nothing else. Version 3 (milestone 6) had no lifecycle columns;
@@ -333,7 +338,10 @@ Version 13 (milestone 20) had no discard; `13.sqm` adds
 committed) and `discard_reason` (`NULL`) and the pending sender index. No
 existing value changes, digests and times included
 ([message-discard.md](message-discard.md#storage-and-migration)).
-Frozen copies of versions 1–13 (`Version1Schema` … `Version13Schema`) back the
+Version 14 (milestone 21) had no recipient index on pending outbound
+messages; `14.sqm` adds `pending_outbound_message_recipient` and changes no
+row ([outbound-message-lifecycle.md](outbound-message-lifecycle.md#storage)).
+Frozen copies of versions 1–14 (`Version1Schema` … `Version14Schema`) back the
 migration tests.
 A driver created with `SqlDelightClientStorage.Schema`,
 as in the table above, reads SQLite's `user_version` on open and runs the
@@ -371,7 +379,8 @@ so they are only linked and run on a Linux or Windows host.
 - A secure or monotonic clock for the signed prekey lifecycle.
 - Automatic pruning of processed message IDs (only explicit
   `pruneProcessedMessages`, see [application-delivery.md](application-delivery.md#processed-id-retention)),
-  and any expiry of uncommitted pending inbound messages.
+  and any expiry of uncommitted pending inbound or unacknowledged pending
+  outbound messages (only explicit discard and abandon).
 - Platform storage key providers, storage key rotation, rollback protection
   and integrity of plaintext metadata
   ([storage-encryption.md](storage-encryption.md#not-covered)).

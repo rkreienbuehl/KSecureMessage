@@ -142,7 +142,7 @@ class IdentityVerificationStorageTest {
         val before = driver.dump()
 
         val migrated = reopenAlice()
-        assertEquals(listOf(14L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(15L), driver.longs("PRAGMA user_version"))
         assertEquals(
             before.withUnverifiedPins().withLegacyProcessedMessages(),
             driver.dump() - "device_authentication_rotation_key" - "device_authentication_last_device_recovery_key",
@@ -159,7 +159,7 @@ class IdentityVerificationStorageTest {
 
         val aliceAgain = client(ALICE, migrated)
         aliceAgain.initialize()
-        assertEquals("pending too", aliceAgain.pendingMessages(BOB).single().plaintext.decodeToString())
+        assertEquals("pending too", aliceAgain.pendingMessages(limit = 100, recipient = BOB).messages.single().plaintext.decodeToString())
         assertEquals("pending at the upgrade", aliceAgain.accept(bob.retryAndTake()).plaintext.decodeToString())
         aliceAgain.markRemoteIdentityVerified(aliceAgain.safetyNumber(BOB))
         assertEquals(VerificationState.VERIFIED, aliceAgain.remoteIdentityTrust(BOB)?.verification)
@@ -177,7 +177,7 @@ class IdentityVerificationStorageTest {
         aliceDatabase.closeOpenDrivers()
 
         val storage = reopenAlice()
-        assertEquals(listOf(14L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(15L), driver.longs("PRAGMA user_version"))
         val record = assertNotNull(storage.remoteIdentities.record(BOB))
         assertContentEquals(ByteArray(64) { 5 }, record.identityKey)
         assertEquals(VerificationState.UNVERIFIED, record.verification)

@@ -125,8 +125,10 @@ internal class LegacyPlaintextMigration(private val driver: SqlDriver, private v
                 }.await()
             }
         }
-        // Dropping the old table removed its high-water mark; the copied rows
-        // only restored the highest remaining sequence.
+        // Dropping the old table removed its index (schema version 15) and its
+        // high-water mark; the copied rows only restored the highest
+        // remaining sequence.
+        execute(PENDING_OUTBOUND_RECIPIENT_INDEX_DDL)
         execute("DELETE FROM sqlite_sequence WHERE name = 'pending_outbound_message'")
         val restored = listOfNotNull(highWater, rows.maxOfOrNull { it.sequence }).maxOrNull()
         if (restored != null) {
@@ -185,5 +187,7 @@ internal class LegacyPlaintextMigration(private val driver: SqlDriver, private v
     sealed_frame BLOB NOT NULL,
     UNIQUE (recipient_user_id, recipient_device_id, message_id)
 )"""
+        const val PENDING_OUTBOUND_RECIPIENT_INDEX_DDL =
+            "CREATE INDEX pending_outbound_message_recipient ON pending_outbound_message (recipient_user_id, recipient_device_id, sequence)"
     }
 }

@@ -72,11 +72,11 @@ class SqlDelightHttpEndToEndTest {
         assertTrue(received.ackSent)
 
         server.restart()
-        assertEquals(listOf(hello.id), alice.pendingMessages(bobAddress).map { it.id })
+        assertEquals(listOf(hello.id), alice.pendingMessages(limit = 100, recipient = bobAddress).messages.map { it.id })
         val acknowledged = assertIs<ReceiveResult.Acknowledgement>(alice.decrypt(alice.receive().single()))
         assertEquals(hello.id, acknowledged.id)
         assertTrue(acknowledged.cleared)
-        assertEquals(emptyList(), alice.pendingMessages(bobAddress))
+        assertEquals(emptyList(), alice.pendingMessages(limit = 100, recipient = bobAddress).messages)
 
         bob.send(aliceAddress, "Hello Alice".encodeToByteArray())
         server.restart()
@@ -86,7 +86,7 @@ class SqlDelightHttpEndToEndTest {
 
         server.restart()
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(bob.decrypt(bob.receive().single())).cleared)
-        assertEquals(emptyList(), bob.pendingMessages(aliceAddress))
+        assertEquals(emptyList(), bob.pendingMessages(limit = 100, recipient = aliceAddress).messages)
         assertEquals(emptyList(), bob.receive(), "drained envelopes stay gone")
 
         // Bob republishes after the restarts: the consumed #0 is never handed out again.

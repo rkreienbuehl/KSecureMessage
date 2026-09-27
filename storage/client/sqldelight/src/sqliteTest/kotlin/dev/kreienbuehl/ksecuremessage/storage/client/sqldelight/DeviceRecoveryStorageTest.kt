@@ -213,7 +213,7 @@ class DeviceRecoveryStorageTest {
         database.closeOpenDrivers()
 
         val storage = reopen()
-        assertEquals(listOf(14L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(15L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
         assertEquals(
             before.withUnverifiedPins().withLegacyProcessedMessages(),

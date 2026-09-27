@@ -162,4 +162,28 @@ class MessageCollisionRecoveryTest {
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(c.loser.receiveOne()).cleared)
         assertEquals(emptyList(), c.loser.pending(c.winner))
     }
+
+    /**
+     * A message lost in a collision and abandoned before the sessions
+     * converged is never resent on the winning session
+     * (docs/outbound-message-lifecycle.md); the winning session keeps working.
+     */
+    @Test
+    fun messageAbandonedBeforeConvergenceIsNotResent() = bothWinners { c ->
+        assertFailsWith<SecureMessageClientException.SessionCollision> { c.winner.receive(c.toWinner) }
+        assertEquals(listOf(c.loserMessage.id), c.loser.pending(c.winner))
+
+        assertEquals(AbandonStatus.ABANDONED, c.loser.client.abandonPendingMessage(c.winner.address, c.loserMessage.id))
+        assertEquals(emptyList(), c.winner.inbox(), "abandoning sends nothing")
+
+        c.loser.commit(c.loser.receive(c.toLoser))
+        assertTrue(assertIs<ReceiveResult.Acknowledgement>(c.winner.receiveOne()).cleared)
+        assertEquals(emptyList(), c.loser.client.retryPendingMessages(c.winner.address))
+        assertEquals(emptyList(), c.winner.inbox())
+        assertEquals(emptyList(), c.loser.pending(c.winner))
+
+        c.loser.send(c.winner, "after convergence")
+        assertEquals("after convergence", c.winner.acceptOne())
+        assertTrue(assertIs<ReceiveResult.Acknowledgement>(c.loser.receiveOne()).cleared)
+    }
 }

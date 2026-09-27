@@ -852,9 +852,9 @@ abstract class ClientStorageContractTest {
 
         assertTrue(first < other && other < second && second < third)
         // Send order, not ID order.
-        assertEquals(listOf(messageId(3), messageId(1), messageId(2)), storage.pendingOutbound.list(bob).map { it.id })
-        assertEquals(listOf(first, second, third), storage.pendingOutbound.list(bob).map { it.sequence })
-        assertEquals(listOf(messageId(1)), storage.pendingOutbound.list(alice).map { it.id })
+        assertEquals(listOf(messageId(3), messageId(1), messageId(2)), storage.pendingOutbound.page(0, Int.MAX_VALUE, bob).map { it.id })
+        assertEquals(listOf(first, second, third), storage.pendingOutbound.page(0, Int.MAX_VALUE, bob).map { it.sequence })
+        assertEquals(listOf(messageId(1)), storage.pendingOutbound.page(0, Int.MAX_VALUE, alice).map { it.id })
         val loaded = assertNotNull(storage.pendingOutbound.get(bob, messageId(1)))
         assertEquals(bob, loaded.recipient)
         assertEquals(second, loaded.sequence)
@@ -879,7 +879,7 @@ abstract class ClientStorageContractTest {
         storage.pendingOutbound.store(bob, messageId(1), bytes(1))
         assertFailsWith<IllegalArgumentException> { storage.pendingOutbound.store(bob, messageId(1), bytes(2)) }
         assertContentEquals(bytes(1), storage.pendingOutbound.get(bob, messageId(1))?.frame)
-        assertEquals(1, storage.pendingOutbound.list(bob).size)
+        assertEquals(1, storage.pendingOutbound.page(0, Int.MAX_VALUE, bob).size)
     }
 
     @Test
@@ -894,10 +894,112 @@ abstract class ClientStorageContractTest {
         val third = storage.pendingOutbound.store(bob, messageId(3), bytes(3))
 
         assertTrue(third > second)
-        assertEquals(listOf(first, third), storage.pendingOutbound.list(bob).map { it.sequence })
+        assertEquals(listOf(first, third), storage.pendingOutbound.page(0, Int.MAX_VALUE, bob).map { it.sequence })
         // The same ID may become pending again once removed.
         storage.pendingOutbound.store(bob, messageId(2), bytes(4))
-        assertEquals(listOf(messageId(1), messageId(3), messageId(2)), storage.pendingOutbound.list(bob).map { it.id })
+        assertEquals(listOf(messageId(1), messageId(3), messageId(2)), storage.pendingOutbound.page(0, Int.MAX_VALUE, bob).map { it.id })
+    }
+
+    // Pending outbound pagination and abandon (docs/outbound-message-lifecycle.md)
+
+    @Test
+    fun pendingOutboundPagesFollowTheSequenceCursor() = runTest {
+        val storage = newStorage()
+        val sequences = (1..7).map { storage.pendingOutbound.store(if (it % 2 == 0) alice else bob, messageId(it), bytes(it)) }
+
+        val first = storage.pendingOutbound.page(0, 3)
+        assertEquals(sequences.take(3), first.map { it.sequence })
+        assertEquals(listOf(bob, alice, bob), first.map { it.recipient }, "one global sequence across recipients")
+        val second = storage.pendingOutbound.page(first.last().sequence, 3)
+        assertEquals(sequences.subList(3, 6), second.map { it.sequence }, "strictly after the cursor: the last row is not repeated")
+        assertEquals(sequences.drop(6), storage.pendingOutbound.page(second.last().sequence, 3).map { it.sequence })
+        assertEquals(emptyList(), storage.pendingOutbound.page(sequences.last(), 3))
+        assertEquals(sequences, storage.pendingOutbound.page(0, 7).map { it.sequence }, "ascending order")
+        assertEquals(1, storage.pendingOutbound.page(0, 1).size, "the limit is honored")
+        assertEquals(listOf(messageId(2)), storage.pendingOutbound.page(0, 1, alice).map { it.id })
+        assertEquals(bytes(4).toList(), storage.pendingOutbound.page(sequences[1], 1, alice).single().frame.toList())
+        assertEquals(listOf(messageId(3), messageId(5)), storage.pendingOutbound.page(sequences[0], 2, bob).map { it.id }, "the filter uses the global cursor")
+        assertEquals(7L, storage.pendingOutbound.count())
+        assertEquals(3L, storage.pendingOutbound.count(alice))
+        assertEquals(4L, storage.pendingOutbound.count(bob))
+        assertEquals(0L, storage.pendingOutbound.count(DeviceAddress(UserId("carol"), DeviceId("phone"))))
+    }
+
+    @Test
+    fun pendingOutboundPagesRejectInvalidBounds() = runTest {
+        val storage = newStorage()
+        storage.pendingOutbound.store(bob, messageId(1), bytes(1))
+        assertFailsWith<IllegalArgumentException> { storage.pendingOutbound.page(0, 0) }
+        assertFailsWith<IllegalArgumentException> { storage.pendingOutbound.page(0, -1) }
+        assertFailsWith<IllegalArgumentException> { storage.pendingOutbound.page(-1, 1) }
+        assertFailsWith<IllegalArgumentException> { storage.pendingOutbound.page(-1, 1, bob) }
+    }
+
+    @Test
+    fun pendingOutboundPagesAreStableWhenEntriesDisappearOrArrive() = runTest {
+        val storage = newStorage()
+        val sequences = (1..10).map { storage.pendingOutbound.store(bob, messageId(it), bytes(it)) }
+        val first = storage.pendingOutbound.page(0, 4)
+        assertEquals(sequences.take(4), first.map { it.sequence })
+        // Acknowledged or abandoned between pages: one already returned, two not yet returned.
+        storage.pendingOutbound.remove(bob, messageId(2))
+        storage.pendingOutbound.remove(bob, messageId(5))
+        storage.pendingOutbound.remove(bob, messageId(6))
+        val arrived = storage.pendingOutbound.store(alice, messageId(11), bytes(11))
+
+        val rest = storage.pendingOutbound.page(first.last().sequence, 100)
+        assertEquals(listOf(sequences[6], sequences[7], sequences[8], sequences[9], arrived), rest.map { it.sequence })
+        assertEquals(listOf(sequences[6], sequences[7], sequences[8], sequences[9]), storage.pendingOutbound.page(first.last().sequence, 100, bob).map { it.sequence })
+        val seen = (first + rest).map { it.sequence }
+        assertEquals(seen.distinct(), seen, "no message twice")
+    }
+
+    @Test
+    fun removingAPendingMessageRemovesExactlyThatMessage() = runTest {
+        val storage = newStorage()
+        storage.pendingOutbound.store(bob, messageId(1), bytes(1))
+        storage.pendingOutbound.store(bob, messageId(2), bytes(2))
+        storage.pendingOutbound.store(alice, messageId(1), bytes(3))
+        storage.pendingInbound.store(bob, messageId(1), bytes(4), at(1))
+        storage.processedInbound.markCommitted(bob, messageId(2), bytes(5), at(2))
+
+        assertTrue(storage.pendingOutbound.remove(bob, messageId(1)))
+
+        assertEquals(listOf(bob to messageId(2), alice to messageId(1)), storage.pendingOutbound.page(0, 100).map { it.recipient to it.id })
+        assertEquals(2L, storage.pendingOutbound.count())
+        assertTrue(storage.pendingInbound.contains(bob, messageId(1)), "received messages are not sent messages")
+        assertTrue(storage.processedInbound.isProcessed(bob, messageId(2)))
+    }
+
+    @Test
+    fun removingEveryPendingMessageDoesNotRewindTheSequence() = runTest {
+        val storage = newStorage()
+        val first = storage.pendingOutbound.store(bob, messageId(1), bytes(1))
+        val second = storage.pendingOutbound.store(alice, messageId(2), bytes(2))
+        storage.pendingOutbound.remove(bob, messageId(1))
+        storage.pendingOutbound.remove(alice, messageId(2))
+        assertEquals(0L, storage.pendingOutbound.count())
+
+        val third = storage.pendingOutbound.store(bob, messageId(3), bytes(3))
+        assertTrue(third > second && second > first)
+        assertEquals(listOf(third), storage.pendingOutbound.page(second, 10).map { it.sequence })
+    }
+
+    @Test
+    fun rolledBackRemovalKeepsThePendingMessage() = runTest {
+        val storage = newStorage()
+        val sequence = storage.pendingOutbound.store(bob, messageId(1), bytes(1))
+
+        assertFailsWith<Failure> {
+            storage.transaction {
+                assertTrue(pendingOutbound.remove(bob, messageId(1)))
+                assertEquals(0L, pendingOutbound.count(bob))
+                throw Failure()
+            }
+        }
+
+        assertEquals(listOf(sequence), storage.pendingOutbound.page(0, 10, bob).map { it.sequence })
+        assertContentEquals(bytes(1), storage.pendingOutbound.get(bob, messageId(1))?.frame)
     }
 
     @Test
@@ -1173,7 +1275,7 @@ abstract class ClientStorageContractTest {
             }
         }
 
-        assertEquals(listOf(messageId(1)), storage.pendingOutbound.list(bob).map { it.id })
+        assertEquals(listOf(messageId(1)), storage.pendingOutbound.page(0, Int.MAX_VALUE, bob).map { it.id })
         assertTrue(storage.processedInbound.isProcessed(bob, messageId(1)))
         assertFalse(storage.processedInbound.isProcessed(bob, messageId(2)))
         assertFalse(storage.processedInbound.isProcessed(bob, messageId(3)))
@@ -1190,7 +1292,7 @@ abstract class ClientStorageContractTest {
         assertContentEquals(bytes(1), storage.pendingOutbound.get(bob, messageId(1))?.frame)
 
         storage.pendingOutbound.get(bob, messageId(1))!!.frame.fill(0)
-        storage.pendingOutbound.list(bob).single().frame.fill(0)
+        storage.pendingOutbound.page(0, Int.MAX_VALUE, bob).single().frame.fill(0)
         assertContentEquals(bytes(1), storage.pendingOutbound.get(bob, messageId(1))?.frame)
     }
 

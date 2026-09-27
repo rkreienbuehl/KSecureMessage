@@ -102,7 +102,9 @@ import kotlin.time.Instant
  * table and the `processed_inbound_message` commit time and digest
  * (milestone 20, docs/application-delivery.md), version 14 the
  * `processed_inbound_message` finalization and discard reason and the
- * sender pagination index (milestone 21, docs/message-discard.md). A driver created with
+ * sender pagination index (milestone 21, docs/message-discard.md), version
+ * 15 the `pending_outbound_message` recipient pagination index (milestone 22,
+ * docs/outbound-message-lifecycle.md). A driver created with
  * [Schema] upgrades an older database on open; an application that manages
  * versions itself calls `Schema.migrate(driver, oldVersion, Schema.version)`. An upgraded database still holds
  * its milestone 8 plaintext until [open] encrypts it. Session state written
@@ -206,7 +208,9 @@ class SqlDelightClientStorage private constructor(
         override suspend fun store(recipient: DeviceAddress, id: LogicalMessageId, frame: ByteArray) =
             transaction { pendingOutbound.store(recipient, id, frame) }
         override suspend fun get(recipient: DeviceAddress, id: LogicalMessageId) = transaction { pendingOutbound.get(recipient, id) }
-        override suspend fun list(recipient: DeviceAddress) = transaction { pendingOutbound.list(recipient) }
+        override suspend fun page(afterSequence: Long, limit: Int, recipient: DeviceAddress?) =
+            transaction { pendingOutbound.page(afterSequence, limit, recipient) }
+        override suspend fun count(recipient: DeviceAddress?) = transaction { pendingOutbound.count(recipient) }
         override suspend fun remove(recipient: DeviceAddress, id: LogicalMessageId) =
             transaction { pendingOutbound.remove(recipient, id) }
     }
@@ -483,10 +487,29 @@ private class DatabaseView(private val queries: ClientStateQueries, private val 
             return PendingOutboundMessage(recipient, id, row.sequence, records.openPendingFrame(recipient, id, row.sealed_frame))
         }
 
-        override suspend fun list(recipient: DeviceAddress): List<PendingOutboundMessage> =
-            queries.selectPendingOutboundFor(recipient.userId.value, recipient.deviceId.value).awaitAsList().map { row ->
-                val id = LogicalMessageId.fromByteArray(row.message_id)
-                PendingOutboundMessage(recipient, id, row.sequence, records.openPendingFrame(recipient, id, row.sealed_frame))
+        override suspend fun page(afterSequence: Long, limit: Int, recipient: DeviceAddress?): List<PendingOutboundMessage> {
+            require(limit > 0) { "limit must be positive" }
+            require(afterSequence >= 0) { "afterSequence must not be negative" }
+            if (recipient == null) {
+                return queries.selectPendingOutboundPage(afterSequence, limit.toLong()).awaitAsList().map { row ->
+                    val to = DeviceAddress(UserId(row.recipient_user_id), DeviceId(row.recipient_device_id))
+                    val id = LogicalMessageId.fromByteArray(row.message_id)
+                    PendingOutboundMessage(to, id, row.sequence, records.openPendingFrame(to, id, row.sealed_frame))
+                }
+            }
+            return queries.selectPendingOutboundPageTo(recipient.userId.value, recipient.deviceId.value, afterSequence, limit.toLong())
+                .awaitAsList()
+                .map { row ->
+                    val id = LogicalMessageId.fromByteArray(row.message_id)
+                    PendingOutboundMessage(recipient, id, row.sequence, records.openPendingFrame(recipient, id, row.sealed_frame))
+                }
+        }
+
+        override suspend fun count(recipient: DeviceAddress?): Long =
+            if (recipient == null) {
+                queries.countAllPendingOutbound().awaitAsOne()
+            } else {
+                queries.countPendingOutboundTo(recipient.userId.value, recipient.deviceId.value).awaitAsOne()
             }
 
         override suspend fun remove(recipient: DeviceAddress, id: LogicalMessageId): Boolean {

@@ -148,7 +148,7 @@ class SqlDelightMigrationTest {
         old.exec("INSERT INTO remote_identity (remote_user_id, remote_device_id, identity_key) VALUES ('alice', 'phone', ?)", assertNotNull(bobStorage.remoteIdentities.identityKey(ALICE)))
         val retired = SessionInitiationId(ByteArray(32) { 7 })
         old.exec("INSERT INTO retired_session_initiation (remote_user_id, remote_device_id, initiation_id, signed_pre_key_id) VALUES ('dave', 'desktop', ?, 0)", retired.bytes)
-        val stored = bobStorage.pendingOutbound.list(ALICE).single()
+        val stored = bobStorage.pendingOutbound.page(0, Int.MAX_VALUE, ALICE).single()
         // Sequence 5 with a high-water mark of 9: earlier messages were acknowledged and removed.
         old.exec("INSERT INTO pending_outbound_message (sequence, recipient_user_id, recipient_device_id, message_id, frame) VALUES (5, 'alice', 'phone', ?, ?)", pending.id.toByteArray(), stored.frame)
         old.exec("UPDATE sqlite_sequence SET seq = 9 WHERE name = 'pending_outbound_message'")
@@ -211,7 +211,7 @@ class SqlDelightMigrationTest {
         assertNotNull(storage.remoteIdentities.identityKey(ALICE))
         assertTrue(storage.sessionInitiations.isRetired(DAVE, m8.retired))
         assertEquals(setOf(SignedPreKeyId(0)), storage.sessionInitiations.retiredSignedPreKeyIds())
-        val pending = storage.pendingOutbound.list(ALICE).single()
+        val pending = storage.pendingOutbound.page(0, Int.MAX_VALUE, ALICE).single()
         assertEquals(m8.pendingId, pending.id)
         assertEquals(m8.pendingSequence, pending.sequence)
         assertContentEquals(m8.pendingFrame, pending.frame)
@@ -246,13 +246,13 @@ class SqlDelightMigrationTest {
         network.receive(ALICE).forEach { alice.decrypt(it) } // acknowledgement
 
         // The pending M8 message is resent with the same logical ID and fresh ciphertext, and acknowledged.
-        assertEquals(listOf(m8.pendingId), bob().pendingMessages(ALICE).map { it.id })
+        assertEquals(listOf(m8.pendingId), bob().pendingMessages(limit = 100, recipient = ALICE).messages.map { it.id })
         assertEquals(listOf(m8.pendingId), bob().retryPendingMessages(ALICE))
         val resent = alice.accept(network.receive(ALICE).single())
         assertEquals(m8.pendingId, resent.id)
         assertEquals(PENDING_TEXT, resent.plaintext.decodeToString())
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(bob().decrypt(network.receive(BOB).single())).cleared)
-        assertEquals(emptyList(), bob().pendingMessages(ALICE))
+        assertEquals(emptyList(), bob().pendingMessages(limit = 100, recipient = ALICE).messages)
 
         // A delayed first contact that names the replaced signed prekey is accepted during its grace period.
         val carol = client(CAROL, InMemoryClientStorage())
@@ -386,7 +386,7 @@ class SqlDelightMigrationTest {
 
         val storage = reopen()
         assertEquals(StorageKeyRotationStatus(StorageKeyRotationPhase.STABLE, StorageKeyId(1), null, null, 0), storage.storageKeyRotationStatus())
-        assertEquals(listOf(14L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(15L), driver.longs("PRAGMA user_version"))
         // Every row is unchanged; storage_encryption only gained the rotation columns, the
         // device authentication tables of schema version 8 mark the identity as awaiting its key,
         // and the recovery table of schema version 9, the rotation table of version 11 and the
@@ -455,7 +455,7 @@ class SqlDelightMigrationTest {
         assertEquals(spkInfos, reopen(keys = provider()).preKeys.signedPreKeyInfos())
 
         // The pending M8 message keeps its logical ID, sequence and frame, is resent and acknowledged.
-        val pending = reopen(keys = provider()).pendingOutbound.list(ALICE).single()
+        val pending = reopen(keys = provider()).pendingOutbound.page(0, Int.MAX_VALUE, ALICE).single()
         assertEquals(m8.pendingId, pending.id)
         assertEquals(m8.pendingSequence, pending.sequence)
         assertContentEquals(m8.pendingFrame, pending.frame)
@@ -464,7 +464,7 @@ class SqlDelightMigrationTest {
         assertIs<RatchetMessage>(CiphertextMessageCodec.decode(resent.payload))
         assertEquals(PENDING_TEXT, alice.accept(resent).plaintext.decodeToString())
         assertTrue(assertIs<ReceiveResult.Acknowledgement>(bob().decrypt(network.receive(BOB).single())).cleared)
-        assertEquals(emptyList(), bob().pendingMessages(ALICE))
+        assertEquals(emptyList(), bob().pendingMessages(limit = 100, recipient = ALICE).messages)
 
         // Both directions keep working on the migrated storage.
         bob().send(ALICE, "after rotation".encodeToByteArray())
