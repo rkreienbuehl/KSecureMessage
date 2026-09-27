@@ -60,7 +60,7 @@ database on open. A host that manages the schema itself calls
 `open` creates and migrates no schema: it reads the single-row
 `server_storage` marker and throws `IllegalStateException` (without SQL
 details) if the database has no server schema, is still at schema version
-1, 2 or 3 (format 1, 2 or 3: migrate it first), or has an unknown format.
+1 to 6 (format 1–6: migrate it first), or has an unknown format.
 
 `open(driver, dispatcher, clock)` takes an optional `CoroutineDispatcher`
 (default `Dispatchers.IO`) for the blocking driver calls and an optional
@@ -93,19 +93,20 @@ storage/server/
 or `sqldelight-sqlite` / `sqldelight-postgresql` if SQLDelight dialect
 separation proves useful. None of this exists yet.
 
-## Schema (server schema version 6)
+## Schema (server schema version 7)
 
 Defined in `ServerState.sq`, independent of the client schema (client
 versions do not apply here). Migrations are `.sqm` files with server-own
 numbering: `1.sqm` migrates version 1 (M13) to 2 (M14), `2.sqm` version 2 to
-3 (M16), `3.sqm` version 3 to 4 (M17), `4.sqm` version 4 to 5 (M18), `5.sqm` version 5 to 6 (M19, below). Timestamps are epoch
+3 (M16), `3.sqm` version 3 to 4 (M17), `4.sqm` version 4 to 5 (M18), `5.sqm` version 5 to 6 (M19), `6.sqm` version 6 to 7 (M23, below). Timestamps are epoch
 milliseconds. Uniqueness is enforced by the database, not only by Kotlin:
 
 | Table | Key / constraint | Columns |
 |---|---|---|
-| `server_storage` | `id = 0` (single row) | `format` = 6 (1–5 = schema versions 1–5) |
+| `server_storage` | `id = 0` (single row) | `format` = 7 (1–6 = schema versions 1–6) |
 | `device_registration` | PK `(user_id, device_id)` | `auth_public_key`, `auth_epoch` (≥ 1, default 1, never wraps), `recovery_id` (32-byte `DeviceRecoveryId` or `NULL`), `rotation_id` (32-byte `DeviceAuthenticationRotationId` or `NULL`), `auth_key_installed_at` (server time the current key was installed at, epoch ms; nullable only for migrated rows until `open` stamps them), `last_device_recovery_id` (32-byte `LastDeviceRecoveryId` or `NULL`, M18); at most one of the three IDs is set: the transition that installed the current key |
-| `last_device_recovery_key_state` | PK `user_id`; CHECKs tie key and installation time to the state | `state` (1 ACTIVE, 2 REVOKED; no row = never configured), `epoch` (recovery key epoch ≥ 1, never reset or wrapped), `public_key` (Ed25519, 32 bytes, only while ACTIVE; never a private key), `installed_at` (only while ACTIVE), `transitioned_at`, `rotation_id` / `revocation_id` (at most one) (M18/M19, docs/recovery-key-lifecycle.md) |
+| `last_device_recovery_key_state` | PK `user_id`; CHECKs tie key and installation time to the state | `state` (1 ACTIVE, 2 REVOKED; no row = never configured), `epoch` (recovery key epoch ≥ 1, never reset or wrapped), `public_key` (Ed25519, 32 bytes, only while ACTIVE; never a private key), `installed_at` (only while ACTIVE), `transitioned_at`, `rotation_id` / `revocation_id` / `reset_completion_id` (at most one; no reset ID when revoked) (M18/M19/M23, docs/recovery-key-lifecycle.md, docs/recovery-key-reset.md) |
+| `last_device_recovery_key_reset` | PK `user_id` (one pending reset per user), `reset_id` UNIQUE; CHECKs: 16-byte ID, 32-byte key, `eligible_at > requested_at` | `requested_by_device`, `expected_epoch` and `expected_public_key` (the ACTIVE state it replaces; public key only), `requested_at` / `eligible_at` (server clock and policy); deleted by a cancellation, the completion and every other recovery key transition of the user (M23, docs/recovery-key-reset.md) |
 | `last_device_recovery_challenge` | PK `(user_id, device_id)` (one per device), `challenge_id` UNIQUE, index on `expires_at` | `challenge_nonce`, `auth_epoch` and `auth_public_key` it was issued for, `issued_at`, `expires_at`, `recovery_key_epoch` (M19); deleted when consumed, replaced when outdated, deleted for the whole user by a recovery key rotation or revocation, pruned after expiry |
 | `authentication_nonce` | PK `(user_id, device_id, nonce)`, index on `request_timestamp` | `request_timestamp` |
 | `device_prekey_state` | PK `(user_id, device_id)` | `identity_key`, `signed_pre_key_id`, `signed_pre_key`, `signed_pre_key_signature` |
@@ -200,6 +201,24 @@ frozen fixture `ServerVersion5Schema` (and that a version 4 database
 migrated to 5 has its shape), the migrated key state and challenge binding,
 the CHECK constraints in fresh and migrated databases, and that the
 migrated schema equals a new one.
+
+### Migration from schema version 6 (M19–M22)
+
+`6.sqm` (milestone 23, docs/recovery-key-reset.md) rebuilds
+`last_device_recovery_key_state` (copy aside, recreate with exactly the new
+DDL, copy back, drop the copy), because SQLite cannot change a CHECK
+constraint in place: it adds `reset_completion_id` (NULL for every existing
+row: no state was produced by a reset before) and includes it in the "at
+most one transition ID" CHECK. Every state, epoch, key, installation and
+transition time and rotation/revocation ID is kept; no time is invented. It
+creates the empty `last_device_recovery_key_reset` table and sets
+`server_storage.format = 7`. Registrations, challenges, nonces, prekeys,
+tombstones, mailbox rows and the mailbox sequence are untouched. `open`
+refuses format 6 until the host migrated it. `SqlDelightServerMigrationTest`
+checks v6 → v7 (and v1–v5 → v7) against the frozen fixture
+`ServerVersion6Schema` (and that a version 5 database migrated to 6 has its
+shape), that the rebuilt table's DDL equals a new one, and the CHECK
+constraints of both tables in fresh and migrated databases.
 
 ## Transaction semantics
 
@@ -343,7 +362,9 @@ tables or statements) into the response.
 ## What the database contains
 
 It contains public device authentication keys, public last-device recovery
-key states (public key, epoch, transition IDs and times) and challenges (random IDs and nonces, never secret), public identity keys and
+key states (public key, epoch, transition IDs and times), pending recovery
+key resets (random reset ID, requesting device, the replaced public key and
+epoch, server times) and challenges (random IDs and nonces, never secret), public identity keys and
 prekeys with signatures, opaque encrypted envelopes with routing metadata
 (sender and recipient addresses, envelope ID, protocol version) and nonce
 replay metadata (nonce, request timestamp). It does not contain client
@@ -364,7 +385,7 @@ is not encrypted; that is out of scope, like backups.
 - `SqlDelightServerRollbackTest`: failure injection through a delegating
   driver (`TestDriver`), one test per operation.
 - `SqlDelightServerStorageOpenTest`: driver injection, schema marker (refuses
-  formats 1–5), driver ownership, database-level uniqueness, open never
+  formats 1–6), driver ownership, database-level uniqueness, open never
   rewrites a stored installation time, a missing one fails closed.
 - `SqlDelight*DeviceRecoveryRepositoryTest` / `FileBackedDeviceRecoveryRepositoryTest`:
   the recovery contract (`DeviceRecoveryRepositoryContractTest`).
@@ -394,7 +415,14 @@ is not encrypted; that is out of scope, like backups.
   after restarts, rollback around the nonce claim, the compare-and-set and
   the challenge deletion, a challenge of an older recovery key epoch, and no
   private recovery key material anywhere in the database file.
-- `SqlDelightServerMigrationTest`: schema version 1, 2, 3, 4 and 5 → 6,
+- `SqlDelight*RecoveryKeyResetRepositoryTest` /
+  `FileBackedRecoveryKeyResetRepositoryTest`: the delayed recovery key reset
+  contract (`RecoveryKeyResetRepositoryContractTest`), including its races.
+- `SqlDelightServerRecoveryKeyResetTest`: a pending reset, its timing,
+  completion, cancellation and exact retry across restarts, rollback around
+  the insert, the compare-and-set, the challenge and reset deletion, and no
+  private recovery key material in the database file.
+- `SqlDelightServerMigrationTest`: schema version 1, 2, 3, 4, 5 and 6 → 7,
   one-time legacy stamping of key installation times.
 
 ## Limitations
@@ -408,6 +436,7 @@ is not encrypted; that is out of scope, like backups.
   (docs/device-authentication-rotation.md) or by last-device recovery with
   the user's offline recovery key (docs/last-device-recovery.md); no device
   reset or deletion; recovery key rotation and revocation need the current
-  recovery key (no device-only reset); no sealed sender.
+  recovery key; a lost recovery key is replaced only by the delayed,
+  cancellable reset (docs/recovery-key-reset.md); no sealed sender.
 - Expired last-device recovery challenges are pruned only when a challenge is
   issued or a recovery reaches storage.

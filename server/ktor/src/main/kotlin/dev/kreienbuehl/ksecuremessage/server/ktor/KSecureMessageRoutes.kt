@@ -3,6 +3,7 @@ package dev.kreienbuehl.ksecuremessage.server.ktor
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
+import dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.RequestAuthentication
 import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
@@ -13,6 +14,7 @@ import dev.kreienbuehl.ksecuremessage.server.DeviceRecoveryException
 import dev.kreienbuehl.ksecuremessage.server.LastDeviceRecoveryException
 import dev.kreienbuehl.ksecuremessage.server.ProtectedEndpoint
 import dev.kreienbuehl.ksecuremessage.server.RecoveryKeyLifecycleException
+import dev.kreienbuehl.ksecuremessage.server.RecoveryKeyResetException
 import dev.kreienbuehl.ksecuremessage.server.SecureMessageServer
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
 import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryKeyException
@@ -42,7 +44,11 @@ import kotlin.time.Instant
  * recovery (docs/last-device-recovery.md) carry their own two signatures in
  * the body and no authentication headers. Registering the last-device
  * recovery key is ServerAuth-signed; issuing a last-device recovery challenge
- * is public.
+ * is public. The delayed recovery key reset (docs/recovery-key-reset.md) is
+ * ServerAuth-signed on its device routes; its two user-scoped routes
+ * (`/v1/users/{user}/…`, status query and cancellation) carry the current
+ * recovery key's signature in the body instead, for a holder of the offline
+ * key without a working device.
  *
  * Registration, prekey publication and mailbox drain are authenticated by
  * the device: the signature covers the exact body bytes, so those routes read
@@ -285,6 +291,143 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
         }
     }
 
+    // Delayed recovery key reset (docs/recovery-key-reset.md). Request: an
+    // empty body, ServerAuth-signed. The server alone chooses the reset ID,
+    // the request time and the eligibility time; an existing reset is
+    // returned unchanged (200), a new one with 201.
+    put("/v1/devices/{user}/{device}/last-device-recovery/key/reset") {
+        val address = call.deviceAddress()
+        val body = call.receive<ByteArray>()
+        val device = try {
+            server.authenticate(address, ProtectedEndpoint.REQUEST_LAST_DEVICE_RECOVERY_KEY_RESET, body, call.authentication())
+        } catch (e: DeviceAuthenticationException) {
+            return@put call.respondAuthenticationError(e)
+        } catch (e: Exception) {
+            return@put call.respondInternalError(e)
+        }
+        try {
+            val outcome = server.requestLastDeviceRecoveryKeyReset(device)
+            call.application.log.info("Recovery key reset of ${address.userId} requested by $address: ${if (outcome.created) "created" else "existing"}")
+            call.respond(if (outcome.created) HttpStatusCode.Created else HttpStatusCode.OK, (outcome.reset as RecoveryKeyResetStatus).toResponse())
+        } catch (e: RecoveryKeyResetException) {
+            call.respondRecoveryKeyResetError(address.userId, e)
+        } catch (e: Exception) {
+            call.respondInternalError(e)
+        }
+    }
+
+    // The user's pending reset, for every registered device of the user: ServerAuth-signed.
+    get("/v1/devices/{user}/{device}/last-device-recovery/key/reset") {
+        val address = call.deviceAddress()
+        val body = call.receive<ByteArray>()
+        val device = try {
+            server.authenticate(address, ProtectedEndpoint.READ_LAST_DEVICE_RECOVERY_KEY_RESET, body, call.authentication())
+        } catch (e: DeviceAuthenticationException) {
+            return@get call.respondAuthenticationError(e)
+        } catch (e: Exception) {
+            return@get call.respondInternalError(e)
+        }
+        val status = try {
+            server.lastDeviceRecoveryKeyResetStatus(device)
+        } catch (e: Exception) {
+            return@get call.respondInternalError(e)
+        }
+        call.respond(status.toResponse())
+    }
+
+    // Completion: ServerAuth by the path's device, and in the body the new
+    // key's proof of possession over the binary completion statement, which
+    // names that device and the pending reset.
+    put("/v1/devices/{user}/{device}/last-device-recovery/key/reset/completion") {
+        val address = call.deviceAddress()
+        val body = call.receive<ByteArray>()
+        val device = try {
+            server.authenticate(address, ProtectedEndpoint.COMPLETE_LAST_DEVICE_RECOVERY_KEY_RESET, body, call.authentication())
+        } catch (e: DeviceAuthenticationException) {
+            return@put call.respondAuthenticationError(e)
+        } catch (e: Exception) {
+            return@put call.respondInternalError(e)
+        }
+        val authorization = try {
+            Json.decodeFromString<RecoveryKeyResetCompletionRequestDto>(body.decodeToString()).toAuthorization(address)
+        } catch (e: IllegalArgumentException) {
+            return@put call.respondError(HttpStatusCode.BadRequest, INVALID_RECOVERY_KEY_RESET)
+        }
+        try {
+            val outcome = server.completeLastDeviceRecoveryKeyReset(device, authorization)
+            call.application.log.info("Recovery key reset of ${address.userId} completed by $address: ${outcome.name.lowercase()}")
+            call.respond(HttpStatusCode.NoContent)
+        } catch (e: RecoveryKeyResetException) {
+            call.respondRecoveryKeyResetError(address.userId, e)
+        } catch (e: Exception) {
+            call.respondInternalError(e)
+        }
+    }
+
+    // Cancellation by a registered device of the user: ServerAuth-signed; the body names the reset.
+    put("/v1/devices/{user}/{device}/last-device-recovery/key/reset/cancellation") {
+        val address = call.deviceAddress()
+        val body = call.receive<ByteArray>()
+        val device = try {
+            server.authenticate(address, ProtectedEndpoint.CANCEL_LAST_DEVICE_RECOVERY_KEY_RESET, body, call.authentication())
+        } catch (e: DeviceAuthenticationException) {
+            return@put call.respondAuthenticationError(e)
+        } catch (e: Exception) {
+            return@put call.respondInternalError(e)
+        }
+        val resetId = try {
+            Json.decodeFromString<RecoveryKeyResetCancellationRequestDto>(body.decodeToString()).toResetId()
+        } catch (e: IllegalArgumentException) {
+            return@put call.respondError(HttpStatusCode.BadRequest, INVALID_RECOVERY_KEY_RESET)
+        }
+        try {
+            server.cancelLastDeviceRecoveryKeyReset(device, resetId)
+            call.application.log.info("Recovery key reset of ${address.userId} cancelled by $address")
+            call.respond(HttpStatusCode.NoContent)
+        } catch (e: RecoveryKeyResetException) {
+            call.respondRecoveryKeyResetError(address.userId, e)
+        } catch (e: Exception) {
+            call.respondInternalError(e)
+        }
+    }
+
+    // Status query by the current recovery key (no device, not ServerAuth-signed).
+    post("/v1/users/{user}/last-device-recovery/key/reset/status") {
+        val userId = UserId(requireNotNull(call.parameters["user"]))
+        val query = try {
+            Json.decodeFromString<RecoveryKeyResetStatusQueryDto>(call.receive<ByteArray>().decodeToString()).toQuery(userId)
+        } catch (e: IllegalArgumentException) {
+            return@post call.respondError(HttpStatusCode.BadRequest, INVALID_RECOVERY_KEY_RESET)
+        }
+        val status = try {
+            server.lastDeviceRecoveryKeyResetStatusByRecoveryKey(query)
+        } catch (e: RecoveryKeyResetException) {
+            return@post call.respondRecoveryKeyResetError(userId, e)
+        } catch (e: Exception) {
+            return@post call.respondInternalError(e)
+        }
+        call.respond(status.toResponse())
+    }
+
+    // Cancellation by the current recovery key (no device, not ServerAuth-signed).
+    put("/v1/users/{user}/last-device-recovery/key/reset/cancellation") {
+        val userId = UserId(requireNotNull(call.parameters["user"]))
+        val authorization = try {
+            Json.decodeFromString<RecoveryKeyResetRecoveryKeyCancellationRequestDto>(call.receive<ByteArray>().decodeToString()).toAuthorization(userId)
+        } catch (e: IllegalArgumentException) {
+            return@put call.respondError(HttpStatusCode.BadRequest, INVALID_RECOVERY_KEY_RESET)
+        }
+        try {
+            server.cancelLastDeviceRecoveryKeyResetByRecoveryKey(authorization)
+            call.application.log.info("Recovery key reset of $userId cancelled by the recovery key")
+            call.respond(HttpStatusCode.NoContent)
+        } catch (e: RecoveryKeyResetException) {
+            call.respondRecoveryKeyResetError(userId, e)
+        } catch (e: Exception) {
+            call.respondInternalError(e)
+        }
+    }
+
     // A last-device recovery challenge for the target (public). Returns the
     // outstanding challenge while it is valid, so repeated requests never
     // invalidate each other.
@@ -406,6 +549,24 @@ private const val INVALID_LAST_DEVICE_RECOVERY = "invalid_last_device_recovery"
 private const val INVALID_RECOVERY_KEY_ROTATION = "invalid_recovery_key_rotation"
 private const val INVALID_RECOVERY_KEY_REVOCATION = "invalid_recovery_key_revocation"
 private const val RECOVERY_KEY_EPOCH_EXHAUSTED = "recovery_key_epoch_exhausted"
+private const val INVALID_RECOVERY_KEY_RESET = "invalid_recovery_key_reset"
+
+/** The user and the failure category only are logged: never keys, signatures, reset IDs or the body. */
+private suspend fun ApplicationCall.respondRecoveryKeyResetError(userId: UserId, e: RecoveryKeyResetException) {
+    val (status, error) = when (e) {
+        is RecoveryKeyResetException.NotAvailable -> HttpStatusCode.NotFound to "recovery_key_reset_not_available"
+        is RecoveryKeyResetException.NotConfigured -> HttpStatusCode.NotFound to "recovery_key_not_configured"
+        is RecoveryKeyResetException.NotPending -> HttpStatusCode.NotFound to "recovery_key_reset_not_pending"
+        is RecoveryKeyResetException.NotYetEligible -> HttpStatusCode.Conflict to "recovery_key_reset_not_yet_eligible"
+        is RecoveryKeyResetException.Conflict -> HttpStatusCode.Conflict to "recovery_key_reset_conflict"
+        is RecoveryKeyResetException.InvalidRequest -> HttpStatusCode.BadRequest to INVALID_RECOVERY_KEY_RESET
+        is RecoveryKeyResetException.InvalidProof -> HttpStatusCode.Unauthorized to "recovery_key_reset_invalid_proof"
+        is RecoveryKeyResetException.Expired -> HttpStatusCode.Unauthorized to "recovery_key_reset_expired"
+        is RecoveryKeyResetException.EpochExhausted -> HttpStatusCode.Conflict to RECOVERY_KEY_EPOCH_EXHAUSTED
+    }
+    application.log.info("Recovery key reset operation of $userId rejected: $error")
+    respondError(status, error)
+}
 
 /**
  * [kind] is `rotation` or `revocation`. The user, the authorizing device and

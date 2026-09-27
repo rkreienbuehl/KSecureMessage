@@ -7,6 +7,7 @@ import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.Las
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.Reason
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RecoveryFailure
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RecoveryKeyFailure
+import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RecoveryKeyResetFailure
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RecoveryKeyTransitionFailure
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RotationFailure
 import dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner
@@ -17,11 +18,16 @@ import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
+import dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetId
+import dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCancellationAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCompletionAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetStatusQuery
 import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
@@ -196,6 +202,85 @@ class KtorSecureMessageTransport(
             "recovery_key_epoch_exhausted" -> RecoveryKeyTransitionFailure.EPOCH_EXHAUSTED
             else -> null
         }
+
+    override suspend fun requestLastDeviceRecoveryKeyReset(address: DeviceAddress, signer: ServerRequestSigner): RecoveryKeyResetStatus.Pending {
+        val response = authenticated(HttpMethod.Put, address, ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET, body = null, signer)
+        if (response.status != HttpStatusCode.Created && response.status != HttpStatusCode.OK) {
+            throw response.recoveryKeyResetRejected() ?: response.unexpected()
+        }
+        return response.resetStatus(address.userId) as? RecoveryKeyResetStatus.Pending
+            ?: throw SecureMessageTransportException.UnexpectedResponse(response.status.value)
+    }
+
+    override suspend fun lastDeviceRecoveryKeyResetStatus(address: DeviceAddress, signer: ServerRequestSigner): RecoveryKeyResetStatus {
+        val response = authenticated(HttpMethod.Get, address, ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET, body = null, signer)
+        if (response.status != HttpStatusCode.OK) throw response.unexpected()
+        return response.resetStatus(address.userId)
+    }
+
+    override suspend fun completeLastDeviceRecoveryKeyReset(authorization: RecoveryKeyResetCompletionAuthorization, signer: ServerRequestSigner) {
+        val body = Json.encodeToString(authorization.toRequest()).encodeToByteArray()
+        val response = authenticated(
+            HttpMethod.Put, authorization.statement.completer, ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET_COMPLETION, body, signer,
+        )
+        if (response.status.isSuccess()) return
+        throw response.recoveryKeyResetRejected() ?: response.unexpected()
+    }
+
+    override suspend fun cancelLastDeviceRecoveryKeyReset(address: DeviceAddress, resetId: RecoveryKeyResetId, signer: ServerRequestSigner) {
+        val body = Json.encodeToString(RecoveryKeyResetCancellationRequestDto(Base64.encode(resetId.bytes))).encodeToByteArray()
+        val response = authenticated(HttpMethod.Put, address, ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET_CANCELLATION, body, signer)
+        if (response.status.isSuccess()) return
+        throw response.recoveryKeyResetRejected() ?: response.unexpected()
+    }
+
+    override suspend fun lastDeviceRecoveryKeyResetStatusByRecoveryKey(query: RecoveryKeyResetStatusQuery): RecoveryKeyResetStatus {
+        val userId = query.statement.userId
+        val body = Json.encodeToString(query.toRequest()).encodeToByteArray()
+        val response = client.request(baseUrl + ServerApiPaths.user(userId, ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET_STATUS)) {
+            method = HttpMethod.Post
+            setBody(ByteArrayContent(body, ContentType.Application.Json))
+        }
+        if (response.status != HttpStatusCode.OK) {
+            throw response.recoveryKeyResetRejected() ?: SecureMessageTransportException.UnexpectedResponse(response.status.value)
+        }
+        return response.resetStatus(userId)
+    }
+
+    override suspend fun cancelLastDeviceRecoveryKeyResetByRecoveryKey(authorization: RecoveryKeyResetCancellationAuthorization) {
+        val body = Json.encodeToString(authorization.toRequest()).encodeToByteArray()
+        val response = client.request(
+            baseUrl + ServerApiPaths.user(authorization.statement.userId, ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET_CANCELLATION),
+        ) {
+            method = HttpMethod.Put
+            setBody(ByteArrayContent(body, ContentType.Application.Json))
+        }
+        if (response.status.isSuccess()) return
+        throw response.recoveryKeyResetRejected() ?: SecureMessageTransportException.UnexpectedResponse(response.status.value)
+    }
+
+    private suspend fun HttpResponse.resetStatus(userId: dev.kreienbuehl.ksecuremessage.model.UserId): RecoveryKeyResetStatus = try {
+        body<RecoveryKeyResetStatusResponse>().toStatus(userId)
+    } catch (e: IllegalArgumentException) {
+        throw SecureMessageTransportException.UnexpectedResponse(status.value)
+    }
+
+    /** The reset failure, or `null` for anything else (ServerAuth failures included). */
+    private suspend fun HttpResponse.recoveryKeyResetRejected(): SecureMessageTransportException? {
+        val failure = when (runCatching { body<ErrorResponse>().error }.getOrNull()) {
+            "recovery_key_reset_not_available" -> RecoveryKeyResetFailure.NOT_AVAILABLE
+            "recovery_key_not_configured" -> RecoveryKeyResetFailure.NOT_CONFIGURED
+            "recovery_key_reset_not_pending" -> RecoveryKeyResetFailure.NOT_PENDING
+            "recovery_key_reset_not_yet_eligible" -> RecoveryKeyResetFailure.NOT_YET_ELIGIBLE
+            "recovery_key_reset_conflict" -> RecoveryKeyResetFailure.CONFLICT
+            "invalid_recovery_key_reset" -> RecoveryKeyResetFailure.INVALID_REQUEST
+            "recovery_key_reset_invalid_proof" -> RecoveryKeyResetFailure.INVALID_PROOF
+            "recovery_key_reset_expired" -> RecoveryKeyResetFailure.EXPIRED
+            "recovery_key_epoch_exhausted" -> RecoveryKeyResetFailure.EPOCH_EXHAUSTED
+            else -> return null
+        }
+        return SecureMessageTransportException.RecoveryKeyResetRejected(failure)
+    }
 
     override suspend fun lastDeviceRecoveryChallenge(target: DeviceAddress): LastDeviceRecoveryChallenge {
         val response = client.request(baseUrl + ServerApiPaths.device(target, ServerApiPaths.LAST_DEVICE_RECOVERY_CHALLENGE)) {

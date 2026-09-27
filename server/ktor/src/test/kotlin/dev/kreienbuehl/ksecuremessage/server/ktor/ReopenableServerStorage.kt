@@ -14,6 +14,9 @@ import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryReplacement
 import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryRepository
 import dev.kreienbuehl.ksecuremessage.storage.MailboxRepository
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyRepository
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyResetCancellation
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyResetCompletionTransition
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyResetRequest
 import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyRevocationTransition
 import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyRotationTransition
 import dev.kreienbuehl.ksecuremessage.storage.RecoveryReplacement
@@ -90,5 +93,10 @@ internal class ReopenableServerStorage : ServerStorage, AutoCloseable {
             current.lastDeviceRecovery.registerRecoveryKey(userId, publicKey, registeredAt)
         override suspend fun issueChallenge(request: LastDeviceRecoveryChallengeRequest) = current.lastDeviceRecovery.issueChallenge(request)
         override suspend fun challenge(target: DeviceAddress) = current.lastDeviceRecovery.challenge(target)
+        override suspend fun pendingRecoveryKeyReset(userId: UserId) = current.lastDeviceRecovery.pendingRecoveryKeyReset(userId)
+        override suspend fun requestRecoveryKeyReset(request: RecoveryKeyResetRequest) = current.lastDeviceRecovery.requestRecoveryKeyReset(request)
+        override suspend fun completeRecoveryKeyReset(transition: RecoveryKeyResetCompletionTransition) =
+            current.lastDeviceRecovery.completeRecoveryKeyReset(transition)
+        override suspend fun cancelRecoveryKeyReset(cancellation: RecoveryKeyResetCancellation) = current.lastDeviceRecovery.cancelRecoveryKeyReset(cancellation)
     }
 }

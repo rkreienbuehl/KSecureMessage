@@ -196,4 +196,11 @@ sealed class SecureMessageClientException(message: String, cause: Throwable? = n
      */
     class LastDeviceRecoveryKeyMismatch :
         SecureMessageClientException("The recovery key is not the active last-device recovery key")
+
+    /**
+     * No recovery key reset is pending for this user
+     * (docs/recovery-key-reset.md): request one first, or it was cancelled or
+     * replaced by another transition. Nothing was sent.
+     */
+    class LastDeviceRecoveryKeyResetNotPending : SecureMessageClientException("No recovery key reset is pending")
 }

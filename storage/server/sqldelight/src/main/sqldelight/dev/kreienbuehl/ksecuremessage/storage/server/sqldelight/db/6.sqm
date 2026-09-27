@@ -1,0 +1,62 @@
+-- Server schema version 6 to 7 (milestone 23): delayed recovery key reset
+-- (docs/recovery-key-reset.md). Adds reset_completion_id to
+-- last_device_recovery_key_state (the transition ID of a completed reset,
+-- taking part in the "at most one transition ID" CHECK) and the per-user
+-- pending reset table.
+--
+-- SQLite cannot change a CHECK constraint in place, so the state table is
+-- rebuilt: copied aside, recreated with exactly the new DDL and copied back
+-- with reset_completion_id NULL (no state was produced by a reset before this
+-- version). Every row is kept: state, epoch, key, installation and transition
+-- times, rotation and revocation IDs. No time is invented. The pending reset
+-- table starts empty. No other table changes: registrations, epochs,
+-- installation times, device transition IDs, challenges, nonces, prekeys,
+-- one-time prekey tombstones, mailbox rows and the mailbox sequence stay.
+CREATE TABLE last_device_recovery_key_state_v6 (
+    user_id TEXT NOT NULL PRIMARY KEY,
+    state INTEGER NOT NULL,
+    epoch INTEGER NOT NULL,
+    public_key BLOB,
+    installed_at INTEGER,
+    transitioned_at INTEGER NOT NULL,
+    rotation_id BLOB,
+    revocation_id BLOB
+);
+
+INSERT INTO last_device_recovery_key_state_v6 (user_id, state, epoch, public_key, installed_at, transitioned_at, rotation_id, revocation_id)
+SELECT user_id, state, epoch, public_key, installed_at, transitioned_at, rotation_id, revocation_id FROM last_device_recovery_key_state;
+
+DROP TABLE last_device_recovery_key_state;
+
+CREATE TABLE last_device_recovery_key_state (
+    user_id TEXT NOT NULL PRIMARY KEY,
+    state INTEGER NOT NULL CHECK (state IN (1, 2)),
+    epoch INTEGER NOT NULL CHECK (epoch >= 1),
+    public_key BLOB,
+    installed_at INTEGER,
+    transitioned_at INTEGER NOT NULL,
+    rotation_id BLOB,
+    revocation_id BLOB,
+    reset_completion_id BLOB,
+    CHECK ((state = 1 AND public_key IS NOT NULL AND installed_at IS NOT NULL AND revocation_id IS NULL AND
+            (rotation_id IS NULL OR reset_completion_id IS NULL)) OR
+           (state = 2 AND public_key IS NULL AND installed_at IS NULL AND rotation_id IS NULL AND reset_completion_id IS NULL))
+);
+
+INSERT INTO last_device_recovery_key_state (user_id, state, epoch, public_key, installed_at, transitioned_at, rotation_id, revocation_id, reset_completion_id)
+SELECT user_id, state, epoch, public_key, installed_at, transitioned_at, rotation_id, revocation_id, NULL FROM last_device_recovery_key_state_v6;
+
+DROP TABLE last_device_recovery_key_state_v6;
+
+CREATE TABLE last_device_recovery_key_reset (
+    user_id TEXT NOT NULL PRIMARY KEY,
+    reset_id BLOB NOT NULL UNIQUE,
+    requested_by_device TEXT NOT NULL,
+    expected_epoch INTEGER NOT NULL CHECK (expected_epoch >= 1),
+    expected_public_key BLOB NOT NULL,
+    requested_at INTEGER NOT NULL,
+    eligible_at INTEGER NOT NULL,
+    CHECK (length(reset_id) = 16 AND length(expected_public_key) = 32 AND eligible_at > requested_at)
+);
+
+UPDATE server_storage SET format = 7;

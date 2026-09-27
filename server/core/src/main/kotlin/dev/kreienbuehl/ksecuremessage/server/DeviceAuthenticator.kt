@@ -38,6 +38,18 @@ enum class ProtectedEndpoint(val method: String, val endpoint: String) {
 
     /** `PUT /v1/devices/{user}/{device}/last-device-recovery/key/revocation`: revokes the user's recovery key. */
     REVOKE_LAST_DEVICE_RECOVERY_KEY("PUT", ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_REVOCATION),
+
+    /** `PUT /v1/devices/{user}/{device}/last-device-recovery/key/reset`: requests a delayed recovery key reset (docs/recovery-key-reset.md). */
+    REQUEST_LAST_DEVICE_RECOVERY_KEY_RESET("PUT", ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET),
+
+    /** `GET /v1/devices/{user}/{device}/last-device-recovery/key/reset`: the user's pending recovery key reset. */
+    READ_LAST_DEVICE_RECOVERY_KEY_RESET("GET", ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET),
+
+    /** `PUT /v1/devices/{user}/{device}/last-device-recovery/key/reset/completion`: completes the pending reset. */
+    COMPLETE_LAST_DEVICE_RECOVERY_KEY_RESET("PUT", ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET_COMPLETION),
+
+    /** `PUT /v1/devices/{user}/{device}/last-device-recovery/key/reset/cancellation`: cancels the pending reset. */
+    CANCEL_LAST_DEVICE_RECOVERY_KEY_RESET("PUT", ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET_CANCELLATION),
 }
 
 /**

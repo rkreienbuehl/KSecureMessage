@@ -1,6 +1,19 @@
 package dev.kreienbuehl.ksecuremessage.client
 
 import dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus
+import dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetId
+import dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyReset
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCancellationAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCompletionAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetStatusQuery
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyResetCancellation
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyResetCancellationAuthority
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyResetCancellationResult
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyResetCompletionResult
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyResetCompletionTransition
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyResetRequest
+import dev.kreienbuehl.ksecuremessage.storage.RecoveryKeyResetRequestResult
 import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocation
 import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotation
@@ -126,6 +139,24 @@ internal class FakeNetwork : SecureMessageTransport {
         authorization: RecoveryKeyRevocationAuthorization,
         signer: ServerRequestSigner,
     ) = error("Not used with FakeNetwork")
+
+    override suspend fun requestLastDeviceRecoveryKeyReset(address: DeviceAddress, signer: ServerRequestSigner): RecoveryKeyResetStatus.Pending =
+        error("Not used with FakeNetwork")
+
+    override suspend fun lastDeviceRecoveryKeyResetStatus(address: DeviceAddress, signer: ServerRequestSigner): RecoveryKeyResetStatus =
+        error("Not used with FakeNetwork")
+
+    override suspend fun completeLastDeviceRecoveryKeyReset(authorization: RecoveryKeyResetCompletionAuthorization, signer: ServerRequestSigner) =
+        error("Not used with FakeNetwork")
+
+    override suspend fun cancelLastDeviceRecoveryKeyReset(address: DeviceAddress, resetId: RecoveryKeyResetId, signer: ServerRequestSigner) =
+        error("Not used with FakeNetwork")
+
+    override suspend fun lastDeviceRecoveryKeyResetStatusByRecoveryKey(query: RecoveryKeyResetStatusQuery): RecoveryKeyResetStatus =
+        error("Not used with FakeNetwork")
+
+    override suspend fun cancelLastDeviceRecoveryKeyResetByRecoveryKey(authorization: RecoveryKeyResetCancellationAuthorization) =
+        error("Not used with FakeNetwork")
 
     /** Only records: these tests set [bundles] by hand, see [publish]. */
     override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) {
@@ -439,6 +470,141 @@ internal class ServerBackedNetwork(
             RecoveryKeyRevocationResult.EPOCH_EXHAUSTED -> reject(SecureMessageTransportException.RecoveryKeyTransitionFailure.EPOCH_EXHAUSTED)
         }
         afterRecoveryKeyTransition()
+    }
+
+    /** The server's reset policy delay; `null` disables resets like a server without a policy. */
+    var recoveryKeyResetDelay: Duration? = Duration.parse("3d")
+
+    /** Recovery key reset operations (request, completion, cancellation) that reached the server, in order. */
+    val recoveryKeyResetAttempts = mutableListOf<String>()
+
+    /** Runs when a reset completion arrives, before the server reads any state: another transition can win meanwhile. */
+    var beforeRecoveryKeyResetCompletion: suspend () -> Unit = {}
+
+    /** Runs after the server committed a reset operation, before the response: throwing stands for a lost response. */
+    var afterRecoveryKeyReset: (String) -> Unit = {}
+
+    private fun rejectReset(failure: SecureMessageTransportException.RecoveryKeyResetFailure): Nothing =
+        throw SecureMessageTransportException.RecoveryKeyResetRejected(failure)
+
+    /** The checks of server:core's reset request: server time and delay only. */
+    override suspend fun requestLastDeviceRecoveryKeyReset(address: DeviceAddress, signer: ServerRequestSigner): RecoveryKeyResetStatus.Pending {
+        beforeNetworkCall()
+        authenticate(address, "PUT", ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET, ByteArray(0), signer)
+        recoveryKeyResetAttempts += "request"
+        val delay = recoveryKeyResetDelay ?: rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.NOT_AVAILABLE)
+        val now = now()
+        val requester = checkNotNull(server.devices.registrationState(address))
+        val reset = when (
+            val result = server.lastDeviceRecovery.requestRecoveryKeyReset(
+                RecoveryKeyResetRequest(requester, RecoveryKeyResetId(Random.nextBytes(16)), now, now + delay),
+            )
+        ) {
+            is RecoveryKeyResetRequestResult.Created -> result.reset
+            is RecoveryKeyResetRequestResult.Existing -> result.reset
+            RecoveryKeyResetRequestResult.NotConfigured -> rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.NOT_CONFIGURED)
+            RecoveryKeyResetRequestResult.Conflict -> rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.CONFLICT)
+            RecoveryKeyResetRequestResult.EpochExhausted -> rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.EPOCH_EXHAUSTED)
+        }
+        afterRecoveryKeyReset("request")
+        return reset
+    }
+
+    override suspend fun lastDeviceRecoveryKeyResetStatus(address: DeviceAddress, signer: ServerRequestSigner): RecoveryKeyResetStatus {
+        beforeNetworkCall()
+        authenticate(address, "GET", ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET, ByteArray(0), signer)
+        return server.lastDeviceRecovery.pendingRecoveryKeyReset(address.userId) ?: RecoveryKeyResetStatus.None
+    }
+
+    /** The checks of server:core's reset completion, then the atomic storage transition. */
+    override suspend fun completeLastDeviceRecoveryKeyReset(authorization: RecoveryKeyResetCompletionAuthorization, signer: ServerRequestSigner) {
+        beforeNetworkCall()
+        val statement = authorization.statement
+        authenticate(statement.completer, "PUT", ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET_COMPLETION, ByteArray(0), signer)
+        beforeRecoveryKeyResetCompletion()
+        recoveryKeyResetAttempts += "completion"
+        val id = RecoveryKeyReset.completionId(statement)
+        val proof = RecoveryKeyReset.verifyNewKeyProofOfPossession(authorization)
+        val state = server.lastDeviceRecovery.recoveryKeyState(statement.userId)
+            ?: rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.NOT_CONFIGURED)
+        if (state.resetCompletionId == id && state.publicKey.contentEquals(statement.newPublicKey)) {
+            if (!proof) rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.INVALID_PROOF)
+            afterRecoveryKeyReset("completion")
+            return
+        }
+        if (state.status != RecoveryKeyStatus.ACTIVE) rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.NOT_CONFIGURED)
+        val reset = server.lastDeviceRecovery.pendingRecoveryKeyReset(statement.userId)
+        if (reset == null || reset.resetId != statement.resetId) rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.NOT_PENDING)
+        if (now() < reset.eligibleAt) rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.NOT_YET_ELIGIBLE)
+        if (!proof) rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.INVALID_PROOF)
+        val result = server.lastDeviceRecovery.completeRecoveryKeyReset(
+            RecoveryKeyResetCompletionTransition(
+                statement.userId, statement.resetId, statement.currentPublicKey, statement.expectedEpoch, statement.requestedAt,
+                statement.eligibleAt, statement.newPublicKey, checkNotNull(server.devices.registrationState(statement.completer)), id, now(),
+            ),
+        )
+        when (result) {
+            RecoveryKeyResetCompletionResult.COMPLETED, RecoveryKeyResetCompletionResult.ALREADY_APPLIED -> Unit
+            RecoveryKeyResetCompletionResult.NOT_CONFIGURED -> rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.NOT_CONFIGURED)
+            RecoveryKeyResetCompletionResult.NOT_PENDING -> rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.NOT_PENDING)
+            RecoveryKeyResetCompletionResult.NOT_YET_ELIGIBLE -> rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.NOT_YET_ELIGIBLE)
+            RecoveryKeyResetCompletionResult.CONFLICT -> rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.CONFLICT)
+            RecoveryKeyResetCompletionResult.EPOCH_EXHAUSTED -> rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.EPOCH_EXHAUSTED)
+        }
+        afterRecoveryKeyReset("completion")
+    }
+
+    override suspend fun cancelLastDeviceRecoveryKeyReset(address: DeviceAddress, resetId: RecoveryKeyResetId, signer: ServerRequestSigner) {
+        beforeNetworkCall()
+        authenticate(address, "PUT", ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET_CANCELLATION, ByteArray(0), signer)
+        recoveryKeyResetAttempts += "cancellation"
+        cancelReset(
+            RecoveryKeyResetCancellation(
+                address.userId, resetId, RecoveryKeyResetCancellationAuthority.Device(checkNotNull(server.devices.registrationState(address))),
+            ),
+        )
+    }
+
+    /** The checks of server:core's recovery-key status query, without the time window. */
+    override suspend fun lastDeviceRecoveryKeyResetStatusByRecoveryKey(query: RecoveryKeyResetStatusQuery): RecoveryKeyResetStatus {
+        beforeNetworkCall()
+        val statement = query.statement
+        val registered = server.lastDeviceRecovery.recoveryKey(statement.userId)
+            ?: rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.NOT_CONFIGURED)
+        if (!registered.contentEquals(statement.currentPublicKey) || !RecoveryKeyReset.verifyStatusQuery(registered, query)) {
+            rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.INVALID_PROOF)
+        }
+        return server.lastDeviceRecovery.pendingRecoveryKeyReset(statement.userId) ?: RecoveryKeyResetStatus.None
+    }
+
+    override suspend fun cancelLastDeviceRecoveryKeyResetByRecoveryKey(authorization: RecoveryKeyResetCancellationAuthorization) {
+        beforeNetworkCall()
+        recoveryKeyResetAttempts += "recovery key cancellation"
+        val statement = authorization.statement
+        val reset = server.lastDeviceRecovery.pendingRecoveryKeyReset(statement.userId)
+        if (reset == null || reset.resetId != statement.resetId) rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.NOT_PENDING)
+        if (reset.recoveryKeyEpoch != statement.expectedEpoch || !reset.recoveryPublicKey.contentEquals(statement.currentPublicKey) ||
+            reset.requestedAt != statement.requestedAt || reset.eligibleAt != statement.eligibleAt
+        ) {
+            rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.CONFLICT)
+        }
+        if (!RecoveryKeyReset.verifyCancellation(reset.recoveryPublicKey, authorization)) {
+            rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.INVALID_PROOF)
+        }
+        cancelReset(
+            RecoveryKeyResetCancellation(
+                statement.userId, reset.resetId, RecoveryKeyResetCancellationAuthority.RecoveryKey(reset.recoveryPublicKey, reset.recoveryKeyEpoch),
+            ),
+        )
+    }
+
+    private suspend fun cancelReset(cancellation: RecoveryKeyResetCancellation) {
+        when (server.lastDeviceRecovery.cancelRecoveryKeyReset(cancellation)) {
+            RecoveryKeyResetCancellationResult.CANCELLED -> Unit
+            RecoveryKeyResetCancellationResult.NOT_PENDING -> rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.NOT_PENDING)
+            RecoveryKeyResetCancellationResult.CONFLICT -> rejectReset(SecureMessageTransportException.RecoveryKeyResetFailure.CONFLICT)
+        }
+        afterRecoveryKeyReset("cancellation")
     }
 
     /** Runs after a challenge was issued, before the response: another transition or the clock can move meanwhile. */

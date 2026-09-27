@@ -7,11 +7,16 @@ import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
+import dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetId
+import dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCancellationAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCompletionAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetStatusQuery
 import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.RequestAuthentication
@@ -35,10 +40,16 @@ import kotlin.time.Instant
  * and relaying an envelope stay open to anyone. [clock] is the server time
  * that request timestamps are checked against and that is recorded as the
  * installation time of registered device authentication keys.
+ *
+ * [recoveryKeyResetPolicy] enables delayed recovery key resets
+ * (docs/recovery-key-reset.md) with the host's delay; `null` (the default)
+ * disables them: requests are refused, while an already pending reset can
+ * still be read, cancelled and completed.
  */
 class SecureMessageServer(
     private val storage: ServerStorage,
     private val clock: Clock = Clock.System,
+    recoveryKeyResetPolicy: RecoveryKeyResetPolicy? = null,
 ) {
     private val preKeys = PreKeyService(storage.preKeys)
     private val authenticator = DeviceAuthenticator(storage.devices, storage.authenticationNonces, clock)
@@ -46,6 +57,7 @@ class SecureMessageServer(
     private val rotation = DeviceAuthenticationRotationService(storage.devices, clock)
     private val lastDeviceRecovery = LastDeviceRecoveryService(storage.devices, storage.lastDeviceRecovery, clock)
     private val recoveryKeyLifecycle = RecoveryKeyLifecycleService(storage.lastDeviceRecovery, clock)
+    private val recoveryKeyReset = RecoveryKeyResetService(storage.lastDeviceRecovery, clock, recoveryKeyResetPolicy)
 
     /**
      * Registers the device authentication key of [registration]'s address.
@@ -145,8 +157,9 @@ class SecureMessageServer(
      * key. Throws [RecoveryKeyLifecycleException] and changes nothing if any
      * check fails. From the moment this returns
      * [RecoveryKeyRotationOutcome.ROTATED], only the new key authorizes
-     * last-device recoveries, and every outstanding challenge of the user is
-     * gone. Device registrations, prekeys and mailboxes are not touched.
+     * last-device recoveries, and every outstanding challenge and any pending
+     * recovery key reset of the user are gone. Device registrations, prekeys
+     * and mailboxes are not touched.
      */
     suspend fun rotateLastDeviceRecoveryKey(
         device: AuthenticatedDevice,
@@ -159,12 +172,70 @@ class SecureMessageServer(
      * with the current recovery key's signature. Throws
      * [RecoveryKeyLifecycleException] and changes nothing if any check fails.
      * Afterwards no last-device recovery is possible until a new key is
-     * registered, and every outstanding challenge of the user is gone.
+     * registered, and every outstanding challenge and any pending recovery
+     * key reset of the user are gone.
      */
     suspend fun revokeLastDeviceRecoveryKey(
         device: AuthenticatedDevice,
         authorization: RecoveryKeyRevocationAuthorization,
     ): RecoveryKeyRevocationOutcome = recoveryKeyLifecycle.revoke(device, authorization)
+
+    /**
+     * Requests a delayed reset of the authenticated [device]'s user's offline
+     * recovery key, for when that key is lost (docs/recovery-key-reset.md).
+     * The reset is bound to the active key and epoch; its request time is
+     * [clock]'s time and its eligibility time follows from the policy; the
+     * request chooses neither. If a reset is pending already, it is returned
+     * unchanged (`created = false`): the delay never restarts. Throws
+     * [RecoveryKeyResetException.NotAvailable] without a policy, and
+     * [RecoveryKeyResetException] for no active key, a changed registration
+     * or an exhausted epoch. Last-device recovery challenges stay valid.
+     */
+    suspend fun requestLastDeviceRecoveryKeyReset(device: AuthenticatedDevice): RecoveryKeyResetRequestOutcome =
+        recoveryKeyReset.request(device)
+
+    /** The pending recovery key reset of the authenticated [device]'s user, visible to every registered device of the user. */
+    suspend fun lastDeviceRecoveryKeyResetStatus(device: AuthenticatedDevice): RecoveryKeyResetStatus = recoveryKeyReset.status(device)
+
+    /**
+     * The pending recovery key reset of [query]'s user, for the holder of
+     * the current recovery key (no device needed): the query must be signed
+     * by the registered recovery key within the validity window. Throws
+     * [RecoveryKeyResetException] otherwise.
+     */
+    suspend fun lastDeviceRecoveryKeyResetStatusByRecoveryKey(query: RecoveryKeyResetStatusQuery): RecoveryKeyResetStatus =
+        recoveryKeyReset.statusByRecoveryKey(query)
+
+    /**
+     * Completes the pending recovery key reset with the statement's new key,
+     * by the authenticated [device] of the user, from the eligibility time
+     * on, proven by the new key. Throws [RecoveryKeyResetException] and
+     * changes nothing if any check fails. From the moment this returns
+     * [RecoveryKeyResetCompletionOutcome.COMPLETED], only the new key
+     * authorizes last-device recoveries (at epoch + 1), and every outstanding
+     * challenge of the user is gone. A retry of the same completion returns
+     * [RecoveryKeyResetCompletionOutcome.ALREADY_APPLIED].
+     */
+    suspend fun completeLastDeviceRecoveryKeyReset(
+        device: AuthenticatedDevice,
+        authorization: RecoveryKeyResetCompletionAuthorization,
+    ): RecoveryKeyResetCompletionOutcome = recoveryKeyReset.complete(device, authorization)
+
+    /**
+     * Cancels the pending reset [resetId] by the authenticated [device] of
+     * the user. The recovery key, its epoch and the challenges stay. Throws
+     * [RecoveryKeyResetException.NotPending] if no such reset is pending.
+     */
+    suspend fun cancelLastDeviceRecoveryKeyReset(device: AuthenticatedDevice, resetId: RecoveryKeyResetId) =
+        recoveryKeyReset.cancel(device, resetId)
+
+    /**
+     * Cancels the pending reset named by [authorization] with the signature
+     * of the recovery key it would replace (no device needed). Throws
+     * [RecoveryKeyResetException] and changes nothing if any check fails.
+     */
+    suspend fun cancelLastDeviceRecoveryKeyResetByRecoveryKey(authorization: RecoveryKeyResetCancellationAuthorization) =
+        recoveryKeyReset.cancelByRecoveryKey(authorization)
 
     /**
      * The challenge for recovering [target] with its user's last-device

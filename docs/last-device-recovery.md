@@ -538,8 +538,13 @@ client.receive()
   over every device of the user.
 - M18 had no recovery key rotation or revocation. Milestone 19 adds both,
   with two authorities (a registered device of the user and the current
-  offline key; docs/recovery-key-lifecycle.md). A **lost** recovery key still
-  cannot be replaced by a device alone.
+  offline key; docs/recovery-key-lifecycle.md). A **lost** recovery key can
+  be replaced only by the delayed, cancellable reset of milestone 23
+  (docs/recovery-key-reset.md): a registered device requests it, every device
+  and the current key can see and cancel it during the server's policy
+  delay, and it completes with the new key's proof of possession. The
+  current key stays authoritative for last-device recovery until the
+  completion, which removes every outstanding challenge.
 - There is no human or account identity proof. The recovery key is the
   authority.
 - There is no messaging identity or session recovery, no backup and no TOFU

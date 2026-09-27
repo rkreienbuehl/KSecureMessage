@@ -343,6 +343,11 @@ messages; `14.sqm` adds `pending_outbound_message_recipient` and changes no
 row ([outbound-message-lifecycle.md](outbound-message-lifecycle.md#storage)).
 Frozen copies of versions 1–14 (`Version1Schema` … `Version14Schema`) back the
 migration tests.
+
+The offline recovery key lifecycle (milestone 19) and the delayed recovery
+key reset (milestone 23, [recovery-key-reset.md](recovery-key-reset.md))
+change no client schema: the client never stores the offline recovery key,
+a replacement key or a pending reset; that state lives on the server only.
 A driver created with `SqlDelightClientStorage.Schema`,
 as in the table above, reads SQLite's `user_version` on open and runs the
 migrations itself. An application that manages schema versions on its own

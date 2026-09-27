@@ -6,12 +6,15 @@ import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
+import dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetId
+import dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationId
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryId
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallengeId
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryId
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCompletionId
 import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationId
 import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationId
 import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
@@ -462,9 +465,15 @@ interface AuthenticationNonceRepository {
  * it changes the recovery key. Never holds private key material.
  *
  * The recovery key epoch is 1 for a first registration and grows by one with
- * every rotation, revocation and registration after a revocation. It never
- * decreases, never wraps and is never reset: at [Long.MAX_VALUE] no further
- * transition is possible.
+ * every rotation, revocation, completed reset and registration after a
+ * revocation. It never decreases, never wraps and is never reset: at
+ * [Long.MAX_VALUE] no further transition is possible.
+ *
+ * A user has at most one pending delayed recovery key reset
+ * (docs/recovery-key-reset.md). It is bound to the ACTIVE key and epoch it
+ * was requested for; every recovery key transition (registration, rotation,
+ * revocation, reset completion) removes it in the same atomic step, so a
+ * pending reset never outlives the state it was requested for.
  */
 interface LastDeviceRecoveryRepository {
     /** A copy of the **active** recovery public key of [userId], or `null` (none registered, or revoked). */
@@ -484,7 +493,9 @@ interface LastDeviceRecoveryRepository {
      * - another key is active: throws [LastDeviceRecoveryKeyException.Conflict],
      *   nothing changes. Only [rotateRecoveryKey] replaces an active key.
      *
-     * [registeredAt] (server time) becomes the key's installation time.
+     * [registeredAt] (server time) becomes the key's installation time. A
+     * stored key also removes any pending reset of the user (none can exist
+     * without an active key).
      * Concurrent calls behave as if they ran one after the other.
      */
     suspend fun registerRecoveryKey(userId: UserId, publicKey: ByteArray, registeredAt: Instant): Boolean
@@ -508,7 +519,8 @@ interface LastDeviceRecoveryRepository {
      * 6. stores the new key, epoch + 1, the rotation ID (clearing a
      *    revocation ID) and [RecoveryKeyRotationTransition.now] as
      *    installation and transition time, and deletes every last-device
-     *    recovery challenge of the user: [RecoveryKeyRotationResult.ROTATED].
+     *    recovery challenge and the pending reset of the user:
+     *    [RecoveryKeyRotationResult.ROTATED].
      *
      * Nothing else changes: device registrations, epochs and installation
      * times, prekeys, mailboxes and other nonces stay.
@@ -532,7 +544,7 @@ interface LastDeviceRecoveryRepository {
      * 6. removes the key, stores epoch + 1, the revocation ID (clearing a
      *    rotation ID) and [RecoveryKeyRevocationTransition.now] as
      *    revocation time, and deletes every last-device recovery challenge
-     *    of the user: [RecoveryKeyRevocationResult.REVOKED].
+     *    and the pending reset of the user: [RecoveryKeyRevocationResult.REVOKED].
      */
     suspend fun revokeRecoveryKey(transition: RecoveryKeyRevocationTransition): RecoveryKeyRevocationResult
 
@@ -556,6 +568,79 @@ interface LastDeviceRecoveryRepository {
 
     /** The stored challenge of [target], expired or not, or `null`. */
     suspend fun challenge(target: DeviceAddress): StoredLastDeviceRecoveryChallenge?
+
+    /**
+     * The pending recovery key reset of [userId], or `null`. Read in one
+     * atomic step together with the recovery key state: throws
+     * [IllegalStateException] (fail closed) if a stored reset is not bound to
+     * the user's current ACTIVE key and epoch, which the transitions never
+     * allow.
+     */
+    suspend fun pendingRecoveryKeyReset(userId: UserId): RecoveryKeyResetStatus.Pending?
+
+    /**
+     * Requests a delayed reset of the requester's user's recovery key in one
+     * atomic step. In this order:
+     *
+     * 1. the user has no ACTIVE recovery key (never registered, or revoked):
+     *    [RecoveryKeyResetRequestResult.NotConfigured];
+     * 2. the requester's registration differs from
+     *    [RecoveryKeyResetRequest.requester] (key and epoch):
+     *    [RecoveryKeyResetRequestResult.Conflict];
+     * 3. a reset is pending: [RecoveryKeyResetRequestResult.Existing] with it,
+     *    unchanged (whoever requested it; the delay never restarts);
+     * 4. the recovery key epoch is [Long.MAX_VALUE] (a completion could never
+     *    apply): [RecoveryKeyResetRequestResult.EpochExhausted];
+     * 5. stores a reset with the candidate ID, bound to the ACTIVE key and
+     *    epoch read in this step, [RecoveryKeyResetRequest.now] as request
+     *    time and [RecoveryKeyResetRequest.eligibleAt]:
+     *    [RecoveryKeyResetRequestResult.Created].
+     *
+     * Nothing else changes; in particular every last-device recovery
+     * challenge stays valid.
+     */
+    suspend fun requestRecoveryKeyReset(request: RecoveryKeyResetRequest): RecoveryKeyResetRequestResult
+
+    /**
+     * Completes the pending reset in one atomic step. In this order:
+     *
+     * 1. the user never registered a key: [RecoveryKeyResetCompletionResult.NOT_CONFIGURED];
+     * 2. the active key was installed by the completion with
+     *    [RecoveryKeyResetCompletionTransition.completionId] and is its new
+     *    key: [RecoveryKeyResetCompletionResult.ALREADY_APPLIED], nothing written;
+     * 3. no reset is pending, or another one than [RecoveryKeyResetCompletionTransition.resetId]:
+     *    [RecoveryKeyResetCompletionResult.NOT_PENDING];
+     * 4. the pending reset's key, epoch or times differ from the transition's,
+     *    the state is not that ACTIVE key and epoch, the new key is the active
+     *    key, or the completing device's registration differs from
+     *    [RecoveryKeyResetCompletionTransition.expectedCompleter]:
+     *    [RecoveryKeyResetCompletionResult.CONFLICT];
+     * 5. [RecoveryKeyResetCompletionTransition.now] is before the reset's
+     *    eligibility time: [RecoveryKeyResetCompletionResult.NOT_YET_ELIGIBLE];
+     * 6. the epoch is [Long.MAX_VALUE]: [RecoveryKeyResetCompletionResult.EPOCH_EXHAUSTED];
+     * 7. stores the new key, epoch + 1, the completion ID (clearing the other
+     *    transition IDs) and `now` as installation and transition time,
+     *    removes the reset and deletes every last-device recovery challenge
+     *    of the user: [RecoveryKeyResetCompletionResult.COMPLETED].
+     *
+     * No nonce is claimed: removing the reset makes the completion single-use.
+     */
+    suspend fun completeRecoveryKeyReset(transition: RecoveryKeyResetCompletionTransition): RecoveryKeyResetCompletionResult
+
+    /**
+     * Cancels the pending reset in one atomic step:
+     *
+     * 1. no reset is pending, or another one than [RecoveryKeyResetCancellation.resetId]:
+     *    [RecoveryKeyResetCancellationResult.NOT_PENDING];
+     * 2. the authority is no longer current (a device whose registration
+     *    changed; a recovery key that is no longer the ACTIVE key at the
+     *    reset's epoch): [RecoveryKeyResetCancellationResult.CONFLICT];
+     * 3. removes the reset: [RecoveryKeyResetCancellationResult.CANCELLED].
+     *
+     * The recovery key state, its epoch and the challenges never change. No
+     * record of the cancellation is kept.
+     */
+    suspend fun cancelRecoveryKeyReset(cancellation: RecoveryKeyResetCancellation): RecoveryKeyResetCancellationResult
 }
 
 /**
@@ -626,10 +711,11 @@ enum class RecoveryKeyStatus { ACTIVE, REVOKED }
  * A user's stored recovery key state (docs/recovery-key-lifecycle.md):
  * [epoch], the [publicKey] and its server installation time [installedAt]
  * (both only while [status] is [RecoveryKeyStatus.ACTIVE]), the server time
- * of the last transition [transitionedAt] (registration, rotation or
- * revocation; for a revoked key the revocation time), and the transition
- * that produced this state: [rotationId] for a rotation, [revocationId] for
- * a revocation, none for a registration. At most one of them is set.
+ * of the last transition [transitionedAt] (registration, rotation, reset
+ * completion or revocation; for a revoked key the revocation time), and the
+ * transition that produced this state: [rotationId] for a rotation,
+ * [revocationId] for a revocation, [resetCompletionId] for a completed
+ * delayed reset, none for a registration. At most one of them is set.
  */
 class RecoveryKeyState(
     val epoch: Long,
@@ -639,12 +725,13 @@ class RecoveryKeyState(
     val transitionedAt: Instant,
     val rotationId: RecoveryKeyRotationId? = null,
     val revocationId: RecoveryKeyRevocationId? = null,
+    val resetCompletionId: RecoveryKeyResetCompletionId? = null,
 ) {
     private val key: ByteArray? = publicKey?.copyOf()
 
     init {
         require(epoch >= 1) { "Recovery key epoch must be positive" }
-        require(rotationId == null || revocationId == null) { "A state is produced by one transition only" }
+        require(listOfNotNull(rotationId, revocationId, resetCompletionId).size <= 1) { "A state is produced by one transition only" }
         when (status) {
             RecoveryKeyStatus.ACTIVE -> {
                 require(key != null && key.size == 32) { "An active recovery key needs a 32-byte public key" }
@@ -653,13 +740,17 @@ class RecoveryKeyState(
             }
             RecoveryKeyStatus.REVOKED -> {
                 require(key == null && installedAt == null) { "A revoked recovery key has no key" }
-                require(rotationId == null) { "A revoked recovery key was not installed by a rotation" }
+                require(rotationId == null && resetCompletionId == null) { "A revoked recovery key was not installed by a rotation or reset" }
             }
         }
     }
 
     /** A copy of the active public key, or `null` when revoked. */
     val publicKey: ByteArray? get() = key?.copyOf()
+
+    /** `true` if this is the ACTIVE key [publicKey] at [epoch]: the state a pending reset for them is bound to. */
+    fun isActive(publicKey: ByteArray, epoch: Long): Boolean =
+        status == RecoveryKeyStatus.ACTIVE && this.epoch == epoch && key.contentEquals(publicKey)
 
     override fun toString(): String = "RecoveryKeyState(epoch=$epoch, status=$status)"
 }
@@ -770,6 +861,152 @@ enum class RecoveryKeyRevocationResult {
 
     /** The recovery key epoch cannot grow any more; nothing changed. */
     EPOCH_EXHAUSTED,
+}
+
+/**
+ * A reset request for [LastDeviceRecoveryRepository.requestRecoveryKeyReset]
+ * by [requester] (the registration the ServerAuth request was verified
+ * with): the server-chosen random [candidateId] (used only if a new reset is
+ * stored), the server time [now] and the policy's [eligibleAt]. The key and
+ * epoch the reset binds are read by the repository in the same step, never
+ * supplied.
+ */
+class RecoveryKeyResetRequest(
+    val requester: DeviceRegistrationState,
+    val candidateId: RecoveryKeyResetId,
+    val now: Instant,
+    val eligibleAt: Instant,
+) {
+    init {
+        require(eligibleAt > now) { "A reset becomes eligible after it was requested" }
+    }
+
+    val userId: UserId get() = requester.address.userId
+
+    override fun toString(): String = "RecoveryKeyResetRequest(requester=${requester.address}, now=$now, eligibleAt=$eligibleAt)"
+}
+
+/** Outcome of [LastDeviceRecoveryRepository.requestRecoveryKeyReset]. */
+sealed interface RecoveryKeyResetRequestResult {
+    /** A new reset was stored. */
+    class Created(val reset: RecoveryKeyResetStatus.Pending) : RecoveryKeyResetRequestResult
+
+    /** A reset was already pending; it is returned unchanged. */
+    class Existing(val reset: RecoveryKeyResetStatus.Pending) : RecoveryKeyResetRequestResult
+
+    /** The user has no active recovery key; nothing changed. */
+    data object NotConfigured : RecoveryKeyResetRequestResult
+
+    /** The requester's registration is no longer the verified one; nothing changed. */
+    data object Conflict : RecoveryKeyResetRequestResult
+
+    /** The recovery key epoch cannot grow any more; nothing changed. */
+    data object EpochExhausted : RecoveryKeyResetRequestResult
+}
+
+/**
+ * A verified reset completion for [LastDeviceRecoveryRepository.completeRecoveryKeyReset]:
+ * the pending reset [resetId] of [userId]'s key [expectedPublicKey] at
+ * [expectedEpoch] (requested at [requestedAt], eligible from [eligibleAt])
+ * is completed with [newPublicKey] by [expectedCompleter] (the registration
+ * the ServerAuth request was verified with). [now] is the server time,
+ * compared with the eligibility time and stored as installation time.
+ */
+class RecoveryKeyResetCompletionTransition(
+    val userId: UserId,
+    val resetId: RecoveryKeyResetId,
+    expectedPublicKey: ByteArray,
+    val expectedEpoch: Long,
+    val requestedAt: Instant,
+    val eligibleAt: Instant,
+    newPublicKey: ByteArray,
+    val expectedCompleter: DeviceRegistrationState,
+    val completionId: RecoveryKeyResetCompletionId,
+    val now: Instant,
+) {
+    private val expected: ByteArray = expectedPublicKey.copyOf()
+    private val new: ByteArray = newPublicKey.copyOf()
+
+    init {
+        require(expectedCompleter.address.userId == userId) { "The completing device must belong to the user" }
+    }
+
+    /** A copy of the key the reset replaces. */
+    val expectedPublicKey: ByteArray get() = expected.copyOf()
+
+    /** A copy of the new key. */
+    val newPublicKey: ByteArray get() = new.copyOf()
+
+    override fun toString(): String = "RecoveryKeyResetCompletionTransition(userId=$userId, expectedEpoch=$expectedEpoch)"
+}
+
+/** Outcome of [LastDeviceRecoveryRepository.completeRecoveryKeyReset]. */
+enum class RecoveryKeyResetCompletionResult {
+    /** The key was replaced, the epoch incremented, the reset and the user's challenges removed. */
+    COMPLETED,
+
+    /** This completion installed the active key before; nothing changed. */
+    ALREADY_APPLIED,
+
+    /** The user never registered a recovery key; nothing changed. */
+    NOT_CONFIGURED,
+
+    /** No reset with this ID is pending; nothing changed. */
+    NOT_PENDING,
+
+    /** The reset is not eligible yet; nothing changed. */
+    NOT_YET_ELIGIBLE,
+
+    /** The recovery key state, the reset or the completing registration is no longer the verified one; nothing changed. */
+    CONFLICT,
+
+    /** The recovery key epoch cannot grow any more; nothing changed. */
+    EPOCH_EXHAUSTED,
+}
+
+/** Who cancels a pending reset: see [RecoveryKeyResetCancellation]. */
+sealed interface RecoveryKeyResetCancellationAuthority {
+    /** A registered device of the user, with the registration its ServerAuth request was verified with. */
+    class Device(val registration: DeviceRegistrationState) : RecoveryKeyResetCancellationAuthority {
+        override fun toString(): String = "Device(${registration.address})"
+    }
+
+    /** The current recovery key [publicKey] at [epoch], whose signature was verified. */
+    class RecoveryKey(publicKey: ByteArray, val epoch: Long) : RecoveryKeyResetCancellationAuthority {
+        private val key: ByteArray = publicKey.copyOf()
+
+        /** A copy of the recovery public key. */
+        val publicKey: ByteArray get() = key.copyOf()
+
+        override fun toString(): String = "RecoveryKey(epoch=$epoch)"
+    }
+}
+
+/** A verified cancellation of [userId]'s pending reset [resetId] by [authority]. */
+class RecoveryKeyResetCancellation(
+    val userId: UserId,
+    val resetId: RecoveryKeyResetId,
+    val authority: RecoveryKeyResetCancellationAuthority,
+) {
+    init {
+        if (authority is RecoveryKeyResetCancellationAuthority.Device) {
+            require(authority.registration.address.userId == userId) { "The cancelling device must belong to the user" }
+        }
+    }
+
+    override fun toString(): String = "RecoveryKeyResetCancellation(userId=$userId, authority=$authority)"
+}
+
+/** Outcome of [LastDeviceRecoveryRepository.cancelRecoveryKeyReset]. */
+enum class RecoveryKeyResetCancellationResult {
+    /** The reset was removed. */
+    CANCELLED,
+
+    /** No reset with this ID is pending; nothing changed. */
+    NOT_PENDING,
+
+    /** The cancelling authority is no longer current; nothing changed. */
+    CONFLICT,
 }
 
 interface ServerStorage {

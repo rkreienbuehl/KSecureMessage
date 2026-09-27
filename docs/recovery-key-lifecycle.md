@@ -90,9 +90,15 @@ M19 offers **no** way to replace it.
 
 This is deliberate. A device-only reset would let a compromised live device
 take over the user's offline recovery authority silently. It was rejected
-after the analysis above. A future milestone may add a deliberate,
-policy-controlled device-only reset (for example with a delay and
-notifications to all devices), but M19 does not.
+after the analysis above for M19.
+
+Milestone 23 adds the deliberate exception: a policy-controlled, **delayed**
+reset (docs/recovery-key-reset.md). A device requests it, every device of
+the user and the current key itself can see and cancel it during the
+server's delay, and a device completes it afterwards with the new key's
+proof of possession. It is weaker than a rotation and never replaces it:
+when the current key is available, rotate. Every rotation, revocation and
+registration removes a pending reset in the same transaction.
 
 ## State model
 
@@ -325,7 +331,8 @@ one private compare-and-set helper per adapter.
 6. Guarded `UPDATE … WHERE user_id AND state AND epoch AND public_key IS
    expected`: the new state, `epoch + 1`, the transition ID and the server
    times.
-7. Delete **every** last-device recovery challenge of the user.
+7. Delete **every** last-device recovery challenge of the user, and the
+   user's pending recovery key reset (M23, docs/recovery-key-reset.md).
 
 Every result except the applied one leaves everything unchanged. A failure
 inside the transaction rolls back all of it, including the nonce claim.
@@ -600,8 +607,9 @@ authentication, as M18 describes.
 
 ## Limitations
 
-- Losing the current offline key still blocks rotation and revocation.
-  There is no device-only replacement.
+- Losing the current offline key still blocks rotation and revocation. The
+  only replacement is the delayed, cancellable reset of milestone 23
+  (docs/recovery-key-reset.md).
 - One active recovery key per user. There is no threshold or social
   recovery and no multiple keys.
 - A holder of the recovery key can take over a device through M18 and then

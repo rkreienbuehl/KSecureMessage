@@ -440,6 +440,35 @@ class LastDeviceRecoveryStorageTest {
             signer: ServerRequestSigner,
         ) = error("not used")
 
+        override suspend fun requestLastDeviceRecoveryKeyReset(
+            address: DeviceAddress,
+            signer: ServerRequestSigner,
+        ): dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus.Pending = error("not used")
+
+        override suspend fun lastDeviceRecoveryKeyResetStatus(
+            address: DeviceAddress,
+            signer: ServerRequestSigner,
+        ): dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus = error("not used")
+
+        override suspend fun completeLastDeviceRecoveryKeyReset(
+            authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCompletionAuthorization,
+            signer: ServerRequestSigner,
+        ) = error("not used")
+
+        override suspend fun cancelLastDeviceRecoveryKeyReset(
+            address: DeviceAddress,
+            resetId: dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetId,
+            signer: ServerRequestSigner,
+        ) = error("not used")
+
+        override suspend fun lastDeviceRecoveryKeyResetStatusByRecoveryKey(
+            query: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetStatusQuery,
+        ): dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus = error("not used")
+
+        override suspend fun cancelLastDeviceRecoveryKeyResetByRecoveryKey(
+            authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCancellationAuthorization,
+        ) = error("not used")
+
         override suspend fun recoverLastDevice(authorization: LastDeviceRecoveryAuthorization) {
             attempts++
             val statement = authorization.statement

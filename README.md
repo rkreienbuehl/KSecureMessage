@@ -279,9 +279,18 @@ do { // decide about messages a recipient never acknowledged
 } while (after != null)
 ```
 
+Milestone 23 done: delayed recovery key reset for a lost offline recovery key. Exceptional and weaker than an M19 rotation, which stays the normal path: a registered device requests a reset without the lost key R1; the server stores one pending reset per user with its own clock as request time and `eligibleAt = requestedAt + delay` from the host's `RecoveryKeyResetPolicy` (no default; without a policy requests get `recovery_key_reset_not_available`); repeated requests return the same reset and never restart the delay. Every registered device of the user sees it (signed `GET …/last-device-recovery/key/reset`), and so does the holder of R1 without any device (a query signed by R1, domain `KSecureMessage-RecoveryKeyResetStatusQuery-v1`, on the public `POST /v1/users/{user}/…/reset/status`). Until a completion commits, any device of the user cancels it, and so does R1 alone (`KSecureMessage-RecoveryKeyReset-Cancel-v1`); eligibility only allows a completion, nothing completes automatically. From `eligibleAt` on (server time) a device completes it with R2's proof of possession over a frozen statement bound to the reset ID, the replaced key and epoch, both times and the completing device (`KSecureMessage-RecoveryKeyReset-NewKeyPoP-v1`, completion ID `KSecureMessage-RecoveryKeyResetId-v1`): one compare-and-set installs R2 at epoch N+1 with the completion time, removes the reset and every M18 challenge; exact retries return `204`. R1 stays authoritative (including for M18 recovery) during the delay; rotation, revocation and registration remove a pending reset atomically, so a stale reset never overwrites a later key. The delay does not replace possession of R1: a compromised device that survives the delay uncancelled wins; applications must poll and surface the status themselves (no push, no quorum). Client: `requestLastDeviceRecoveryKeyReset()`, `lastDeviceRecoveryKeyResetStatus()`, `completeLastDeviceRecoveryKeyReset(r2)` (back up R2 first; `ALREADY_ACTIVE` after a lost response), `cancelLastDeviceRecoveryKeyReset(reset)`, and without a device `lastDeviceRecoveryKeyResetStatus(r1)` / `cancelLastDeviceRecoveryKeyReset(r1, reset)`; nothing is stored on the client. Server schema version 7 (`6.sqm`: `reset_completion_id` and the pending reset table); no client schema, wire or other frozen format change. See [docs/recovery-key-reset.md](docs/recovery-key-reset.md).
+
+```kotlin
+val reset = client.requestLastDeviceRecoveryKeyReset()          // R1 lost; every device should warn the user
+// … after reset.eligibleAt, unless a device or R1 cancelled it:
+val r2 = client.createLastDeviceRecoveryKey()                   // back it up offline first
+client.completeLastDeviceRecoveryKeyReset(r2)
+```
+
 ## Next implementation steps
 
-1. A deliberate, policy-controlled recovery key reset for a lost offline key (delay plus notification of every device), if applications need one; a PostgreSQL server adapter if multi-node deployment is needed.
+1. A PostgreSQL server adapter if multi-node deployment is needed.
 2. Sealed sender.
 
 ## Gradle wrapper

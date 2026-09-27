@@ -54,6 +54,10 @@ sealed class SecureMessageTransportException(message: String) : Exception(messag
     class RecoveryKeyRevocationRejected(val reason: RecoveryKeyTransitionFailure) :
         SecureMessageTransportException("Recovery key revocation rejected: $reason")
 
+    /** The server refused a recovery key reset operation (docs/recovery-key-reset.md); nothing was changed. */
+    class RecoveryKeyResetRejected(val reason: RecoveryKeyResetFailure) :
+        SecureMessageTransportException("Recovery key reset operation rejected: $reason")
+
     /** Any other unexpected server response. */
     class UnexpectedResponse(val status: Int) :
         SecureMessageTransportException("Unexpected server response $status")
@@ -181,6 +185,36 @@ sealed class SecureMessageTransportException(message: String) : Exception(messag
          * registration changed meanwhile.
          */
         CONFLICT,
+
+        /** The recovery key epoch cannot grow any more. */
+        EPOCH_EXHAUSTED,
+    }
+
+    /** Why the server refused a recovery key reset operation (docs/recovery-key-reset.md). */
+    enum class RecoveryKeyResetFailure {
+        /** The server has no reset policy: delayed resets are disabled. */
+        NOT_AVAILABLE,
+
+        /** The user has no active recovery key (never registered, or revoked). */
+        NOT_CONFIGURED,
+
+        /** No such reset is pending (none, cancelled, completed or replaced by another transition). */
+        NOT_PENDING,
+
+        /** The reset cannot be completed yet (server time before its eligibility time). */
+        NOT_YET_ELIGIBLE,
+
+        /** The request does not match the pending reset or the current recovery key, or this device's registration changed. */
+        CONFLICT,
+
+        /** The request was malformed or named another device. */
+        INVALID_REQUEST,
+
+        /** The new key's proof of possession or the recovery key's signature does not verify. */
+        INVALID_PROOF,
+
+        /** The status query time is outside the server's validity window. */
+        EXPIRED,
 
         /** The recovery key epoch cannot grow any more. */
         EPOCH_EXHAUSTED,

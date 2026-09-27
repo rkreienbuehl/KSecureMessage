@@ -15,6 +15,7 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
 import dev.kreienbuehl.ksecuremessage.model.RatchetMessage
+import dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus
 import dev.kreienbuehl.ksecuremessage.protocol.ApplicationMessageDigest
 import dev.kreienbuehl.ksecuremessage.protocol.CiphertextMessageCodec
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair
@@ -30,6 +31,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.PreKeyFormat
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolException
 import dev.kreienbuehl.ksecuremessage.protocol.PublicIdentityKey
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyReset
 import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocation
 import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotation
 import dev.kreienbuehl.ksecuremessage.protocol.SafetyNumber
@@ -785,6 +787,171 @@ class SecureMessageClient(
                 LastDeviceRecoveryKeyRevocationResult.REVOKED
             }
         }
+
+    /**
+     * Requests a delayed reset of this user's offline recovery key, for when
+     * that key is **lost** (docs/recovery-key-reset.md). Exceptional: if the
+     * current key is still available, use [rotateLastDeviceRecoveryKey].
+     *
+     * A signed request of this device; the server stores the reset with its
+     * own time and policy delay and returns it. Every registered device of
+     * the user can see it ([lastDeviceRecoveryKeyResetStatus]) and cancel it
+     * ([cancelLastDeviceRecoveryKeyReset]), and so can the current recovery
+     * key. If a reset is pending already, it is returned unchanged: calling
+     * this again (after a lost response or a restart) never restarts the
+     * delay. Nothing completes automatically: after
+     * [RecoveryKeyResetStatus.Pending.eligibleAt] call
+     * [completeLastDeviceRecoveryKeyReset] with a new, backed-up key.
+     *
+     * Throws [SecureMessageTransportException.RecoveryKeyResetRejected]
+     * (`NOT_AVAILABLE` if the server has no reset policy, `NOT_CONFIGURED`
+     * if no key is active). Never called implicitly.
+     */
+    suspend fun requestLastDeviceRecoveryKeyReset(): RecoveryKeyResetStatus.Pending = deviceAuthenticationMutex.withLock {
+        withRequestSigner { _, signer -> transport.requestLastDeviceRecoveryKeyReset(localAddress, signer) }
+    }
+
+    /**
+     * The pending recovery key reset of this user, or [RecoveryKeyResetStatus.None]
+     * (docs/recovery-key-reset.md). A signed request; never cached. The
+     * library never polls: applications that want every device to notice a
+     * reset must call this themselves (for example on start and
+     * periodically) and warn the user while one is pending.
+     */
+    suspend fun lastDeviceRecoveryKeyResetStatus(): RecoveryKeyResetStatus = deviceAuthenticationMutex.withLock {
+        withRequestSigner { _, signer -> transport.lastDeviceRecoveryKeyResetStatus(localAddress, signer) }
+    }
+
+    /**
+     * Completes the pending recovery key reset with [newKey]
+     * (docs/recovery-key-reset.md): this device's signed request and
+     * [newKey]'s proof of possession over the pending reset. The server
+     * accepts it only from the reset's eligibility time on (its own clock).
+     * [newKey] is not stored.
+     *
+     * **Back up [newKey] before calling this**, exactly as for a rotation:
+     * once the server accepted it, the old key recovers nothing any more.
+     *
+     * Reads the recovery key status first: if [newKey] is already active (a
+     * lost response, a restart), returns
+     * [LastDeviceRecoveryKeyResetResult.ALREADY_ACTIVE] without sending
+     * anything. Throws [SecureMessageClientException.LastDeviceRecoveryKeyNotConfigured]
+     * if no key is active, [SecureMessageClientException.LastDeviceRecoveryKeyResetNotPending]
+     * if no reset is pending, [IllegalArgumentException] if [newKey] is the
+     * key being replaced, and [SecureMessageTransportException.RecoveryKeyResetRejected]
+     * if the server refused (`NOT_YET_ELIGIBLE`, `CONFLICT`, …). Never called
+     * implicitly.
+     */
+    suspend fun completeLastDeviceRecoveryKeyReset(newKey: LastDeviceRecoveryKey): LastDeviceRecoveryKeyResetResult =
+        deviceAuthenticationMutex.withLock {
+            withRequestSigner { _, signer ->
+                val status = transport.lastDeviceRecoveryKeyStatus(localAddress, signer)
+                val active = status as? LastDeviceRecoveryKeyStatus.Active ?: throw SecureMessageClientException.LastDeviceRecoveryKeyNotConfigured()
+                val pending = transport.lastDeviceRecoveryKeyResetStatus(localAddress, signer) as? RecoveryKeyResetStatus.Pending
+                if (active.isKey(newKey.publicKey)) {
+                    // The key the pending reset would replace is no new key; any other active key means a completion happened.
+                    require(pending == null || !pending.recoveryPublicKey.contentEquals(newKey.publicKey)) {
+                        "The new recovery key must differ from the key being reset"
+                    }
+                    return@withRequestSigner LastDeviceRecoveryKeyResetResult.ALREADY_ACTIVE
+                }
+                val reset = pending ?: throw SecureMessageClientException.LastDeviceRecoveryKeyResetNotPending()
+                val authorization = RecoveryKeyReset.complete(newKey, reset, localAddress)
+                try {
+                    transport.completeLastDeviceRecoveryKeyReset(authorization, signer)
+                } catch (e: SecureMessageTransportException.RecoveryKeyResetRejected) {
+                    // Another submission of this completion may have won; then the new key is active.
+                    val now = runCatching { transport.lastDeviceRecoveryKeyStatus(localAddress, signer) }.getOrNull()
+                    if (e.reason in RESET_RACE_FAILURES && now is LastDeviceRecoveryKeyStatus.Active && now.isKey(newKey.publicKey)) {
+                        return@withRequestSigner LastDeviceRecoveryKeyResetResult.COMPLETED
+                    }
+                    throw e
+                }
+                LastDeviceRecoveryKeyResetResult.COMPLETED
+            }
+        }
+
+    /**
+     * Cancels the pending recovery key [reset] as this device (a signed
+     * request; docs/recovery-key-reset.md). The recovery key and its epoch
+     * stay; last-device recovery challenges stay valid.
+     *
+     * If [reset] is no longer pending, returns
+     * [LastDeviceRecoveryKeyResetCancellationResult.NotPending] with the
+     * current recovery key status and reset: the same key and epoch mean it
+     * was cancelled (by an earlier call whose response was lost, or by
+     * another authority); another key means a completion or rotation won.
+     * Never recreates a reset.
+     */
+    suspend fun cancelLastDeviceRecoveryKeyReset(reset: RecoveryKeyResetStatus.Pending): LastDeviceRecoveryKeyResetCancellationResult {
+        require(reset.userId == localAddress.userId) { "The reset belongs to another user" }
+        return deviceAuthenticationMutex.withLock {
+            withRequestSigner { _, signer ->
+                try {
+                    transport.cancelLastDeviceRecoveryKeyReset(localAddress, reset.resetId, signer)
+                    LastDeviceRecoveryKeyResetCancellationResult.Cancelled
+                } catch (e: SecureMessageTransportException.RecoveryKeyResetRejected) {
+                    if (e.reason != SecureMessageTransportException.RecoveryKeyResetFailure.NOT_PENDING) throw e
+                    LastDeviceRecoveryKeyResetCancellationResult.NotPending(
+                        transport.lastDeviceRecoveryKeyStatus(localAddress, signer),
+                        transport.lastDeviceRecoveryKeyResetStatus(localAddress, signer),
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * The pending recovery key reset of this user, queried with the current
+     * offline recovery key [currentKey] instead of a device
+     * (docs/recovery-key-reset.md). Works without this device's
+     * authentication key and before [initialize]: the holder of the offline
+     * key can always see a reset that would replace it. [currentKey] is not
+     * stored or sent; only its signature is. Throws
+     * [SecureMessageTransportException.RecoveryKeyResetRejected]
+     * (`INVALID_PROOF` if [currentKey] is not the active key, `NOT_CONFIGURED`
+     * if none is active).
+     */
+    suspend fun lastDeviceRecoveryKeyResetStatus(currentKey: LastDeviceRecoveryKey): RecoveryKeyResetStatus =
+        transport.lastDeviceRecoveryKeyResetStatusByRecoveryKey(RecoveryKeyReset.statusQuery(currentKey, localAddress.userId, clock.now()))
+
+    /**
+     * Cancels the pending recovery key [reset] with the offline recovery key
+     * it would replace, [currentKey] (docs/recovery-key-reset.md): an
+     * independent veto that needs no device and works without this device's
+     * authentication key. Throws [IllegalArgumentException] if [currentKey]
+     * is not the key [reset] replaces.
+     *
+     * If [reset] is no longer pending, returns
+     * [LastDeviceRecoveryKeyResetCancellationResult.NotPending] with the
+     * reset now pending as seen by [currentKey] (`null` when [currentKey] is
+     * no longer the active key: a completion or rotation won) and no
+     * recovery key status.
+     */
+    suspend fun cancelLastDeviceRecoveryKeyReset(
+        currentKey: LastDeviceRecoveryKey,
+        reset: RecoveryKeyResetStatus.Pending,
+    ): LastDeviceRecoveryKeyResetCancellationResult {
+        require(reset.userId == localAddress.userId) { "The reset belongs to another user" }
+        val authorization = RecoveryKeyReset.cancel(currentKey, reset)
+        return try {
+            transport.cancelLastDeviceRecoveryKeyResetByRecoveryKey(authorization)
+            LastDeviceRecoveryKeyResetCancellationResult.Cancelled
+        } catch (e: SecureMessageTransportException.RecoveryKeyResetRejected) {
+            if (e.reason != SecureMessageTransportException.RecoveryKeyResetFailure.NOT_PENDING) throw e
+            val current = try {
+                lastDeviceRecoveryKeyResetStatus(currentKey)
+            } catch (f: SecureMessageTransportException.RecoveryKeyResetRejected) {
+                if (f.reason != SecureMessageTransportException.RecoveryKeyResetFailure.INVALID_PROOF &&
+                    f.reason != SecureMessageTransportException.RecoveryKeyResetFailure.NOT_CONFIGURED
+                ) {
+                    throw f
+                }
+                null
+            }
+            LastDeviceRecoveryKeyResetCancellationResult.NotPending(recoveryKeyStatus = null, currentReset = current)
+        }
+    }
 
     /**
      * Starts or resumes a last-device recovery of this device
@@ -1973,6 +2140,12 @@ class SecureMessageClient(
         )
 
         /** Recovery key revocation rejections after which another device may have revoked the key already. */
+        /** A completion that lost to an identical one that committed first. */
+        private val RESET_RACE_FAILURES = setOf(
+            SecureMessageTransportException.RecoveryKeyResetFailure.CONFLICT,
+            SecureMessageTransportException.RecoveryKeyResetFailure.NOT_PENDING,
+        )
+
         private val REVOCATION_RACE_FAILURES = setOf(
             SecureMessageTransportException.RecoveryKeyTransitionFailure.CONFLICT,
             SecureMessageTransportException.RecoveryKeyTransitionFailure.NOT_CONFIGURED,

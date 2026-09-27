@@ -113,6 +113,30 @@ internal class FlakyNetwork(val fake: FakeNetwork = FakeNetwork()) : SecureMessa
         fake.revokeLastDeviceRecoveryKey(authorization, signer)
     }
 
+    override suspend fun requestLastDeviceRecoveryKeyReset(address: DeviceAddress, signer: ServerRequestSigner) =
+        fake.requestLastDeviceRecoveryKeyReset(address, signer)
+
+    override suspend fun lastDeviceRecoveryKeyResetStatus(address: DeviceAddress, signer: ServerRequestSigner) =
+        fake.lastDeviceRecoveryKeyResetStatus(address, signer)
+
+    override suspend fun completeLastDeviceRecoveryKeyReset(
+        authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCompletionAuthorization,
+        signer: ServerRequestSigner,
+    ) = fake.completeLastDeviceRecoveryKeyReset(authorization, signer)
+
+    override suspend fun cancelLastDeviceRecoveryKeyReset(
+        address: DeviceAddress,
+        resetId: dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetId,
+        signer: ServerRequestSigner,
+    ) = fake.cancelLastDeviceRecoveryKeyReset(address, resetId, signer)
+
+    override suspend fun lastDeviceRecoveryKeyResetStatusByRecoveryKey(query: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetStatusQuery) =
+        fake.lastDeviceRecoveryKeyResetStatusByRecoveryKey(query)
+
+    override suspend fun cancelLastDeviceRecoveryKeyResetByRecoveryKey(
+        authorization: dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCancellationAuthorization,
+    ) = fake.cancelLastDeviceRecoveryKeyResetByRecoveryKey(authorization)
+
     override suspend fun publishPreKeys(publication: PreKeyPublication, signer: ServerRequestSigner) {
         checkNoTransaction()
         fake.publishPreKeys(publication, signer)

@@ -453,6 +453,10 @@ class LastDeviceRecoveryTest {
                     ProtocolConstants.DEVICE_AUTH_ROTATION_POP_DOMAIN,
                     ProtocolConstants.DEVICE_AUTH_ROTATION_ID_DOMAIN,
                     ProtocolConstants.SAFETY_NUMBER_DOMAIN,
+                    ProtocolConstants.RECOVERY_KEY_RESET_NEW_KEY_POP_DOMAIN,
+                    ProtocolConstants.RECOVERY_KEY_RESET_ID_DOMAIN,
+                    ProtocolConstants.RECOVERY_KEY_RESET_CANCEL_DOMAIN,
+                    ProtocolConstants.RECOVERY_KEY_RESET_STATUS_QUERY_DOMAIN,
                 ),
             )
         }

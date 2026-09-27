@@ -7,11 +7,16 @@ import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
+import dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetId
+import dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCancellationAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCompletionAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetStatusQuery
 import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.RequestAuthentication
@@ -117,6 +122,56 @@ interface SecureMessageTransport {
      * [SecureMessageTransportException.AuthenticationFailed].
      */
     suspend fun revokeLastDeviceRecoveryKey(authorization: RecoveryKeyRevocationAuthorization, signer: ServerRequestSigner)
+
+    /**
+     * Requests a delayed reset of the user's recovery key
+     * (docs/recovery-key-reset.md): `PUT /v1/devices/{user}/{device}/last-device-recovery/key/reset`
+     * for [address], signed with its registered device authentication key.
+     * Returns the pending reset: the new one, or the one already pending
+     * (unchanged). Throws [SecureMessageTransportException.RecoveryKeyResetRejected]
+     * or [SecureMessageTransportException.AuthenticationFailed].
+     */
+    suspend fun requestLastDeviceRecoveryKeyReset(address: DeviceAddress, signer: ServerRequestSigner): RecoveryKeyResetStatus.Pending
+
+    /**
+     * The user's pending recovery key reset: `GET …/last-device-recovery/key/reset`
+     * for [address], signed. Throws [SecureMessageTransportException.AuthenticationFailed].
+     */
+    suspend fun lastDeviceRecoveryKeyResetStatus(address: DeviceAddress, signer: ServerRequestSigner): RecoveryKeyResetStatus
+
+    /**
+     * Completes the pending reset: `PUT …/last-device-recovery/key/reset/completion`
+     * for the statement's completing device, signed with its registered key;
+     * the body carries the new key's proof of possession. Returns once the
+     * server completed it, or recognized a retry of the completion that did.
+     * Throws [SecureMessageTransportException.RecoveryKeyResetRejected] or
+     * [SecureMessageTransportException.AuthenticationFailed].
+     */
+    suspend fun completeLastDeviceRecoveryKeyReset(authorization: RecoveryKeyResetCompletionAuthorization, signer: ServerRequestSigner)
+
+    /**
+     * Cancels the pending reset [resetId]: `PUT …/last-device-recovery/key/reset/cancellation`
+     * for [address], signed. Throws [SecureMessageTransportException.RecoveryKeyResetRejected]
+     * (`NOT_PENDING` if no such reset is pending) or
+     * [SecureMessageTransportException.AuthenticationFailed].
+     */
+    suspend fun cancelLastDeviceRecoveryKeyReset(address: DeviceAddress, resetId: RecoveryKeyResetId, signer: ServerRequestSigner)
+
+    /**
+     * The pending reset of the query's user, for the holder of the current
+     * recovery key: `POST /v1/users/{user}/last-device-recovery/key/reset/status`.
+     * Not signed with a [ServerRequestSigner]: the query carries the recovery
+     * key's signature. Throws [SecureMessageTransportException.RecoveryKeyResetRejected].
+     */
+    suspend fun lastDeviceRecoveryKeyResetStatusByRecoveryKey(query: RecoveryKeyResetStatusQuery): RecoveryKeyResetStatus
+
+    /**
+     * Cancels the pending reset with the signature of the recovery key it
+     * would replace: `PUT /v1/users/{user}/last-device-recovery/key/reset/cancellation`.
+     * Not signed with a [ServerRequestSigner]. Throws
+     * [SecureMessageTransportException.RecoveryKeyResetRejected].
+     */
+    suspend fun cancelLastDeviceRecoveryKeyResetByRecoveryKey(authorization: RecoveryKeyResetCancellationAuthorization)
 
     /**
      * A last-device recovery challenge for [target]:

@@ -9,6 +9,8 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
+import dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetId
+import dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
@@ -20,6 +22,12 @@ import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallengeId
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryStatement
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCancellationAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCancellationStatement
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCompletionAuthorization
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCompletionStatement
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetStatusQuery
+import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetStatusQueryStatement
 import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationStatement
 import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization
@@ -191,6 +199,68 @@ internal class RecoveryKeyRevocationRequestDto(
     val signature: String,
 )
 
+/**
+ * The pending recovery key reset of the route's user (docs/recovery-key-reset.md):
+ * `state` is `none` or `pending`; every other field is set only while
+ * `pending` and always present (`null` otherwise). [resetId] and
+ * [recoveryPublicKey] are Base64, times epoch milliseconds (server clock),
+ * [requestedByDevice] a device of the route's user.
+ */
+@Serializable
+internal class RecoveryKeyResetStatusResponse(
+    val state: String,
+    val resetId: String?,
+    val requestedByDevice: String?,
+    val requestedAt: Long?,
+    val eligibleAt: Long?,
+    val recoveryKeyEpoch: Long?,
+    val recoveryPublicKey: String?,
+)
+
+/**
+ * Body of `PUT /v1/devices/{user}/{device}/last-device-recovery/key/reset/completion`.
+ * The user and the completing device are the path's; the other fields
+ * repeat the pending reset. The proof of possession covers the binary
+ * completion statement, never this JSON.
+ */
+@Serializable
+internal class RecoveryKeyResetCompletionRequestDto(
+    val resetId: String,
+    val currentPublicKey: String,
+    val newPublicKey: String,
+    val recoveryKeyEpoch: Long,
+    val requestedAt: Long,
+    val eligibleAt: Long,
+    val newKeyProofOfPossession: String,
+)
+
+/** Body of `PUT /v1/devices/{user}/{device}/last-device-recovery/key/reset/cancellation`: the reset the device cancels. */
+@Serializable
+internal class RecoveryKeyResetCancellationRequestDto(val resetId: String)
+
+/**
+ * Body of `PUT /v1/users/{user}/last-device-recovery/key/reset/cancellation`
+ * (no device, no ServerAuth): the pending reset and the current recovery
+ * key's signature over the binary cancellation statement.
+ */
+@Serializable
+internal class RecoveryKeyResetRecoveryKeyCancellationRequestDto(
+    val resetId: String,
+    val publicKey: String,
+    val recoveryKeyEpoch: Long,
+    val requestedAt: Long,
+    val eligibleAt: Long,
+    val signature: String,
+)
+
+/**
+ * Body of `POST /v1/users/{user}/last-device-recovery/key/reset/status` (no
+ * device, no ServerAuth): the current recovery key's signature over the
+ * binary status query statement.
+ */
+@Serializable
+internal class RecoveryKeyResetStatusQueryDto(val publicKey: String, val timestamp: Long, val signature: String)
+
 /** Body of 4xx responses. */
 @Serializable
 internal class ErrorResponse(val error: String)
@@ -316,6 +386,50 @@ internal fun RecoveryKeyRevocationRequestDto.toAuthorization(authorizer: DeviceA
         timestamp = Instant.fromEpochMilliseconds(timestamp),
         nonce = RequestNonce(decodeCanonicalBase64(nonce)),
     ),
+    decodeCanonicalBase64(signature),
+)
+
+internal fun RecoveryKeyResetStatus.toResponse() = when (this) {
+    RecoveryKeyResetStatus.None -> RecoveryKeyResetStatusResponse("none", null, null, null, null, null, null)
+    is RecoveryKeyResetStatus.Pending -> RecoveryKeyResetStatusResponse(
+        "pending", Base64.encode(resetId.bytes), requestedBy.deviceId.value, requestedAt.toEpochMilliseconds(),
+        eligibleAt.toEpochMilliseconds(), recoveryKeyEpoch, Base64.encode(recoveryPublicKey),
+    )
+}
+
+/** Throws [IllegalArgumentException] for non-canonical Base64, wrong sizes, a non-positive epoch, invalid times or the same key twice. */
+internal fun RecoveryKeyResetCompletionRequestDto.toAuthorization(completer: DeviceAddress) = RecoveryKeyResetCompletionAuthorization(
+    RecoveryKeyResetCompletionStatement(
+        userId = completer.userId,
+        resetId = RecoveryKeyResetId(decodeCanonicalBase64(resetId)),
+        expectedEpoch = recoveryKeyEpoch,
+        currentPublicKey = decodeCanonicalBase64(currentPublicKey),
+        newPublicKey = decodeCanonicalBase64(newPublicKey),
+        requestedAt = Instant.fromEpochMilliseconds(requestedAt),
+        eligibleAt = Instant.fromEpochMilliseconds(eligibleAt),
+        completer = completer,
+    ),
+    decodeCanonicalBase64(newKeyProofOfPossession),
+)
+
+internal fun RecoveryKeyResetCancellationRequestDto.toResetId() = RecoveryKeyResetId(decodeCanonicalBase64(resetId))
+
+/** Throws [IllegalArgumentException] for non-canonical Base64, wrong sizes, a non-positive epoch or invalid times. */
+internal fun RecoveryKeyResetRecoveryKeyCancellationRequestDto.toAuthorization(userId: UserId) = RecoveryKeyResetCancellationAuthorization(
+    RecoveryKeyResetCancellationStatement(
+        userId = userId,
+        resetId = RecoveryKeyResetId(decodeCanonicalBase64(resetId)),
+        expectedEpoch = recoveryKeyEpoch,
+        currentPublicKey = decodeCanonicalBase64(publicKey),
+        requestedAt = Instant.fromEpochMilliseconds(requestedAt),
+        eligibleAt = Instant.fromEpochMilliseconds(eligibleAt),
+    ),
+    decodeCanonicalBase64(signature),
+)
+
+/** Throws [IllegalArgumentException] for non-canonical Base64, wrong sizes or a negative timestamp. */
+internal fun RecoveryKeyResetStatusQueryDto.toQuery(userId: UserId) = RecoveryKeyResetStatusQuery(
+    RecoveryKeyResetStatusQueryStatement(userId, decodeCanonicalBase64(publicKey), Instant.fromEpochMilliseconds(timestamp)),
     decodeCanonicalBase64(signature),
 )
 

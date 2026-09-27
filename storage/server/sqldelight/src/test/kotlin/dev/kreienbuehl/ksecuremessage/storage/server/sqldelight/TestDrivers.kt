@@ -96,7 +96,7 @@ internal fun SqlDriver.longs(sql: String): List<Long> = executeQuery(null, sql, 
     QueryResult.Value(rows)
 }, 0).value
 
-private fun SqlDriver.strings(sql: String): List<String> = executeQuery(null, sql, { cursor ->
+internal fun SqlDriver.strings(sql: String): List<String> = executeQuery(null, sql, { cursor ->
     val rows = mutableListOf<String>()
     while (cursor.next().value) rows += cursor.getString(0)!!
     QueryResult.Value(rows)

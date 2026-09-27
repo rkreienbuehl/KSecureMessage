@@ -1,6 +1,7 @@
 package dev.kreienbuehl.ksecuremessage.protocol
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.UserId
 import io.kodium.Kodium
 import io.kodium.KodiumPrivateKey
 import org.kotlincrypto.hash.sha2.SHA256
@@ -133,9 +134,37 @@ object ServerApiPaths {
      */
     const val LAST_DEVICE_RECOVERY_KEY_REVOCATION: String = "last-device-recovery/key/revocation"
 
+    /**
+     * Requests (`PUT`) or reads (`GET`) the user's delayed recovery key reset
+     * (docs/recovery-key-reset.md). ServerAuth-signed.
+     */
+    const val LAST_DEVICE_RECOVERY_KEY_RESET: String = "last-device-recovery/key/reset"
+
+    /** Completes a pending recovery key reset. ServerAuth-signed; the body carries the new key's proof of possession. */
+    const val LAST_DEVICE_RECOVERY_KEY_RESET_COMPLETION: String = "last-device-recovery/key/reset/completion"
+
+    /**
+     * Cancels a pending recovery key reset. Device-scoped: ServerAuth-signed.
+     * User-scoped ([user]): public, the body carries the current recovery
+     * key's signature.
+     */
+    const val LAST_DEVICE_RECOVERY_KEY_RESET_CANCELLATION: String = "last-device-recovery/key/reset/cancellation"
+
+    /**
+     * User-scoped recovery key reset status query ([user]). Public, not
+     * ServerAuth-signed: the body carries the current recovery key's signature.
+     */
+    const val LAST_DEVICE_RECOVERY_KEY_RESET_STATUS: String = "last-device-recovery/key/reset/status"
+
     /** `/v1/devices/{user}/{device}/{endpoint}`. */
     fun device(address: DeviceAddress, endpoint: String): String =
         "/v1/devices/${encodeSegment(address.userId.value)}/${encodeSegment(address.deviceId.value)}/$endpoint"
+
+    /**
+     * `/v1/users/{user}/{endpoint}`: the routes an offline recovery key holder
+     * uses without any device (docs/recovery-key-reset.md). Never ServerAuth-signed.
+     */
+    fun user(userId: UserId, endpoint: String): String = "/v1/users/${encodeSegment(userId.value)}/$endpoint"
 
     fun encodeSegment(value: String): String = buildString {
         for (byte in value.encodeToByteArray()) {
