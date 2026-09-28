@@ -11,10 +11,7 @@ vulnerability reporting for
 [rkreienbuehl/KSecureMessage](https://github.com/rkreienbuehl/KSecureMessage/security/advisories/new),
 not in a public issue.
 
-> TODO (maintainer, before the first public release): enable private
-> vulnerability reporting in the repository settings. At the time of R1 the
-> repository was not publicly reachable, so this could not be verified. There
-> is no separate security e-mail address.
+There is no separate security e-mail address.
 
 ## Supported versions
 
