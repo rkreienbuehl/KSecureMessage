@@ -170,6 +170,11 @@ PASSED, FAILED or NOT EXECUTED (configured but not run is not passed).
 2. **Version**: set `version` in `build.gradle.kts` (`0.1.0-internal.N` for
    an internal prerelease, no suffix for a public release), update
    `README.md` and `docs/getting-started.md` if they name the version.
+   A version without `-SNAPSHOT` changes the npm lock files (Kotlin/JS writes
+   the package versions into them), and `kotlinStorePackageLock` then fails
+   the build: run `./gradlew kotlinUpgradePackageLock kotlinWasmUpgradePackageLock`,
+   review and commit `kotlin-js-store/` with the version change (and again
+   when bumping back to `-SNAPSHOT`).
 3. **Hosted CI green** on that commit: Tier A (`ci.yml`, including the
    hosted Linux native tests: every `linuxX64Test` ran with tests, checked by
    `verifyTestExecution`), Tier B (`platform.yml`) and the documentation
