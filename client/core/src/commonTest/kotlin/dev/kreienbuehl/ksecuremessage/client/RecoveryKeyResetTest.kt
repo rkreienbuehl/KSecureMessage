@@ -199,7 +199,7 @@ class RecoveryKeyResetTest {
         val late = assertIs<LastDeviceRecoveryKeyResetCancellationResult.NotPending>(phone.cancelLastDeviceRecoveryKeyReset(reset))
         assertTrue(assertIs<LastDeviceRecoveryKeyStatus.Active>(late.recoveryKeyStatus).isKey(r2.publicKey), "the completion won")
         // The offline key R1 can neither cancel nor roll anything back any more.
-        val offline = assertIs<LastDeviceRecoveryKeyResetCancellationResult.NotPending>(phone.cancelLastDeviceRecoveryKeyReset(r1, reset))
+        val offline = assertIs<LastDeviceRecoveryKeyResetCancellationResult.NotPending>(phone.cancelLastDeviceRecoveryKeyResetByRecoveryKey(r1, reset))
         assertNull(offline.currentReset, "R1 is no longer the active key")
         assertActive(r2, epoch = 2)
     }
@@ -213,17 +213,17 @@ class RecoveryKeyResetTest {
         assertFailsWith<SecureMessageClientException.NotInitialized> { phone.lastDeviceRecoveryKeyResetStatus() }
         val attempts = network.recoveryKeyResetAttempts.size
 
-        assertEquals(reset, phone.lastDeviceRecoveryKeyResetStatus(r1))
-        val wrongKey = assertFailsWith<SecureMessageTransportException.RecoveryKeyResetRejected> { phone.lastDeviceRecoveryKeyResetStatus(r2) }
+        assertEquals(reset, phone.lastDeviceRecoveryKeyResetStatusByRecoveryKey(r1))
+        val wrongKey = assertFailsWith<SecureMessageTransportException.RecoveryKeyResetRejected> { phone.lastDeviceRecoveryKeyResetStatusByRecoveryKey(r2) }
         assertEquals(RecoveryKeyResetFailure.INVALID_PROOF, wrongKey.reason)
-        assertFailsWith<IllegalArgumentException> { phone.cancelLastDeviceRecoveryKeyReset(r2, reset) }
+        assertFailsWith<IllegalArgumentException> { phone.cancelLastDeviceRecoveryKeyResetByRecoveryKey(r2, reset) }
 
-        assertSame(LastDeviceRecoveryKeyResetCancellationResult.Cancelled, phone.cancelLastDeviceRecoveryKeyReset(r1, reset))
+        assertSame(LastDeviceRecoveryKeyResetCancellationResult.Cancelled, phone.cancelLastDeviceRecoveryKeyResetByRecoveryKey(r1, reset))
         assertEquals(attempts + 1, network.recoveryKeyResetAttempts.size)
-        assertSame(RecoveryKeyResetStatus.None, phone.lastDeviceRecoveryKeyResetStatus(r1))
+        assertSame(RecoveryKeyResetStatus.None, phone.lastDeviceRecoveryKeyResetStatusByRecoveryKey(r1))
         assertActive(r1, epoch = 1)
         // Retrying is harmless and recreates nothing.
-        val again = assertIs<LastDeviceRecoveryKeyResetCancellationResult.NotPending>(phone.cancelLastDeviceRecoveryKeyReset(r1, reset))
+        val again = assertIs<LastDeviceRecoveryKeyResetCancellationResult.NotPending>(phone.cancelLastDeviceRecoveryKeyResetByRecoveryKey(r1, reset))
         assertSame(RecoveryKeyResetStatus.None, again.currentReset)
         assertNull(again.recoveryKeyStatus)
         clock.now = reset.eligibleAt

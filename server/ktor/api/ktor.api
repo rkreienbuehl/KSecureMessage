@@ -1,0 +1,4 @@
+public final class dev/kreienbuehl/ksecuremessage/server/ktor/KSecureMessageRoutesKt {
+	public static final fun kSecureMessageRoutes (Lio/ktor/server/routing/Route;Ldev/kreienbuehl/ksecuremessage/server/SecureMessageServer;)V
+}
+

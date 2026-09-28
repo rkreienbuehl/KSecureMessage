@@ -1,0 +1,43 @@
+// Klib ABI Dump
+// Targets: [iosArm64, iosSimulatorArm64, iosX64, js, linuxX64, macosArm64, macosX64, mingwX64, wasmJs]
+// Rendering settings:
+// - Signature version: 2
+// - Show manifest properties: true
+// - Show declarations: true
+
+// Library unique name: <dev.kreienbuehl.ksecuremessage.storage.client:sqldelight>
+final class dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage : dev.kreienbuehl.ksecuremessage.storage/ClientStorage { // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage|null[0]
+    final val deviceAuthentication // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.deviceAuthentication|{}deviceAuthentication[0]
+        final fun <get-deviceAuthentication>(): dev.kreienbuehl.ksecuremessage.storage/DeviceAuthenticationKeyStore // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.deviceAuthentication.<get-deviceAuthentication>|<get-deviceAuthentication>(){}[0]
+    final val identity // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.identity|{}identity[0]
+        final fun <get-identity>(): dev.kreienbuehl.ksecuremessage.storage/IdentityStore // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.identity.<get-identity>|<get-identity>(){}[0]
+    final val pendingInbound // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.pendingInbound|{}pendingInbound[0]
+        final fun <get-pendingInbound>(): dev.kreienbuehl.ksecuremessage.storage/PendingInboundStore // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.pendingInbound.<get-pendingInbound>|<get-pendingInbound>(){}[0]
+    final val pendingOutbound // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.pendingOutbound|{}pendingOutbound[0]
+        final fun <get-pendingOutbound>(): dev.kreienbuehl.ksecuremessage.storage/PendingOutboundStore // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.pendingOutbound.<get-pendingOutbound>|<get-pendingOutbound>(){}[0]
+    final val preKeys // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.preKeys|{}preKeys[0]
+        final fun <get-preKeys>(): dev.kreienbuehl.ksecuremessage.storage/PreKeyStore // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.preKeys.<get-preKeys>|<get-preKeys>(){}[0]
+    final val processedInbound // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.processedInbound|{}processedInbound[0]
+        final fun <get-processedInbound>(): dev.kreienbuehl.ksecuremessage.storage/ProcessedInboundStore // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.processedInbound.<get-processedInbound>|<get-processedInbound>(){}[0]
+    final val remoteIdentities // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.remoteIdentities|{}remoteIdentities[0]
+        final fun <get-remoteIdentities>(): dev.kreienbuehl.ksecuremessage.storage/RemoteIdentityStore // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.remoteIdentities.<get-remoteIdentities>|<get-remoteIdentities>(){}[0]
+    final val sessionInitiations // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.sessionInitiations|{}sessionInitiations[0]
+        final fun <get-sessionInitiations>(): dev.kreienbuehl.ksecuremessage.storage/SessionInitiationStore // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.sessionInitiations.<get-sessionInitiations>|<get-sessionInitiations>(){}[0]
+    final val sessions // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.sessions|{}sessions[0]
+        final fun <get-sessions>(): dev.kreienbuehl.ksecuremessage.storage/SessionStore // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.sessions.<get-sessions>|<get-sessions>(){}[0]
+
+    final suspend fun <#A1: kotlin/Any?> transaction(kotlin.coroutines/SuspendFunction1<dev.kreienbuehl.ksecuremessage.storage/ClientStorage, #A1>): #A1 // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.transaction|transaction(kotlin.coroutines.SuspendFunction1<dev.kreienbuehl.ksecuremessage.storage.ClientStorage,0:0>){0§<kotlin.Any?>}[0]
+    final suspend fun resumeStorageKeyRotation(kotlin/Int = ...): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.resumeStorageKeyRotation|resumeStorageKeyRotation(kotlin.Int){}[0]
+    final suspend fun rotateStorageKey(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.rotateStorageKey|rotateStorageKey(){}[0]
+    final suspend fun storageKeyRotationStatus(): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.storageKeyRotationStatus|storageKeyRotationStatus(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.Companion|null[0]
+        final const val DEFAULT_ROTATION_BATCH // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.Companion.DEFAULT_ROTATION_BATCH|{}DEFAULT_ROTATION_BATCH[0]
+            final fun <get-DEFAULT_ROTATION_BATCH>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.Companion.DEFAULT_ROTATION_BATCH.<get-DEFAULT_ROTATION_BATCH>|<get-DEFAULT_ROTATION_BATCH>(){}[0]
+
+        final val Schema // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.Companion.Schema|{}Schema[0]
+            final fun <get-Schema>(): app.cash.sqldelight.db/SqlSchema<app.cash.sqldelight.db/QueryResult.AsyncValue<kotlin/Unit>> // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.Companion.Schema.<get-Schema>|<get-Schema>(){}[0]
+
+        final suspend fun open(app.cash.sqldelight.db/SqlDriver, dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyProvider): dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage // dev.kreienbuehl.ksecuremessage.storage.client.sqldelight/SqlDelightClientStorage.Companion.open|open(app.cash.sqldelight.db.SqlDriver;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyProvider){}[0]
+    }
+}

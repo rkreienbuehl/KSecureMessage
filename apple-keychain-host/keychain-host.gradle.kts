@@ -9,15 +9,25 @@
 // - <target>KeychainHostTest wraps the target's test.kexe in a signed,
 //   entitled .app and runs the DataProtection tests in it. Not part of build/check.
 //
-// Signing comes from Gradle properties or the environment, never from the
-// repository: ksm.apple.teamId (KSM_APPLE_TEAM_ID), ksm.apple.macosProfile
+// Signing comes from Gradle properties, the environment or the git-ignored
+// root local.properties (in that order), never from the repository:
+// ksm.apple.teamId (KSM_APPLE_TEAM_ID), ksm.apple.macosProfile
 // (KSM_APPLE_MACOS_PROFILE), optional ksm.apple.signingIdentity,
 // ksm.apple.bundleId, ksm.apple.simulator, ksm.apple.keychainHost.required.
 
 val hostScript = rootProject.layout.projectDirectory.file("apple-keychain-host/run.sh").asFile.absolutePath
 
+// providers.gradleProperty does not read local.properties; read it as a
+// tracked file so the configuration cache notices changes.
+val localProperties: Provider<java.util.Properties> = providers
+    .fileContents(rootProject.layout.projectDirectory.file("local.properties")).asText
+    .map { text -> java.util.Properties().apply { load(text.reader()) } }
+    .orElse(java.util.Properties())
+
 fun setting(property: String, variable: String): Provider<String> =
-    providers.gradleProperty(property).orElse(providers.environmentVariable(variable)).orElse("")
+    providers.gradleProperty(property)
+        .orElse(providers.environmentVariable(variable))
+        .orElse(localProperties.map { it.getProperty(property) ?: "" })
 
 val teamId = setting("ksm.apple.teamId", "KSM_APPLE_TEAM_ID")
 val macosProfile = setting("ksm.apple.macosProfile", "KSM_APPLE_MACOS_PROFILE")

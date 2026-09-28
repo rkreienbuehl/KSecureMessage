@@ -32,7 +32,7 @@ frame or record format change.
 Code: `client/core/.../client/SecureMessageClient.kt`
 (`discardReceivedMessage`, `commitReceivedMessage`, `pendingReceivedMessages`,
 `pendingReceivedMessageCount`, `decrypt`), `ReliableMessages.kt`
-(`PendingReceivedPage`, `DiscardResult`, `DiscardStatus`,
+(`PendingReceivedMessagePage`, `DiscardResult`, `DiscardStatus`,
 `CommitStatus.ALREADY_DISCARDED`, `ReceiveResult.AlreadyDiscarded`),
 `core/model/.../model/InboundFinalization.kt` (`InboundFinalization`,
 `MessageDiscardReason`), stores in `storage/core/.../storage/ClientStorage.kt`.
@@ -62,8 +62,8 @@ enum class DiscardStatus { DISCARDED, ALREADY_DISCARDED, ALREADY_COMMITTED }
 suspend fun commitReceivedMessage(...): CommitResult
 enum class CommitStatus { COMMITTED, ALREADY_COMMITTED, ALREADY_DISCARDED }
 
-suspend fun pendingReceivedMessages(afterSequence: Long? = null, limit: Int, sender: DeviceAddress? = null): PendingReceivedPage
-class PendingReceivedPage(messages: List<ReceivedMessage>, nextAfterSequence: Long?) { MAX_SIZE = 100 }
+suspend fun pendingReceivedMessages(afterSequence: Long? = null, limit: Int, sender: DeviceAddress? = null): PendingReceivedMessagePage
+class PendingReceivedMessagePage(messages: List<ReceivedMessage>, nextAfterSequence: Long?) { MAX_SIZE = 100 }
 suspend fun pendingReceivedMessageCount(sender: DeviceAddress? = null): Long
 
 sealed interface ReceiveResult { Delivery, AlreadyCommitted, AlreadyDiscarded /* M21 */, Acknowledgement }
@@ -151,7 +151,7 @@ Tests: `MessageDiscardTest` (in-memory) and
   never reused local acceptance sequence. A page holds messages with
   `sequence > afterSequence` (from the start if `null`); never an offset.
 - **order:** ascending sequence.
-- **size:** `1 <= limit <= PendingReceivedPage.MAX_SIZE` (100); other values
+- **size:** `1 <= limit <= PendingReceivedMessagePage.MAX_SIZE` (100); other values
   and a negative `afterSequence` throw `IllegalArgumentException`.
 - **next page:** `nextAfterSequence` is the last returned sequence when more
   pending messages existed at read time, else `null`.

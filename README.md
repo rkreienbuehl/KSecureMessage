@@ -1,6 +1,8 @@
 # KSecureMessage
 
-KSecureMessage is a Kotlin Multiplatform scaffold for a Signal-style secure messaging library built on top of [Kodium](https://github.com/LivotovLabs/kodium).
+KSecureMessage is an early-stage (pre-1.0) Kotlin Multiplatform library for Signal-style secure messaging. It uses the X3DH and Double Ratchet primitives of [Kodium](https://github.com/LivotovLabs/kodium), with KSecureMessage-specific wire, storage, authentication and recovery protocols.
+
+It is not Signal, not compatible with Signal/libsignal, not formally verified and **not independently audited**. There is no sealed sender: the server sees routing metadata. Delivery is at least once, not exactly once. See [docs/security-review.md](docs/security-review.md) and [SECURITY.md](SECURITY.md).
 
 The project intentionally separates:
 
@@ -92,21 +94,45 @@ Shared `ClientStorage`, server `PreKeyRepository`, `MailboxRepository`, `DeviceR
 
 ## Coordinates
 
-Base package:
+Group `dev.kreienbuehl.ksecuremessage`, version `0.1.0-SNAPSHOT` (not yet released), one artifact per module named `ksecuremessage-<module path>`, for example:
 
-```text
-dev.kreienbuehl.ksecuremessage
+```kotlin
+dependencies {
+    implementation("dev.kreienbuehl.ksecuremessage:ksecuremessage-client-core:0.1.0-SNAPSHOT")
+    implementation("dev.kreienbuehl.ksecuremessage:ksecuremessage-client-ktor:0.1.0-SNAPSHOT")
+    implementation("dev.kreienbuehl.ksecuremessage:ksecuremessage-storage-client-sqldelight:0.1.0-SNAPSHOT")
+}
 ```
 
-Current dependency baseline:
+The full artifact table, the publication scope and the versioning policy are in [docs/releasing.md](docs/releasing.md). Base package: `dev.kreienbuehl.ksecuremessage`.
 
-- Kotlin 2.4.20
-- Kodium 1.0.0
-- cryptography-kotlin 0.6.0 (storage encryption)
-- Ktor 3.6.0
-- SQLDelight 2.4.0
+Dependency baseline: Kotlin 2.4.20, Kodium 1.0.0, cryptography-kotlin 0.6.0 (storage encryption), Ktor 3.6.0, SQLDelight 2.4.0 ([docs/dependencies.md](docs/dependencies.md)).
+
+## Supported platforms
+
+JVM, Android, macOS arm64, iOS simulator arm64, Linux x64 and JS on Node.js are compiled and tested; iOS arm64, iOS x64, macOS x64, Windows x64, JS in a browser and Wasm are compile-only (Wasm runtime is unsupported in v0.1). Details and toolchain requirements: [docs/supported-platforms.md](docs/supported-platforms.md).
+
+## Documentation
+
+- [docs/application-lifecycle.md](docs/application-lifecycle.md): what an application calls, and when
+- [docs/operating-the-server.md](docs/operating-the-server.md): running the reference server, clocks, backups, client storage
+- [docs/security-review.md](docs/security-review.md): threat model and reviewer checklist
+- [docs/releasing.md](docs/releasing.md): versioning, artifacts, release checklist, CI
+- [samples/jvm-e2e](samples/jvm-e2e): end-to-end example against the published artifacts
+- Protocol and storage specifications: the other files in [docs/](docs/)
+
+## Building
+
+```bash
+./gradlew build                    # all targets available on this host, all tests, API check
+./gradlew verifyTestExecution      # after build: the supported test matrix really ran
+./gradlew verifyPublication        # local publication, artifact inspection, consumer fixture
+./gradlew updateKotlinAbi          # only for an intended public API change; review the diff
+```
 
 ## Status
+
+The milestone notes below are a changelog: code in them shows the API of that milestone. For current usage see [docs/application-lifecycle.md](docs/application-lifecycle.md) and [samples/jvm-e2e](samples/jvm-e2e).
 
 Milestone 1 done: `KodiumProtocolEngine` creates identities and prekeys, sets up sessions with Kodium X3DH (the signed prekey signature is verified), and encrypts and decrypts with the Kodium Double Ratchet. Sessions persist as opaque `SecureSession.state` bytes. The initiator sends `PreKeyMessage`s until it has decrypted the first reply. After that it sends `RatchetMessage`s. See `core/protocol/src/commonTest`.
 
@@ -248,7 +274,7 @@ client.registerLastDeviceRecoveryKey(client.createLastDeviceRecoveryKey()) // af
 
 Milestone 20 done: application commit boundary and bounded inbound deduplication. A received message is no longer acknowledged when it is decrypted: `decrypt` stores it as pending (sealed at rest, record type 11) in the same transaction as its ratchet step and returns `ReceiveResult.Delivery`; retries before the commit return the same delivery again and are not acknowledged; `pendingReceivedMessages()` returns every uncommitted message after a restart, in local acceptance order. Once the application has applied a message durably, `commitReceivedMessage` moves it from pending to processed in one transaction (commit time plus a sealed SHA-256 body digest, record type 12, domain `KSecureMessage-ProcessedMessage-v1`) and only then sends the ACK; an ACK failure never undoes the commit, and a later retry is answered with `AlreadyCommitted` and a new ACK. So an ACK now means the receiving application committed the message. A reused logical ID with another body fails with `LogicalMessageConflict`. Processed IDs are pruned only by an explicit `pruneProcessedMessages(ProcessedInboundRetentionPolicy(maxAge))` (no default, wall clock, age ≥ maxAge pruned); pending messages never expire. Delivery is at least once, not exactly once: apply messages idempotently keyed by sender and logical ID. `ReceiveResult.Message`/`Duplicate` are replaced by `Delivery`/`AlreadyCommitted` (breaking). Client SQLDelight schema version 13 (`12.sqm`; processed IDs from before are kept and stamped once by `initialize()`); no server or wire change. See [docs/application-delivery.md](docs/application-delivery.md).
 
-Milestone 21 done: explicit discard and pending-inbound pagination. A pending received message now ends in one of two immutable terminal states, both chosen explicitly by the application: `commitReceivedMessage` (COMMITTED) or `discardReceivedMessage(message, reason)` (DISCARDED); nothing discards automatically, and a message may stay pending indefinitely. A discard removes the pending plaintext and writes a tombstone (sealed body digest, record type 12 as for commits, discard time and a closed `MessageDiscardReason` code) in one transaction, then sends the same ACK as a commit; an ACK failure never undoes it. A later copy is answered with `ReceiveResult.AlreadyDiscarded` and a new ACK, never redelivered; a copy with another body fails with `LogicalMessageConflict`. The outcome never flips: commit after discard is `ALREADY_DISCARDED`, discard after commit `ALREADY_COMMITTED`, and racing calls have one winner. An ACK now means the receiving application durably finalized the message; the sender cannot tell commit from discard and never learns the reason. `pendingReceivedMessages(afterSequence, limit, sender)` returns a `PendingReceivedPage` (cursor = sequence, ascending, `sequence > afterSequence`, at most 100, stable when messages are finalized between pages; the unbounded list is gone, breaking), plus `pendingReceivedMessageCount`. `pruneProcessedMessages` prunes committed and discarded tombstones alike. Client SQLDelight schema version 14 (`13.sqm`: existing processed rows become COMMITTED, nothing else changes); no server, wire or frame change. See [docs/message-discard.md](docs/message-discard.md).
+Milestone 21 done: explicit discard and pending-inbound pagination. A pending received message now ends in one of two immutable terminal states, both chosen explicitly by the application: `commitReceivedMessage` (COMMITTED) or `discardReceivedMessage(message, reason)` (DISCARDED); nothing discards automatically, and a message may stay pending indefinitely. A discard removes the pending plaintext and writes a tombstone (sealed body digest, record type 12 as for commits, discard time and a closed `MessageDiscardReason` code) in one transaction, then sends the same ACK as a commit; an ACK failure never undoes it. A later copy is answered with `ReceiveResult.AlreadyDiscarded` and a new ACK, never redelivered; a copy with another body fails with `LogicalMessageConflict`. The outcome never flips: commit after discard is `ALREADY_DISCARDED`, discard after commit `ALREADY_COMMITTED`, and racing calls have one winner. An ACK now means the receiving application durably finalized the message; the sender cannot tell commit from discard and never learns the reason. `pendingReceivedMessages(afterSequence, limit, sender)` returns a `PendingReceivedMessagePage` (cursor = sequence, ascending, `sequence > afterSequence`, at most 100, stable when messages are finalized between pages; the unbounded list is gone, breaking), plus `pendingReceivedMessageCount`. `pruneProcessedMessages` prunes committed and discarded tombstones alike. Client SQLDelight schema version 14 (`13.sqm`: existing processed rows become COMMITTED, nothing else changes); no server, wire or frame change. See [docs/message-discard.md](docs/message-discard.md).
 
 ```kotlin
 when (val result = client.decrypt(envelope)) {
@@ -279,7 +305,7 @@ do { // decide about messages a recipient never acknowledged
 } while (after != null)
 ```
 
-Milestone 23 done: delayed recovery key reset for a lost offline recovery key. Exceptional and weaker than an M19 rotation, which stays the normal path: a registered device requests a reset without the lost key R1; the server stores one pending reset per user with its own clock as request time and `eligibleAt = requestedAt + delay` from the host's `RecoveryKeyResetPolicy` (no default; without a policy requests get `recovery_key_reset_not_available`); repeated requests return the same reset and never restart the delay. Every registered device of the user sees it (signed `GET …/last-device-recovery/key/reset`), and so does the holder of R1 without any device (a query signed by R1, domain `KSecureMessage-RecoveryKeyResetStatusQuery-v1`, on the public `POST /v1/users/{user}/…/reset/status`). Until a completion commits, any device of the user cancels it, and so does R1 alone (`KSecureMessage-RecoveryKeyReset-Cancel-v1`); eligibility only allows a completion, nothing completes automatically. From `eligibleAt` on (server time) a device completes it with R2's proof of possession over a frozen statement bound to the reset ID, the replaced key and epoch, both times and the completing device (`KSecureMessage-RecoveryKeyReset-NewKeyPoP-v1`, completion ID `KSecureMessage-RecoveryKeyResetId-v1`): one compare-and-set installs R2 at epoch N+1 with the completion time, removes the reset and every M18 challenge; exact retries return `204`. R1 stays authoritative (including for M18 recovery) during the delay; rotation, revocation and registration remove a pending reset atomically, so a stale reset never overwrites a later key. The delay does not replace possession of R1: a compromised device that survives the delay uncancelled wins; applications must poll and surface the status themselves (no push, no quorum). Client: `requestLastDeviceRecoveryKeyReset()`, `lastDeviceRecoveryKeyResetStatus()`, `completeLastDeviceRecoveryKeyReset(r2)` (back up R2 first; `ALREADY_ACTIVE` after a lost response), `cancelLastDeviceRecoveryKeyReset(reset)`, and without a device `lastDeviceRecoveryKeyResetStatus(r1)` / `cancelLastDeviceRecoveryKeyReset(r1, reset)`; nothing is stored on the client. Server schema version 7 (`6.sqm`: `reset_completion_id` and the pending reset table); no client schema, wire or other frozen format change. See [docs/recovery-key-reset.md](docs/recovery-key-reset.md).
+Milestone 23 done: delayed recovery key reset for a lost offline recovery key. Exceptional and weaker than an M19 rotation, which stays the normal path: a registered device requests a reset without the lost key R1; the server stores one pending reset per user with its own clock as request time and `eligibleAt = requestedAt + delay` from the host's `RecoveryKeyResetPolicy` (no default; without a policy requests get `recovery_key_reset_not_available`); repeated requests return the same reset and never restart the delay. Every registered device of the user sees it (signed `GET …/last-device-recovery/key/reset`), and so does the holder of R1 without any device (a query signed by R1, domain `KSecureMessage-RecoveryKeyResetStatusQuery-v1`, on the public `POST /v1/users/{user}/…/reset/status`). Until a completion commits, any device of the user cancels it, and so does R1 alone (`KSecureMessage-RecoveryKeyReset-Cancel-v1`); eligibility only allows a completion, nothing completes automatically. From `eligibleAt` on (server time) a device completes it with R2's proof of possession over a frozen statement bound to the reset ID, the replaced key and epoch, both times and the completing device (`KSecureMessage-RecoveryKeyReset-NewKeyPoP-v1`, completion ID `KSecureMessage-RecoveryKeyResetId-v1`): one compare-and-set installs R2 at epoch N+1 with the completion time, removes the reset and every M18 challenge; exact retries return `204`. R1 stays authoritative (including for M18 recovery) during the delay; rotation, revocation and registration remove a pending reset atomically, so a stale reset never overwrites a later key. The delay does not replace possession of R1: a compromised device that survives the delay uncancelled wins; applications must poll and surface the status themselves (no push, no quorum). Client: `requestLastDeviceRecoveryKeyReset()`, `lastDeviceRecoveryKeyResetStatus()`, `completeLastDeviceRecoveryKeyReset(r2)` (back up R2 first; `ALREADY_ACTIVE` after a lost response), `cancelLastDeviceRecoveryKeyReset(reset)`, and without a device `lastDeviceRecoveryKeyResetStatusByRecoveryKey(r1)` / `cancelLastDeviceRecoveryKeyResetByRecoveryKey(r1, reset)`; nothing is stored on the client. Server schema version 7 (`6.sqm`: `reset_completion_id` and the pending reset table); no client schema, wire or other frozen format change. See [docs/recovery-key-reset.md](docs/recovery-key-reset.md).
 
 ```kotlin
 val reset = client.requestLastDeviceRecoveryKeyReset()          // R1 lost; every device should warn the user
@@ -313,6 +339,8 @@ when (val health = client.deviceAuthenticationHealth(policy)) {
 }
 ```
 
+R1 (release readiness, not a protocol milestone): plain `./gradlew build` works with no exclusions (the Kotlin plugin's Node.js repository is declared in settings; JS tests run on Node.js, Wasm and browser runtimes are compile-only, see [docs/supported-platforms.md](docs/supported-platforms.md)); one version and Maven coordinates (`dev.kreienbuehl.ksecuremessage:ksecuremessage-*`) with sources and Dokka jars and externally supplied signing; a checked-in public API baseline (`checkKotlinAbi`); release checks (`checkReleaseConventions`, `verifyTestExecution`, `verifyPublication` with a consumer fixture in `samples/jvm-e2e`); GitHub Actions workflows; operator, lifecycle, release and security review documentation. Public API cleanups before the baseline (breaking): `RemoteIdentityChange` has an internal constructor, `ensureSession` is internal, `PendingReceivedPage` is `PendingReceivedMessagePage`, the offline-key overloads are `lastDeviceRecoveryKeyResetStatusByRecoveryKey` / `cancelLastDeviceRecoveryKeyResetByRecoveryKey`, and cross-module plumbing needs `@OptIn(InternalKSecureMessageApi::class)`. Fix: tampered storage records now fail with `AuthenticationFailed` on JS/Wasm too (WebCrypto errors were not caught). No wire, protocol, storage format, schema or state machine change.
+
 ## Next implementation steps
 
 1. A PostgreSQL server adapter if multi-node deployment is needed.
@@ -320,8 +348,4 @@ when (val health = client.deviceAuthenticationHealth(policy)) {
 
 ## Gradle wrapper
 
-The scaffold does not bundle the Gradle wrapper binary. After opening it with a local Gradle installation, generate one with:
-
-```bash
-gradle wrapper --gradle-version 9.0.0
-```
+The Gradle wrapper (Gradle 9.6.0) is checked in; always build with `./gradlew`.

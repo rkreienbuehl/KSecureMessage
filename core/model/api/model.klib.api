@@ -1,0 +1,569 @@
+// Klib ABI Dump
+// Targets: [iosArm64, iosSimulatorArm64, iosX64, js, linuxX64, macosArm64, macosX64, mingwX64, wasmJs]
+// Rendering settings:
+// - Signature version: 2
+// - Show manifest properties: true
+// - Show declarations: true
+
+// Library unique name: <dev.kreienbuehl.ksecuremessage.core:model>
+open annotation class dev.kreienbuehl.ksecuremessage/InternalKSecureMessageApi : kotlin/Annotation { // dev.kreienbuehl.ksecuremessage/InternalKSecureMessageApi|null[0]
+    constructor <init>() // dev.kreienbuehl.ksecuremessage/InternalKSecureMessageApi.<init>|<init>(){}[0]
+}
+
+final enum class dev.kreienbuehl.ksecuremessage.model/InboundFinalization : kotlin/Enum<dev.kreienbuehl.ksecuremessage.model/InboundFinalization> { // dev.kreienbuehl.ksecuremessage.model/InboundFinalization|null[0]
+    enum entry COMMITTED // dev.kreienbuehl.ksecuremessage.model/InboundFinalization.COMMITTED|null[0]
+    enum entry DISCARDED // dev.kreienbuehl.ksecuremessage.model/InboundFinalization.DISCARDED|null[0]
+
+    final val entries // dev.kreienbuehl.ksecuremessage.model/InboundFinalization.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.model/InboundFinalization> // dev.kreienbuehl.ksecuremessage.model/InboundFinalization.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.model/InboundFinalization // dev.kreienbuehl.ksecuremessage.model/InboundFinalization.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.model/InboundFinalization> // dev.kreienbuehl.ksecuremessage.model/InboundFinalization.values|values#static(){}[0]
+}
+
+final enum class dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason : kotlin/Enum<dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason> { // dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason|null[0]
+    enum entry INVALID_APPLICATION_STATE // dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason.INVALID_APPLICATION_STATE|null[0]
+    enum entry OTHER // dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason.OTHER|null[0]
+    enum entry POLICY_REJECTED // dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason.POLICY_REJECTED|null[0]
+    enum entry UNSUPPORTED_CONTENT // dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason.UNSUPPORTED_CONTENT|null[0]
+    enum entry USER_REJECTED // dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason.USER_REJECTED|null[0]
+
+    final val entries // dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason> // dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason // dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason> // dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason.values|values#static(){}[0]
+}
+
+sealed interface dev.kreienbuehl.ksecuremessage.model/CiphertextMessage { // dev.kreienbuehl.ksecuremessage.model/CiphertextMessage|null[0]
+    final object Companion : kotlinx.serialization.internal/SerializerFactory { // dev.kreienbuehl.ksecuremessage.model/CiphertextMessage.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<dev.kreienbuehl.ksecuremessage.model/CiphertextMessage> // dev.kreienbuehl.ksecuremessage.model/CiphertextMessage.Companion.serializer|serializer(){}[0]
+        final fun serializer(kotlin/Array<out kotlinx.serialization/KSerializer<*>>...): kotlinx.serialization/KSerializer<*> // dev.kreienbuehl.ksecuremessage.model/CiphertextMessage.Companion.serializer|serializer(kotlin.Array<out|kotlinx.serialization.KSerializer<*>>...){}[0]
+    }
+}
+
+sealed interface dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus { // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus|null[0]
+    final class Active : dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus { // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Active|null[0]
+        constructor <init>(kotlin/Long, kotlin.time/Instant, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Active.<init>|<init>(kotlin.Long;kotlin.time.Instant;kotlin.ByteArray){}[0]
+
+        final val epoch // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Active.epoch|{}epoch[0]
+            final fun <get-epoch>(): kotlin/Long // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Active.epoch.<get-epoch>|<get-epoch>(){}[0]
+        final val installedAt // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Active.installedAt|{}installedAt[0]
+            final fun <get-installedAt>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Active.installedAt.<get-installedAt>|<get-installedAt>(){}[0]
+        final val publicKey // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Active.publicKey|{}publicKey[0]
+            final fun <get-publicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Active.publicKey.<get-publicKey>|<get-publicKey>(){}[0]
+
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Active.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Active.hashCode|hashCode(){}[0]
+        final fun isKey(kotlin/ByteArray): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Active.isKey|isKey(kotlin.ByteArray){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Active.toString|toString(){}[0]
+    }
+
+    final class Revoked : dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus { // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Revoked|null[0]
+        constructor <init>(kotlin/Long, kotlin.time/Instant) // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Revoked.<init>|<init>(kotlin.Long;kotlin.time.Instant){}[0]
+
+        final val epoch // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Revoked.epoch|{}epoch[0]
+            final fun <get-epoch>(): kotlin/Long // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Revoked.epoch.<get-epoch>|<get-epoch>(){}[0]
+        final val revokedAt // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Revoked.revokedAt|{}revokedAt[0]
+            final fun <get-revokedAt>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Revoked.revokedAt.<get-revokedAt>|<get-revokedAt>(){}[0]
+
+        final fun component1(): kotlin/Long // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Revoked.component1|component1(){}[0]
+        final fun component2(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Revoked.component2|component2(){}[0]
+        final fun copy(kotlin/Long = ..., kotlin.time/Instant = ...): dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Revoked // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Revoked.copy|copy(kotlin.Long;kotlin.time.Instant){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Revoked.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Revoked.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Revoked.toString|toString(){}[0]
+    }
+
+    final object Unconfigured : dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus { // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Unconfigured|null[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Unconfigured.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Unconfigured.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus.Unconfigured.toString|toString(){}[0]
+    }
+}
+
+sealed interface dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus { // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus|null[0]
+    final class Pending : dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus { // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId, dev.kreienbuehl.ksecuremessage.model/DeviceAddress, kotlin.time/Instant, kotlin.time/Instant, kotlin/Long, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetId;dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.time.Instant;kotlin.time.Instant;kotlin.Long;kotlin.ByteArray){}[0]
+
+        final val eligibleAt // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending.eligibleAt|{}eligibleAt[0]
+            final fun <get-eligibleAt>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending.eligibleAt.<get-eligibleAt>|<get-eligibleAt>(){}[0]
+        final val recoveryKeyEpoch // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending.recoveryKeyEpoch|{}recoveryKeyEpoch[0]
+            final fun <get-recoveryKeyEpoch>(): kotlin/Long // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending.recoveryKeyEpoch.<get-recoveryKeyEpoch>|<get-recoveryKeyEpoch>(){}[0]
+        final val recoveryPublicKey // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending.recoveryPublicKey|{}recoveryPublicKey[0]
+            final fun <get-recoveryPublicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending.recoveryPublicKey.<get-recoveryPublicKey>|<get-recoveryPublicKey>(){}[0]
+        final val requestedAt // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending.requestedAt|{}requestedAt[0]
+            final fun <get-requestedAt>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending.requestedAt.<get-requestedAt>|<get-requestedAt>(){}[0]
+        final val requestedBy // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending.requestedBy|{}requestedBy[0]
+            final fun <get-requestedBy>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending.requestedBy.<get-requestedBy>|<get-requestedBy>(){}[0]
+        final val resetId // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending.resetId|{}resetId[0]
+            final fun <get-resetId>(): dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending.resetId.<get-resetId>|<get-resetId>(){}[0]
+        final val userId // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending.userId|{}userId[0]
+            final fun <get-userId>(): dev.kreienbuehl.ksecuremessage.model/UserId // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending.userId.<get-userId>|<get-userId>(){}[0]
+
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending.hashCode|hashCode(){}[0]
+        final fun isEligibleAt(kotlin.time/Instant): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending.isEligibleAt|isEligibleAt(kotlin.time.Instant){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending.toString|toString(){}[0]
+    }
+
+    final object None : dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus { // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.None|null[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.None.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.None.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.None.toString|toString(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.model/DeviceAddress { // dev.kreienbuehl.ksecuremessage.model/DeviceAddress|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/UserId, dev.kreienbuehl.ksecuremessage.model/DeviceId) // dev.kreienbuehl.ksecuremessage.model/DeviceAddress.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.UserId;dev.kreienbuehl.ksecuremessage.model.DeviceId){}[0]
+
+    final val deviceId // dev.kreienbuehl.ksecuremessage.model/DeviceAddress.deviceId|{}deviceId[0]
+        final fun <get-deviceId>(): dev.kreienbuehl.ksecuremessage.model/DeviceId // dev.kreienbuehl.ksecuremessage.model/DeviceAddress.deviceId.<get-deviceId>|<get-deviceId>(){}[0]
+    final val userId // dev.kreienbuehl.ksecuremessage.model/DeviceAddress.userId|{}userId[0]
+        final fun <get-userId>(): dev.kreienbuehl.ksecuremessage.model/UserId // dev.kreienbuehl.ksecuremessage.model/DeviceAddress.userId.<get-userId>|<get-userId>(){}[0]
+
+    final fun component1(): dev.kreienbuehl.ksecuremessage.model/UserId // dev.kreienbuehl.ksecuremessage.model/DeviceAddress.component1|component1(){}[0]
+    final fun component2(): dev.kreienbuehl.ksecuremessage.model/DeviceId // dev.kreienbuehl.ksecuremessage.model/DeviceAddress.component2|component2(){}[0]
+    final fun copy(dev.kreienbuehl.ksecuremessage.model/UserId = ..., dev.kreienbuehl.ksecuremessage.model/DeviceId = ...): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.model/DeviceAddress.copy|copy(dev.kreienbuehl.ksecuremessage.model.UserId;dev.kreienbuehl.ksecuremessage.model.DeviceId){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/DeviceAddress.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/DeviceAddress.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/DeviceAddress.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<dev.kreienbuehl.ksecuremessage.model/DeviceAddress> { // dev.kreienbuehl.ksecuremessage.model/DeviceAddress.$serializer|null[0]
+        final val descriptor // dev.kreienbuehl.ksecuremessage.model/DeviceAddress.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // dev.kreienbuehl.ksecuremessage.model/DeviceAddress.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // dev.kreienbuehl.ksecuremessage.model/DeviceAddress.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.model/DeviceAddress.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, dev.kreienbuehl.ksecuremessage.model/DeviceAddress) // dev.kreienbuehl.ksecuremessage.model/DeviceAddress.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;dev.kreienbuehl.ksecuremessage.model.DeviceAddress){}[0]
+    }
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.model/DeviceAddress.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<dev.kreienbuehl.ksecuremessage.model/DeviceAddress> // dev.kreienbuehl.ksecuremessage.model/DeviceAddress.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.model/DeviceAuthenticationRegistrationStatus { // dev.kreienbuehl.ksecuremessage.model/DeviceAuthenticationRegistrationStatus|null[0]
+    constructor <init>(kotlin/Long, kotlin.time/Instant) // dev.kreienbuehl.ksecuremessage.model/DeviceAuthenticationRegistrationStatus.<init>|<init>(kotlin.Long;kotlin.time.Instant){}[0]
+
+    final val authEpoch // dev.kreienbuehl.ksecuremessage.model/DeviceAuthenticationRegistrationStatus.authEpoch|{}authEpoch[0]
+        final fun <get-authEpoch>(): kotlin/Long // dev.kreienbuehl.ksecuremessage.model/DeviceAuthenticationRegistrationStatus.authEpoch.<get-authEpoch>|<get-authEpoch>(){}[0]
+    final val authKeyInstalledAt // dev.kreienbuehl.ksecuremessage.model/DeviceAuthenticationRegistrationStatus.authKeyInstalledAt|{}authKeyInstalledAt[0]
+        final fun <get-authKeyInstalledAt>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.model/DeviceAuthenticationRegistrationStatus.authKeyInstalledAt.<get-authKeyInstalledAt>|<get-authKeyInstalledAt>(){}[0]
+
+    final fun component1(): kotlin/Long // dev.kreienbuehl.ksecuremessage.model/DeviceAuthenticationRegistrationStatus.component1|component1(){}[0]
+    final fun component2(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.model/DeviceAuthenticationRegistrationStatus.component2|component2(){}[0]
+    final fun copy(kotlin/Long = ..., kotlin.time/Instant = ...): dev.kreienbuehl.ksecuremessage.model/DeviceAuthenticationRegistrationStatus // dev.kreienbuehl.ksecuremessage.model/DeviceAuthenticationRegistrationStatus.copy|copy(kotlin.Long;kotlin.time.Instant){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/DeviceAuthenticationRegistrationStatus.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/DeviceAuthenticationRegistrationStatus.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/DeviceAuthenticationRegistrationStatus.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.model/DeviceRegistration { // dev.kreienbuehl.ksecuremessage.model/DeviceRegistration|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.model/DeviceRegistration.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.ByteArray){}[0]
+
+    final val address // dev.kreienbuehl.ksecuremessage.model/DeviceRegistration.address|{}address[0]
+        final fun <get-address>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.model/DeviceRegistration.address.<get-address>|<get-address>(){}[0]
+    final val publicKey // dev.kreienbuehl.ksecuremessage.model/DeviceRegistration.publicKey|{}publicKey[0]
+        final fun <get-publicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/DeviceRegistration.publicKey.<get-publicKey>|<get-publicKey>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/DeviceRegistration.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/DeviceRegistration.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/DeviceRegistration.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope { // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/MessageId, dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/DeviceAddress, kotlin/Int = ..., kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.MessageId;dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.Int;kotlin.ByteArray){}[0]
+
+    final val id // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.id|{}id[0]
+        final fun <get-id>(): dev.kreienbuehl.ksecuremessage.model/MessageId // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.id.<get-id>|<get-id>(){}[0]
+    final val payload // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.payload|{}payload[0]
+        final fun <get-payload>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.payload.<get-payload>|<get-payload>(){}[0]
+    final val protocolVersion // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.protocolVersion|{}protocolVersion[0]
+        final fun <get-protocolVersion>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.protocolVersion.<get-protocolVersion>|<get-protocolVersion>(){}[0]
+    final val recipient // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.recipient|{}recipient[0]
+        final fun <get-recipient>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.recipient.<get-recipient>|<get-recipient>(){}[0]
+    final val sender // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.sender|{}sender[0]
+        final fun <get-sender>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.sender.<get-sender>|<get-sender>(){}[0]
+
+    final fun component1(): dev.kreienbuehl.ksecuremessage.model/MessageId // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.component1|component1(){}[0]
+    final fun component2(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.component2|component2(){}[0]
+    final fun component3(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.component3|component3(){}[0]
+    final fun component4(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.component4|component4(){}[0]
+    final fun component5(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.component5|component5(){}[0]
+    final fun copy(dev.kreienbuehl.ksecuremessage.model/MessageId = ..., dev.kreienbuehl.ksecuremessage.model/DeviceAddress = ..., dev.kreienbuehl.ksecuremessage.model/DeviceAddress = ..., kotlin/Int = ..., kotlin/ByteArray = ...): dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.copy|copy(dev.kreienbuehl.ksecuremessage.model.MessageId;dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.Int;kotlin.ByteArray){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope> { // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.$serializer|null[0]
+        final val descriptor // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope) // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope){}[0]
+    }
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope> // dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.model/PreKeyBundle { // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, kotlin/ByteArray, dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey, dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey? = ...) // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey;dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey?){}[0]
+
+    final val address // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.address|{}address[0]
+        final fun <get-address>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.address.<get-address>|<get-address>(){}[0]
+    final val identityKey // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.identityKey|{}identityKey[0]
+        final fun <get-identityKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.identityKey.<get-identityKey>|<get-identityKey>(){}[0]
+    final val oneTimePreKey // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.oneTimePreKey|{}oneTimePreKey[0]
+        final fun <get-oneTimePreKey>(): dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey? // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.oneTimePreKey.<get-oneTimePreKey>|<get-oneTimePreKey>(){}[0]
+    final val signedPreKey // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.signedPreKey|{}signedPreKey[0]
+        final fun <get-signedPreKey>(): dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.signedPreKey.<get-signedPreKey>|<get-signedPreKey>(){}[0]
+
+    final fun component1(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.component1|component1(){}[0]
+    final fun component2(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.component2|component2(){}[0]
+    final fun component3(): dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.component3|component3(){}[0]
+    final fun component4(): dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey? // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.component4|component4(){}[0]
+    final fun copy(dev.kreienbuehl.ksecuremessage.model/DeviceAddress = ..., kotlin/ByteArray = ..., dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey = ..., dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey? = ...): dev.kreienbuehl.ksecuremessage.model/PreKeyBundle // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.copy|copy(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey;dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey?){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<dev.kreienbuehl.ksecuremessage.model/PreKeyBundle> { // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.$serializer|null[0]
+        final val descriptor // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): dev.kreienbuehl.ksecuremessage.model/PreKeyBundle // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, dev.kreienbuehl.ksecuremessage.model/PreKeyBundle) // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;dev.kreienbuehl.ksecuremessage.model.PreKeyBundle){}[0]
+    }
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<dev.kreienbuehl.ksecuremessage.model/PreKeyBundle> // dev.kreienbuehl.ksecuremessage.model/PreKeyBundle.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.model/PreKeyMessage : dev.kreienbuehl.ksecuremessage.model/CiphertextMessage { // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage|null[0]
+    constructor <init>(kotlin/ByteArray, kotlin/ByteArray, dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId, dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId?, dev.kreienbuehl.ksecuremessage.model/RatchetMessage) // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.<init>|<init>(kotlin.ByteArray;kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId;dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId?;dev.kreienbuehl.ksecuremessage.model.RatchetMessage){}[0]
+
+    final val ephemeralKey // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.ephemeralKey|{}ephemeralKey[0]
+        final fun <get-ephemeralKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.ephemeralKey.<get-ephemeralKey>|<get-ephemeralKey>(){}[0]
+    final val identityKey // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.identityKey|{}identityKey[0]
+        final fun <get-identityKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.identityKey.<get-identityKey>|<get-identityKey>(){}[0]
+    final val message // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.message|{}message[0]
+        final fun <get-message>(): dev.kreienbuehl.ksecuremessage.model/RatchetMessage // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.message.<get-message>|<get-message>(){}[0]
+    final val oneTimePreKeyId // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.oneTimePreKeyId|{}oneTimePreKeyId[0]
+        final fun <get-oneTimePreKeyId>(): dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId? // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.oneTimePreKeyId.<get-oneTimePreKeyId>|<get-oneTimePreKeyId>(){}[0]
+    final val signedPreKeyId // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.signedPreKeyId|{}signedPreKeyId[0]
+        final fun <get-signedPreKeyId>(): dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.signedPreKeyId.<get-signedPreKeyId>|<get-signedPreKeyId>(){}[0]
+
+    final fun component1(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.component1|component1(){}[0]
+    final fun component2(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.component2|component2(){}[0]
+    final fun component3(): dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.component3|component3(){}[0]
+    final fun component4(): dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId? // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.component4|component4(){}[0]
+    final fun component5(): dev.kreienbuehl.ksecuremessage.model/RatchetMessage // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.component5|component5(){}[0]
+    final fun copy(kotlin/ByteArray = ..., kotlin/ByteArray = ..., dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId = ..., dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId? = ..., dev.kreienbuehl.ksecuremessage.model/RatchetMessage = ...): dev.kreienbuehl.ksecuremessage.model/PreKeyMessage // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.copy|copy(kotlin.ByteArray;kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId;dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId?;dev.kreienbuehl.ksecuremessage.model.RatchetMessage){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<dev.kreienbuehl.ksecuremessage.model/PreKeyMessage> { // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.$serializer|null[0]
+        final val descriptor // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): dev.kreienbuehl.ksecuremessage.model/PreKeyMessage // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, dev.kreienbuehl.ksecuremessage.model/PreKeyMessage) // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;dev.kreienbuehl.ksecuremessage.model.PreKeyMessage){}[0]
+    }
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<dev.kreienbuehl.ksecuremessage.model/PreKeyMessage> // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.model/PreKeyPublication { // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, kotlin/ByteArray, dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey, kotlin.collections/List<dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey>) // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey;kotlin.collections.List<dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey>){}[0]
+
+    final val address // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.address|{}address[0]
+        final fun <get-address>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.address.<get-address>|<get-address>(){}[0]
+    final val identityKey // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.identityKey|{}identityKey[0]
+        final fun <get-identityKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.identityKey.<get-identityKey>|<get-identityKey>(){}[0]
+    final val oneTimePreKeys // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.oneTimePreKeys|{}oneTimePreKeys[0]
+        final fun <get-oneTimePreKeys>(): kotlin.collections/List<dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey> // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.oneTimePreKeys.<get-oneTimePreKeys>|<get-oneTimePreKeys>(){}[0]
+    final val signedPreKey // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.signedPreKey|{}signedPreKey[0]
+        final fun <get-signedPreKey>(): dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.signedPreKey.<get-signedPreKey>|<get-signedPreKey>(){}[0]
+
+    final fun component1(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.component1|component1(){}[0]
+    final fun component2(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.component2|component2(){}[0]
+    final fun component3(): dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.component3|component3(){}[0]
+    final fun component4(): kotlin.collections/List<dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey> // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.component4|component4(){}[0]
+    final fun copy(dev.kreienbuehl.ksecuremessage.model/DeviceAddress = ..., kotlin/ByteArray = ..., dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey = ..., kotlin.collections/List<dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey> = ...): dev.kreienbuehl.ksecuremessage.model/PreKeyPublication // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.copy|copy(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey;kotlin.collections.List<dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey>){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<dev.kreienbuehl.ksecuremessage.model/PreKeyPublication> { // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.$serializer|null[0]
+        final val descriptor // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): dev.kreienbuehl.ksecuremessage.model/PreKeyPublication // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, dev.kreienbuehl.ksecuremessage.model/PreKeyPublication) // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;dev.kreienbuehl.ksecuremessage.model.PreKeyPublication){}[0]
+    }
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.Companion|null[0]
+        final val $childSerializers // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.Companion.$childSerializers|{}$childSerializers[0]
+
+        final fun serializer(): kotlinx.serialization/KSerializer<dev.kreienbuehl.ksecuremessage.model/PreKeyPublication> // dev.kreienbuehl.ksecuremessage.model/PreKeyPublication.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey { // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId;kotlin.ByteArray){}[0]
+
+    final val id // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey.id|{}id[0]
+        final fun <get-id>(): dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey.id.<get-id>|<get-id>(){}[0]
+    final val publicKey // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey.publicKey|{}publicKey[0]
+        final fun <get-publicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey.publicKey.<get-publicKey>|<get-publicKey>(){}[0]
+
+    final fun component1(): dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey.component1|component1(){}[0]
+    final fun component2(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey.component2|component2(){}[0]
+    final fun copy(dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId = ..., kotlin/ByteArray = ...): dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey.copy|copy(dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId;kotlin.ByteArray){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey> { // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey.$serializer|null[0]
+        final val descriptor // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey) // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey){}[0]
+    }
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey> // dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey { // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId, kotlin/ByteArray, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId;kotlin.ByteArray;kotlin.ByteArray){}[0]
+
+    final val id // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.id|{}id[0]
+        final fun <get-id>(): dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.id.<get-id>|<get-id>(){}[0]
+    final val publicKey // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.publicKey|{}publicKey[0]
+        final fun <get-publicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.publicKey.<get-publicKey>|<get-publicKey>(){}[0]
+    final val signature // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.signature|{}signature[0]
+        final fun <get-signature>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.signature.<get-signature>|<get-signature>(){}[0]
+
+    final fun component1(): dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.component1|component1(){}[0]
+    final fun component2(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.component2|component2(){}[0]
+    final fun component3(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.component3|component3(){}[0]
+    final fun copy(dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId = ..., kotlin/ByteArray = ..., kotlin/ByteArray = ...): dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.copy|copy(dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId;kotlin.ByteArray;kotlin.ByteArray){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey> { // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.$serializer|null[0]
+        final val descriptor // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey) // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey){}[0]
+    }
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey> // dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.model/RatchetMessage : dev.kreienbuehl.ksecuremessage.model/CiphertextMessage { // dev.kreienbuehl.ksecuremessage.model/RatchetMessage|null[0]
+    constructor <init>(kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.model/RatchetMessage.<init>|<init>(kotlin.ByteArray){}[0]
+
+    final val bytes // dev.kreienbuehl.ksecuremessage.model/RatchetMessage.bytes|{}bytes[0]
+        final fun <get-bytes>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/RatchetMessage.bytes.<get-bytes>|<get-bytes>(){}[0]
+
+    final fun component1(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/RatchetMessage.component1|component1(){}[0]
+    final fun copy(kotlin/ByteArray = ...): dev.kreienbuehl.ksecuremessage.model/RatchetMessage // dev.kreienbuehl.ksecuremessage.model/RatchetMessage.copy|copy(kotlin.ByteArray){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/RatchetMessage.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/RatchetMessage.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/RatchetMessage.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<dev.kreienbuehl.ksecuremessage.model/RatchetMessage> { // dev.kreienbuehl.ksecuremessage.model/RatchetMessage.$serializer|null[0]
+        final val descriptor // dev.kreienbuehl.ksecuremessage.model/RatchetMessage.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // dev.kreienbuehl.ksecuremessage.model/RatchetMessage.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // dev.kreienbuehl.ksecuremessage.model/RatchetMessage.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): dev.kreienbuehl.ksecuremessage.model/RatchetMessage // dev.kreienbuehl.ksecuremessage.model/RatchetMessage.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, dev.kreienbuehl.ksecuremessage.model/RatchetMessage) // dev.kreienbuehl.ksecuremessage.model/RatchetMessage.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;dev.kreienbuehl.ksecuremessage.model.RatchetMessage){}[0]
+    }
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.model/RatchetMessage.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<dev.kreienbuehl.ksecuremessage.model/RatchetMessage> // dev.kreienbuehl.ksecuremessage.model/RatchetMessage.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId { // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId|null[0]
+    constructor <init>(kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId.<init>|<init>(kotlin.ByteArray){}[0]
+
+    final val bytes // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId.bytes|{}bytes[0]
+        final fun <get-bytes>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId.bytes.<get-bytes>|<get-bytes>(){}[0]
+
+    final fun encode(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId.encode|encode(){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId.toString|toString(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId.Companion|null[0]
+        final const val SIZE // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId.Companion.SIZE|{}SIZE[0]
+            final fun <get-SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId.Companion.SIZE.<get-SIZE>|<get-SIZE>(){}[0]
+        final const val TEXT_LENGTH // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId.Companion.TEXT_LENGTH|{}TEXT_LENGTH[0]
+            final fun <get-TEXT_LENGTH>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId.Companion.TEXT_LENGTH.<get-TEXT_LENGTH>|<get-TEXT_LENGTH>(){}[0]
+
+        final fun decode(kotlin/String): dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId // dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId.Companion.decode|decode(kotlin.String){}[0]
+    }
+}
+
+final value class dev.kreienbuehl.ksecuremessage.model/DeviceId { // dev.kreienbuehl.ksecuremessage.model/DeviceId|null[0]
+    constructor <init>(kotlin/String) // dev.kreienbuehl.ksecuremessage.model/DeviceId.<init>|<init>(kotlin.String){}[0]
+
+    final val value // dev.kreienbuehl.ksecuremessage.model/DeviceId.value|{}value[0]
+        final fun <get-value>(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/DeviceId.value.<get-value>|<get-value>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/DeviceId.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/DeviceId.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/DeviceId.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<dev.kreienbuehl.ksecuremessage.model/DeviceId> { // dev.kreienbuehl.ksecuremessage.model/DeviceId.$serializer|null[0]
+        final val descriptor // dev.kreienbuehl.ksecuremessage.model/DeviceId.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // dev.kreienbuehl.ksecuremessage.model/DeviceId.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // dev.kreienbuehl.ksecuremessage.model/DeviceId.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): dev.kreienbuehl.ksecuremessage.model/DeviceId // dev.kreienbuehl.ksecuremessage.model/DeviceId.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, dev.kreienbuehl.ksecuremessage.model/DeviceId) // dev.kreienbuehl.ksecuremessage.model/DeviceId.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;dev.kreienbuehl.ksecuremessage.model.DeviceId){}[0]
+    }
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.model/DeviceId.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<dev.kreienbuehl.ksecuremessage.model/DeviceId> // dev.kreienbuehl.ksecuremessage.model/DeviceId.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final value class dev.kreienbuehl.ksecuremessage.model/LogicalMessageId { // dev.kreienbuehl.ksecuremessage.model/LogicalMessageId|null[0]
+    constructor <init>(kotlin.uuid/Uuid) // dev.kreienbuehl.ksecuremessage.model/LogicalMessageId.<init>|<init>(kotlin.uuid.Uuid){}[0]
+
+    final val uuid // dev.kreienbuehl.ksecuremessage.model/LogicalMessageId.uuid|{}uuid[0]
+        final fun <get-uuid>(): kotlin.uuid/Uuid // dev.kreienbuehl.ksecuremessage.model/LogicalMessageId.uuid.<get-uuid>|<get-uuid>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/LogicalMessageId.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/LogicalMessageId.hashCode|hashCode(){}[0]
+    final fun toByteArray(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/LogicalMessageId.toByteArray|toByteArray(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/LogicalMessageId.toString|toString(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.model/LogicalMessageId.Companion|null[0]
+        final const val SIZE // dev.kreienbuehl.ksecuremessage.model/LogicalMessageId.Companion.SIZE|{}SIZE[0]
+            final fun <get-SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/LogicalMessageId.Companion.SIZE.<get-SIZE>|<get-SIZE>(){}[0]
+
+        final fun fromByteArray(kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.model/LogicalMessageId // dev.kreienbuehl.ksecuremessage.model/LogicalMessageId.Companion.fromByteArray|fromByteArray(kotlin.ByteArray){}[0]
+        final fun random(): dev.kreienbuehl.ksecuremessage.model/LogicalMessageId // dev.kreienbuehl.ksecuremessage.model/LogicalMessageId.Companion.random|random(){}[0]
+    }
+}
+
+final value class dev.kreienbuehl.ksecuremessage.model/MessageId { // dev.kreienbuehl.ksecuremessage.model/MessageId|null[0]
+    constructor <init>(kotlin/String) // dev.kreienbuehl.ksecuremessage.model/MessageId.<init>|<init>(kotlin.String){}[0]
+
+    final val value // dev.kreienbuehl.ksecuremessage.model/MessageId.value|{}value[0]
+        final fun <get-value>(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/MessageId.value.<get-value>|<get-value>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/MessageId.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/MessageId.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/MessageId.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<dev.kreienbuehl.ksecuremessage.model/MessageId> { // dev.kreienbuehl.ksecuremessage.model/MessageId.$serializer|null[0]
+        final val descriptor // dev.kreienbuehl.ksecuremessage.model/MessageId.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // dev.kreienbuehl.ksecuremessage.model/MessageId.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // dev.kreienbuehl.ksecuremessage.model/MessageId.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): dev.kreienbuehl.ksecuremessage.model/MessageId // dev.kreienbuehl.ksecuremessage.model/MessageId.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, dev.kreienbuehl.ksecuremessage.model/MessageId) // dev.kreienbuehl.ksecuremessage.model/MessageId.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;dev.kreienbuehl.ksecuremessage.model.MessageId){}[0]
+    }
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.model/MessageId.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<dev.kreienbuehl.ksecuremessage.model/MessageId> // dev.kreienbuehl.ksecuremessage.model/MessageId.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final value class dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId { // dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId|null[0]
+    constructor <init>(kotlin/Int) // dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId.<init>|<init>(kotlin.Int){}[0]
+
+    final val value // dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId.value|{}value[0]
+        final fun <get-value>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId.value.<get-value>|<get-value>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId> { // dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId.$serializer|null[0]
+        final val descriptor // dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId // dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId) // dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId){}[0]
+    }
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId> // dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final value class dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId { // dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId|null[0]
+    constructor <init>(kotlin/Int) // dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId.<init>|<init>(kotlin.Int){}[0]
+
+    final val value // dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId.value|{}value[0]
+        final fun <get-value>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId.value.<get-value>|<get-value>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId> { // dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId.$serializer|null[0]
+        final val descriptor // dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId // dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId) // dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId){}[0]
+    }
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId> // dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId.Companion.serializer|serializer(){}[0]
+    }
+}
+
+final value class dev.kreienbuehl.ksecuremessage.model/UserId { // dev.kreienbuehl.ksecuremessage.model/UserId|null[0]
+    constructor <init>(kotlin/String) // dev.kreienbuehl.ksecuremessage.model/UserId.<init>|<init>(kotlin.String){}[0]
+
+    final val value // dev.kreienbuehl.ksecuremessage.model/UserId.value|{}value[0]
+        final fun <get-value>(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/UserId.value.<get-value>|<get-value>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/UserId.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/UserId.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/UserId.toString|toString(){}[0]
+
+    final object $serializer : kotlinx.serialization.internal/GeneratedSerializer<dev.kreienbuehl.ksecuremessage.model/UserId> { // dev.kreienbuehl.ksecuremessage.model/UserId.$serializer|null[0]
+        final val descriptor // dev.kreienbuehl.ksecuremessage.model/UserId.$serializer.descriptor|{}descriptor[0]
+            final fun <get-descriptor>(): kotlinx.serialization.descriptors/SerialDescriptor // dev.kreienbuehl.ksecuremessage.model/UserId.$serializer.descriptor.<get-descriptor>|<get-descriptor>(){}[0]
+
+        final fun childSerializers(): kotlin/Array<kotlinx.serialization/KSerializer<*>> // dev.kreienbuehl.ksecuremessage.model/UserId.$serializer.childSerializers|childSerializers(){}[0]
+        final fun deserialize(kotlinx.serialization.encoding/Decoder): dev.kreienbuehl.ksecuremessage.model/UserId // dev.kreienbuehl.ksecuremessage.model/UserId.$serializer.deserialize|deserialize(kotlinx.serialization.encoding.Decoder){}[0]
+        final fun serialize(kotlinx.serialization.encoding/Encoder, dev.kreienbuehl.ksecuremessage.model/UserId) // dev.kreienbuehl.ksecuremessage.model/UserId.$serializer.serialize|serialize(kotlinx.serialization.encoding.Encoder;dev.kreienbuehl.ksecuremessage.model.UserId){}[0]
+    }
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.model/UserId.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<dev.kreienbuehl.ksecuremessage.model/UserId> // dev.kreienbuehl.ksecuremessage.model/UserId.Companion.serializer|serializer(){}[0]
+    }
+}

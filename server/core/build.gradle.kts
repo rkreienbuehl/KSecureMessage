@@ -2,6 +2,8 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
 }
 
+description = "KSecureMessage server: blind relay, prekey distribution, device authentication and recovery."
+
 kotlin {
     jvmToolchain(17)
 }

@@ -1,0 +1,59 @@
+# Tier A: every push and pull request (docs/releasing.md, "CI").
+# The default build includes the JVM, JS/Node and linuxX64 tests, the server
+# tests, the Android host tests, checkKotlinAbi and checkReleaseConventions.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build, API check, publication (Linux)
+    runs-on: ubuntu-latest
+    # Kotlin/JS tests are slow (Kodium's Ed25519 on Kotlin/JS): on an Apple
+    # silicon laptop client:core jsNodeTest alone takes about 2 h 20 min and
+    # core:protocol about 17 min. 360 minutes is the GitHub-hosted maximum.
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # Caches Gradle dependencies and wrapper; writes the cache only on main.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Accept Android SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+
+      - name: Default build
+        run: ./gradlew build
+
+      - name: Supported test matrix executed
+        run: ./gradlew verifyTestExecution
+
+      - name: Publication, artifact inspection, consumer fixture
+        run: ./gradlew verifyPublication
+
+      - name: Test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports-linux
+          path: |
+            **/build/reports/
+            **/build/test-results/
+          retention-days: 7

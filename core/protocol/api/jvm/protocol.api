@@ -1,0 +1,756 @@
+public final class dev/kreienbuehl/ksecuremessage/protocol/ApplicationMessageDigest {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/protocol/ApplicationMessageDigest;
+	public static final field SIZE I
+	public final fun of ([B)[B
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/CiphertextMessageCodec {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/protocol/CiphertextMessageCodec;
+	public static final field MAX_ENCODED_SIZE I
+	public static final field MAX_RATCHET_PAYLOAD_SIZE I
+	public static final field TYPE_PREKEY_MESSAGE I
+	public static final field TYPE_RATCHET_MESSAGE I
+	public static final field WIRE_VERSION I
+	public final fun decode ([B)Ldev/kreienbuehl/ksecuremessage/model/CiphertextMessage;
+	public final fun encode (Ldev/kreienbuehl/ksecuremessage/model/CiphertextMessage;)[B
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/DecryptionResult {
+	public fun <init> ([BLdev/kreienbuehl/ksecuremessage/protocol/SecureSession;)V
+	public final fun component1 ()[B
+	public final fun component2 ()Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;
+	public final fun copy ([BLdev/kreienbuehl/ksecuremessage/protocol/SecureSession;)Ldev/kreienbuehl/ksecuremessage/protocol/DecryptionResult;
+	public static synthetic fun copy$default (Ldev/kreienbuehl/ksecuremessage/protocol/DecryptionResult;[BLdev/kreienbuehl/ksecuremessage/protocol/SecureSession;ILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/protocol/DecryptionResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPlaintext ()[B
+	public final fun getUpdatedSession ()Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair {
+	public fun <init> ([B[B)V
+	public final fun getPrivateKey ()[B
+	public final fun getPublicKey ()[B
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotation {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotation;
+	public static final field PUBLIC_KEY_SIZE I
+	public static final field SIGNATURE_SIZE I
+	public final fun authorizationInput (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationStatement;)[B
+	public final fun create (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair;Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;JLkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;)Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationAuthorization;
+	public static synthetic fun create$default (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotation;Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair;Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;JLkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;ILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationAuthorization;
+	public final fun getVALIDITY_WINDOW-UwyO8pc ()J
+	public final fun proofOfPossessionInput (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationStatement;)[B
+	public final fun rotationId (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationStatement;)Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationId;
+	public final fun verifyAuthorization ([BLdev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationAuthorization;)Z
+	public final fun verifyProofOfPossession (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationAuthorization;)Z
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationAuthorization {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationStatement;[B[B)V
+	public final fun getAuthorizationSignature ()[B
+	public final fun getProofOfPossession ()[B
+	public final fun getStatement ()Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationStatement;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationId {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationId$Companion;
+	public static final field SIZE I
+	public fun <init> ([B)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationId$Companion {
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationStatement {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[B[BJLkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;)V
+	public final fun getAddress ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getCurrentPublicKey ()[B
+	public final fun getExpectedAuthEpoch ()J
+	public final fun getNonce ()Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;
+	public final fun getReplacementPublicKey ()[B
+	public final fun getTimestamp ()Lkotlin/time/Instant;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/DeviceRecovery {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecovery;
+	public static final field PUBLIC_KEY_SIZE I
+	public static final field SIGNATURE_SIZE I
+	public final fun authorizationInput (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryRequest;)[B
+	public final fun authorize (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair;Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryRequest;)Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryAuthorization;
+	public final fun getVALIDITY_WINDOW-UwyO8pc ()J
+	public final fun prepare (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;)Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryRequest;
+	public static synthetic fun prepare$default (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecovery;Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;ILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryRequest;
+	public final fun proofOfPossessionInput (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryRequest;)[B
+	public final fun recoveryId (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryRequest;)Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryId;
+	public final fun verifyAuthorization ([BLdev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryAuthorization;)Z
+	public final fun verifyProofOfPossession (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryRequest;)Z
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryAuthorization {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryRequest;[B)V
+	public final fun getAuthorizerSignature ()[B
+	public final fun getRequest ()Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryRequest;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryCodec {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryCodec;
+	public final fun decodeAuthorization ([B)Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryAuthorization;
+	public final fun decodeRequest ([B)Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryRequest;
+	public final fun encodeAuthorization (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryAuthorization;)[B
+	public final fun encodeRequest (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryRequest;)[B
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryId {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryId$Companion;
+	public static final field SIZE I
+	public fun <init> ([B)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryId$Companion {
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryRequest {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[BLkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;[B)V
+	public final fun getAuthorizer ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getNonce ()Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;
+	public final fun getProofOfPossession ()[B
+	public final fun getReplacementPublicKey ()[B
+	public final fun getTarget ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getTimestamp ()Lkotlin/time/Instant;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/EncryptionResult {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/model/CiphertextMessage;Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;)V
+	public final fun component1 ()Ldev/kreienbuehl/ksecuremessage/model/CiphertextMessage;
+	public final fun component2 ()Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;
+	public final fun copy (Ldev/kreienbuehl/ksecuremessage/model/CiphertextMessage;Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;)Ldev/kreienbuehl/ksecuremessage/protocol/EncryptionResult;
+	public static synthetic fun copy$default (Ldev/kreienbuehl/ksecuremessage/protocol/EncryptionResult;Ldev/kreienbuehl/ksecuremessage/model/CiphertextMessage;Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;ILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/protocol/EncryptionResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getMessage ()Ldev/kreienbuehl/ksecuremessage/model/CiphertextMessage;
+	public final fun getUpdatedSession ()Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/KodiumProtocolEngine : dev/kreienbuehl/ksecuremessage/protocol/ProtocolEngine {
+	public fun <init> ()V
+	public fun acceptSession (Ldev/kreienbuehl/ksecuremessage/protocol/LocalIdentity;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/protocol/SignedPreKeyPair;Ldev/kreienbuehl/ksecuremessage/protocol/OneTimePreKeyPair;Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun createDeviceAuthenticationKey (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun createIdentity (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun createLastDeviceRecoveryKey (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun createOneTimePreKeys-ddS9unE (IILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun createSignedPreKey-oRYEkKA (Ldev/kreienbuehl/ksecuremessage/protocol/LocalIdentity;ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun decrypt (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;Ldev/kreienbuehl/ksecuremessage/model/CiphertextMessage;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun encrypt (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun initiateSession (Ldev/kreienbuehl/ksecuremessage/protocol/LocalIdentity;Ldev/kreienbuehl/ksecuremessage/model/PreKeyBundle;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun sessionInfo (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;)Ldev/kreienbuehl/ksecuremessage/protocol/SessionInfo;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecovery {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecovery;
+	public static final field PUBLIC_KEY_SIZE I
+	public static final field SIGNATURE_SIZE I
+	public final fun authorizationInput (Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryStatement;)[B
+	public final fun authorize (Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKey;Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair;Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryChallenge;)Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryAuthorization;
+	public final fun getCHALLENGE_LIFETIME-UwyO8pc ()J
+	public final fun keyRegistrationInput-vKr61vg (Ljava/lang/String;[B)[B
+	public final fun proofOfPossessionInput (Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryStatement;)[B
+	public final fun recoveryId (Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryStatement;)Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryId;
+	public final fun registerKey-Fwqmsi0 (Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKey;Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKeyRegistration;
+	public final fun verifyKeyRegistration (Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKeyRegistration;)Z
+	public final fun verifyProofOfPossession (Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryAuthorization;)Z
+	public final fun verifyRecoverySignature ([BLdev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryAuthorization;)Z
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryAuthorization {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryStatement;[B[B)V
+	public final fun getProofOfPossession ()[B
+	public final fun getRecoverySignature ()[B
+	public final fun getStatement ()Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryStatement;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryChallenge {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryChallenge$Companion;
+	public static final field NONCE_SIZE I
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryChallengeId;[BJLkotlin/time/Instant;)V
+	public final fun getAuthEpoch ()J
+	public final fun getExpiresAt ()Lkotlin/time/Instant;
+	public final fun getId ()Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryChallengeId;
+	public final fun getNonce ()[B
+	public final fun getTarget ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryChallenge$Companion {
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryChallengeId {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryChallengeId$Companion;
+	public static final field SIZE I
+	public fun <init> ([B)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryChallengeId$Companion {
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryId {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryId$Companion;
+	public static final field SIZE I
+	public fun <init> ([B)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryId$Companion {
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKey {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKey$Companion;
+	public static final field TEXT_LENGTH I
+	public final fun encode ()Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPublicKey ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKey$Companion {
+	public final fun decode (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKey;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKeyRegistration {
+	public synthetic fun <init> (Ljava/lang/String;[B[BLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getProofOfPossession ()[B
+	public final fun getPublicKey ()[B
+	public final fun getUserId-J0w1ygc ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryStatement {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryChallenge;[B[B)V
+	public final fun getChallenge ()Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryChallenge;
+	public final fun getRecoveryPublicKey ()[B
+	public final fun getReplacementPublicKey ()[B
+	public final fun getTarget ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/LocalIdentity {
+	public fun <init> ([B[B)V
+	public final fun getPrivateKey ()[B
+	public final fun getPublicKey ()[B
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/OneTimePreKeyPair {
+	public synthetic fun <init> (I[B[BLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getId-NOgk0_M ()I
+	public final fun getPrivateKey ()[B
+	public final fun getPublicKey ()[B
+	public final fun toPublic ()Ldev/kreienbuehl/ksecuremessage/model/PublicOneTimePreKey;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/PreKeyFormat {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/protocol/PreKeyFormat;
+	public static final field MAX_ONE_TIME_PRE_KEYS_PER_PUBLICATION I
+	public static final field PUBLIC_KEY_SIZE I
+	public static final field SIGNATURE_SIZE I
+	public final fun validate (Ldev/kreienbuehl/ksecuremessage/model/PreKeyPublication;)V
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/protocol/ProtocolEngine {
+	public abstract fun acceptSession (Ldev/kreienbuehl/ksecuremessage/protocol/LocalIdentity;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/protocol/SignedPreKeyPair;Ldev/kreienbuehl/ksecuremessage/protocol/OneTimePreKeyPair;Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun createDeviceAuthenticationKey (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun createIdentity (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun createLastDeviceRecoveryKey (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun createOneTimePreKeys-ddS9unE (IILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun createSignedPreKey-oRYEkKA (Ldev/kreienbuehl/ksecuremessage/protocol/LocalIdentity;ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun decrypt (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;Ldev/kreienbuehl/ksecuremessage/model/CiphertextMessage;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun encrypt (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun initiateSession (Ldev/kreienbuehl/ksecuremessage/protocol/LocalIdentity;Ldev/kreienbuehl/ksecuremessage/model/PreKeyBundle;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sessionInfo (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;)Ldev/kreienbuehl/ksecuremessage/protocol/SessionInfo;
+}
+
+public abstract class dev/kreienbuehl/ksecuremessage/protocol/ProtocolException : java/lang/Exception {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/ProtocolException$DecryptionFailed : dev/kreienbuehl/ksecuremessage/protocol/ProtocolException {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/ProtocolException$InvalidMessage : dev/kreienbuehl/ksecuremessage/protocol/ProtocolException {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/ProtocolException$InvalidPreKeyBundle : dev/kreienbuehl/ksecuremessage/protocol/ProtocolException {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/ProtocolException$InvalidSessionState : dev/kreienbuehl/ksecuremessage/protocol/ProtocolException {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/ProtocolException$InvalidSignature : dev/kreienbuehl/ksecuremessage/protocol/ProtocolException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/ProtocolException$MalformedMessage : dev/kreienbuehl/ksecuremessage/protocol/ProtocolException {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/ProtocolException$MalformedSecurePayload : dev/kreienbuehl/ksecuremessage/protocol/ProtocolException {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/ProtocolException$MessageTooLarge : dev/kreienbuehl/ksecuremessage/protocol/ProtocolException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/ProtocolException$UnknownMessageType : dev/kreienbuehl/ksecuremessage/protocol/ProtocolException {
+	public fun <init> (I)V
+	public final fun getType ()I
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/ProtocolException$UnsupportedSecurePayloadVersion : dev/kreienbuehl/ksecuremessage/protocol/ProtocolException {
+	public fun <init> (I)V
+	public final fun getVersion ()I
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/ProtocolException$UnsupportedWireVersion : dev/kreienbuehl/ksecuremessage/protocol/ProtocolException {
+	public fun <init> (I)V
+	public final fun getVersion ()I
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/PublicIdentityKey {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/protocol/PublicIdentityKey$Companion;
+	public static final field SIZE I
+	public fun <init> ([B)V
+	public final fun contentEquals ([B)Z
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/PublicIdentityKey$Companion {
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyReset {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyReset;
+	public static final field PUBLIC_KEY_SIZE I
+	public static final field SIGNATURE_SIZE I
+	public final fun cancel (Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKey;Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetStatus$Pending;)Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCancellationAuthorization;
+	public final fun cancellationInput (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCancellationStatement;)[B
+	public final fun complete (Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKey;Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetStatus$Pending;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;)Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCompletionAuthorization;
+	public final fun completionId (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCompletionStatement;)Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCompletionId;
+	public final fun getVALIDITY_WINDOW-UwyO8pc ()J
+	public final fun proofOfPossessionInput (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCompletionStatement;)[B
+	public final fun statusQuery-KmCVjgU (Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKey;Ljava/lang/String;Lkotlin/time/Instant;)Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetStatusQuery;
+	public final fun statusQueryInput (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetStatusQueryStatement;)[B
+	public final fun verifyCancellation ([BLdev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCancellationAuthorization;)Z
+	public final fun verifyNewKeyProofOfPossession (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCompletionAuthorization;)Z
+	public final fun verifyStatusQuery ([BLdev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetStatusQuery;)Z
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCancellationAuthorization {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCancellationStatement;[B)V
+	public final fun getSignature ()[B
+	public final fun getStatement ()Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCancellationStatement;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCancellationStatement {
+	public synthetic fun <init> (Ljava/lang/String;Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetId;J[BLkotlin/time/Instant;Lkotlin/time/Instant;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getCurrentPublicKey ()[B
+	public final fun getEligibleAt ()Lkotlin/time/Instant;
+	public final fun getExpectedEpoch ()J
+	public final fun getRequestedAt ()Lkotlin/time/Instant;
+	public final fun getResetId ()Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetId;
+	public final fun getUserId-J0w1ygc ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCompletionAuthorization {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCompletionStatement;[B)V
+	public final fun getNewKeyProofOfPossession ()[B
+	public final fun getStatement ()Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCompletionStatement;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCompletionId {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCompletionId$Companion;
+	public static final field SIZE I
+	public fun <init> ([B)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCompletionId$Companion {
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCompletionStatement {
+	public synthetic fun <init> (Ljava/lang/String;Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetId;J[B[BLkotlin/time/Instant;Lkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getCompleter ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getCurrentPublicKey ()[B
+	public final fun getEligibleAt ()Lkotlin/time/Instant;
+	public final fun getExpectedEpoch ()J
+	public final fun getNewPublicKey ()[B
+	public final fun getRequestedAt ()Lkotlin/time/Instant;
+	public final fun getResetId ()Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetId;
+	public final fun getUserId-J0w1ygc ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetStatusQuery {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetStatusQueryStatement;[B)V
+	public final fun getSignature ()[B
+	public final fun getStatement ()Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetStatusQueryStatement;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetStatusQueryStatement {
+	public synthetic fun <init> (Ljava/lang/String;[BLkotlin/time/Instant;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getCurrentPublicKey ()[B
+	public final fun getTimestamp ()Lkotlin/time/Instant;
+	public final fun getUserId-J0w1ygc ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocation {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocation;
+	public static final field PUBLIC_KEY_SIZE I
+	public static final field SIGNATURE_SIZE I
+	public final fun authorizationInput (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationStatement;)[B
+	public final fun authorize (Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKey;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;JLkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;)Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationAuthorization;
+	public static synthetic fun authorize$default (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocation;Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKey;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;JLkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;ILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationAuthorization;
+	public final fun revocationId (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationStatement;)Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationId;
+	public final fun verifySignature ([BLdev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationAuthorization;)Z
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationAuthorization {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationStatement;[B)V
+	public final fun getSignature ()[B
+	public final fun getStatement ()Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationStatement;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationId {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationId$Companion;
+	public static final field SIZE I
+	public fun <init> ([B)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationId$Companion {
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationStatement {
+	public synthetic fun <init> (Ljava/lang/String;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[BJLkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getAuthorizer ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getCurrentPublicKey ()[B
+	public final fun getExpectedEpoch ()J
+	public final fun getNonce ()Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;
+	public final fun getTimestamp ()Lkotlin/time/Instant;
+	public final fun getUserId-J0w1ygc ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotation {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotation;
+	public static final field PUBLIC_KEY_SIZE I
+	public static final field SIGNATURE_SIZE I
+	public final fun authorizationInput (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationStatement;)[B
+	public final fun authorize (Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKey;Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKey;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;JLkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;)Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationAuthorization;
+	public static synthetic fun authorize$default (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotation;Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKey;Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKey;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;JLkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;ILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationAuthorization;
+	public final fun getVALIDITY_WINDOW-UwyO8pc ()J
+	public final fun proofOfPossessionInput (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationStatement;)[B
+	public final fun rotationId (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationStatement;)Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationId;
+	public final fun verifyCurrentKeySignature ([BLdev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationAuthorization;)Z
+	public final fun verifyNewKeyProofOfPossession (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationAuthorization;)Z
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationAuthorization {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationStatement;[B[B)V
+	public final fun getCurrentKeySignature ()[B
+	public final fun getNewKeyProofOfPossession ()[B
+	public final fun getStatement ()Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationStatement;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationId {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationId$Companion;
+	public static final field SIZE I
+	public fun <init> ([B)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationId$Companion {
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationStatement {
+	public synthetic fun <init> (Ljava/lang/String;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[B[BJLkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getAuthorizer ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getCurrentPublicKey ()[B
+	public final fun getExpectedEpoch ()J
+	public final fun getNewPublicKey ()[B
+	public final fun getNonce ()Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;
+	public final fun getTimestamp ()Lkotlin/time/Instant;
+	public final fun getUserId-J0w1ygc ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RequestAuthentication {
+	public fun <init> (Lkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;[B)V
+	public final fun getNonce ()Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;
+	public final fun getSignature ()[B
+	public final fun getTimestamp ()Lkotlin/time/Instant;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RequestNonce {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce$Companion;
+	public static final field SIZE I
+	public fun <init> ([B)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/RequestNonce$Companion {
+	public final fun random ()Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/SafetyFingerprint {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/protocol/SafetyFingerprint$Companion;
+	public static final field SIZE I
+	public fun <init> ([B)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/SafetyFingerprint$Companion {
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/SafetyNumber {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/protocol/SafetyNumber$Companion;
+	public static final field GROUP_COUNT I
+	public static final field GROUP_DIGITS I
+	public final fun compare (Ldev/kreienbuehl/ksecuremessage/protocol/SafetyNumberPayload;)Ldev/kreienbuehl/ksecuremessage/protocol/SafetyNumberComparison;
+	public final fun encode ()[B
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDisplayString ()Ljava/lang/String;
+	public final fun getFingerprint ()Ldev/kreienbuehl/ksecuremessage/protocol/SafetyFingerprint;
+	public final fun getFirst ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getGroups ()Ljava/util/List;
+	public final fun getSecond ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/SafetyNumber$Companion {
+	public final fun derive (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/protocol/PublicIdentityKey;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/protocol/PublicIdentityKey;)Ldev/kreienbuehl/ksecuremessage/protocol/SafetyNumber;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/SafetyNumberCodec {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/protocol/SafetyNumberCodec;
+	public final fun decode ([B)Ldev/kreienbuehl/ksecuremessage/protocol/SafetyNumberPayload;
+	public final fun encode (Ldev/kreienbuehl/ksecuremessage/protocol/SafetyNumberPayload;)[B
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/SafetyNumberComparison : java/lang/Enum {
+	public static final field DIFFERENT_DEVICES Ldev/kreienbuehl/ksecuremessage/protocol/SafetyNumberComparison;
+	public static final field MATCH Ldev/kreienbuehl/ksecuremessage/protocol/SafetyNumberComparison;
+	public static final field MISMATCH Ldev/kreienbuehl/ksecuremessage/protocol/SafetyNumberComparison;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/protocol/SafetyNumberComparison;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/protocol/SafetyNumberComparison;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/SafetyNumberPayload {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/protocol/SafetyFingerprint;)V
+	public final fun getFingerprint ()Ldev/kreienbuehl/ksecuremessage/protocol/SafetyFingerprint;
+	public final fun getFirst ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getSecond ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/protocol/SecurePayload {
+	public abstract fun getId-QjenJmk ()Lkotlin/uuid/Uuid;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/SecurePayload$Acknowledgement : dev/kreienbuehl/ksecuremessage/protocol/SecurePayload {
+	public synthetic fun <init> (Lkotlin/uuid/Uuid;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun getId-QjenJmk ()Lkotlin/uuid/Uuid;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/SecurePayload$ApplicationMessage : dev/kreienbuehl/ksecuremessage/protocol/SecurePayload {
+	public synthetic fun <init> (Lkotlin/uuid/Uuid;[BLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getBody ()[B
+	public fun getId-QjenJmk ()Lkotlin/uuid/Uuid;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/SecurePayloadCodec {
+	public static final field APPLICATION_HEADER_SIZE I
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/protocol/SecurePayloadCodec;
+	public static final field MAX_BODY_SIZE I
+	public static final field MAX_ENCODED_SIZE I
+	public static final field TYPE_ACKNOWLEDGEMENT I
+	public static final field TYPE_APPLICATION_MESSAGE I
+	public static final field VERSION I
+	public final fun decode ([B)Ldev/kreienbuehl/ksecuremessage/protocol/SecurePayload;
+	public final fun encode (Ldev/kreienbuehl/ksecuremessage/protocol/SecurePayload;)[B
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/SecureSession {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[B)V
+	public final fun component1 ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun component2 ()[B
+	public final fun copy (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[B)Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;
+	public static synthetic fun copy$default (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[BILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRemote ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getState ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/ServerApiPaths {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/protocol/ServerApiPaths;
+	public static final field LAST_DEVICE_RECOVERY Ljava/lang/String;
+	public static final field LAST_DEVICE_RECOVERY_CHALLENGE Ljava/lang/String;
+	public static final field LAST_DEVICE_RECOVERY_KEY Ljava/lang/String;
+	public static final field LAST_DEVICE_RECOVERY_KEY_RESET Ljava/lang/String;
+	public static final field LAST_DEVICE_RECOVERY_KEY_RESET_CANCELLATION Ljava/lang/String;
+	public static final field LAST_DEVICE_RECOVERY_KEY_RESET_COMPLETION Ljava/lang/String;
+	public static final field LAST_DEVICE_RECOVERY_KEY_RESET_STATUS Ljava/lang/String;
+	public static final field LAST_DEVICE_RECOVERY_KEY_REVOCATION Ljava/lang/String;
+	public static final field LAST_DEVICE_RECOVERY_KEY_ROTATION Ljava/lang/String;
+	public static final field MESSAGES Ljava/lang/String;
+	public static final field PRE_KEYS Ljava/lang/String;
+	public static final field PRE_KEY_BUNDLE Ljava/lang/String;
+	public static final field REGISTRATION Ljava/lang/String;
+	public static final field REGISTRATION_RECOVERY Ljava/lang/String;
+	public static final field REGISTRATION_ROTATION Ljava/lang/String;
+	public final fun device (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ljava/lang/String;)Ljava/lang/String;
+	public final fun encodeSegment (Ljava/lang/String;)Ljava/lang/String;
+	public final fun user-vKr61vg (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/ServerRequest {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ljava/lang/String;Ljava/lang/String;[B)V
+	public final fun getAddress ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getBody ()[B
+	public final fun getMethod ()Ljava/lang/String;
+	public final fun getPath ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/ServerRequestAuthentication {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/protocol/ServerRequestAuthentication;
+	public static final field PUBLIC_KEY_SIZE I
+	public static final field SIGNATURE_SIZE I
+	public final fun canonicalInput (Ldev/kreienbuehl/ksecuremessage/protocol/ServerRequest;Lkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;)[B
+	public final fun sign (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair;Ldev/kreienbuehl/ksecuremessage/protocol/ServerRequest;Lkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;)Ldev/kreienbuehl/ksecuremessage/protocol/RequestAuthentication;
+	public static synthetic fun sign$default (Ldev/kreienbuehl/ksecuremessage/protocol/ServerRequestAuthentication;Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair;Ldev/kreienbuehl/ksecuremessage/protocol/ServerRequest;Lkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;ILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/protocol/RequestAuthentication;
+	public final fun verify ([BLdev/kreienbuehl/ksecuremessage/protocol/ServerRequest;Ldev/kreienbuehl/ksecuremessage/protocol/RequestAuthentication;)Z
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/SessionAcceptanceResult {
+	public synthetic fun <init> (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;[BLdev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;
+	public final fun component2 ()[B
+	public final fun component3-GolpFjg ()Ldev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;
+	public final fun copy-_Zfz-d0 (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;[BLdev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;)Ldev/kreienbuehl/ksecuremessage/protocol/SessionAcceptanceResult;
+	public static synthetic fun copy-_Zfz-d0$default (Ldev/kreienbuehl/ksecuremessage/protocol/SessionAcceptanceResult;Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;[BLdev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;ILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/protocol/SessionAcceptanceResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getConsumedOneTimePreKeyId-GolpFjg ()Ldev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;
+	public final fun getPlaintext ()[B
+	public final fun getSession ()Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/SessionInfo {
+	public synthetic fun <init> (Ldev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId;ZLdev/kreienbuehl/ksecuremessage/model/SignedPreKeyId;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ldev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId;ZLdev/kreienbuehl/ksecuremessage/model/SignedPreKeyId;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getAcceptedSignedPreKeyId-gA00e7A ()Ldev/kreienbuehl/ksecuremessage/model/SignedPreKeyId;
+	public final fun getAwaitingReply ()Z
+	public final fun getInitiationId ()Ldev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId : java/lang/Comparable {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId$Companion;
+	public static final field SIZE I
+	public fun <init> ([B)V
+	public fun compareTo (Ldev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId;)I
+	public synthetic fun compareTo (Ljava/lang/Object;)I
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId$Companion {
+	public final fun of (Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;[B)Ldev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/SignedPreKeyPair {
+	public synthetic fun <init> (I[B[B[BLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getId-R6Xuwhw ()I
+	public final fun getPrivateKey ()[B
+	public final fun getPublicKey ()[B
+	public final fun getSignature ()[B
+	public final fun toPublic ()Ldev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/protocol/VerificationState : java/lang/Enum {
+	public static final field UNVERIFIED Ldev/kreienbuehl/ksecuremessage/protocol/VerificationState;
+	public static final field VERIFIED Ldev/kreienbuehl/ksecuremessage/protocol/VerificationState;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/protocol/VerificationState;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/protocol/VerificationState;
+}
+

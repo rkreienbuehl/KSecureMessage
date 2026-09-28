@@ -1,0 +1,567 @@
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/AuthenticationNonceRepository {
+	public abstract fun claim (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[BLkotlin/time/Instant;Lkotlin/time/Instant;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/ClientStorage {
+	public abstract fun getDeviceAuthentication ()Ldev/kreienbuehl/ksecuremessage/storage/DeviceAuthenticationKeyStore;
+	public abstract fun getIdentity ()Ldev/kreienbuehl/ksecuremessage/storage/IdentityStore;
+	public abstract fun getPendingInbound ()Ldev/kreienbuehl/ksecuremessage/storage/PendingInboundStore;
+	public abstract fun getPendingOutbound ()Ldev/kreienbuehl/ksecuremessage/storage/PendingOutboundStore;
+	public abstract fun getPreKeys ()Ldev/kreienbuehl/ksecuremessage/storage/PreKeyStore;
+	public abstract fun getProcessedInbound ()Ldev/kreienbuehl/ksecuremessage/storage/ProcessedInboundStore;
+	public abstract fun getRemoteIdentities ()Ldev/kreienbuehl/ksecuremessage/storage/RemoteIdentityStore;
+	public abstract fun getSessionInitiations ()Ldev/kreienbuehl/ksecuremessage/storage/SessionInitiationStore;
+	public abstract fun getSessions ()Ldev/kreienbuehl/ksecuremessage/storage/SessionStore;
+	public abstract fun transaction (Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/DeviceAuthenticationKeyStore {
+	public abstract fun awaitsUpgradeKey (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun keyPair (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun pendingLastDeviceRecoveryKeyPair (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun pendingRecoveryKeyPair (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun pendingRotationKeyPair (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun promotePendingLastDeviceRecoveryKeyPair (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun promotePendingRecoveryKeyPair (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun promotePendingRotationKeyPair (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun removePendingLastDeviceRecoveryKeyPair (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun removePendingRecoveryKeyPair (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun removePendingRotationKeyPair (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun store (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun storePendingLastDeviceRecoveryKeyPair (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun storePendingRecoveryKeyPair (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun storePendingRotationKeyPair (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract class dev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationException : java/lang/Exception {
+	public synthetic fun <init> (Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationException$Conflict : dev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationException$InvalidRegistration : dev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationRepository {
+	public abstract fun register (Ldev/kreienbuehl/ksecuremessage/model/DeviceRegistration;Lkotlin/time/Instant;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun registration (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun registrationState (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun replaceForLastDeviceRecovery (Ldev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryReplacement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun replaceForRecovery (Ldev/kreienbuehl/ksecuremessage/storage/RecoveryReplacement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun replaceForRotation (Ldev/kreienbuehl/ksecuremessage/storage/RotationReplacement;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationState {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/model/DeviceRegistration;JLkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryId;Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationId;Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryId;)V
+	public synthetic fun <init> (Ldev/kreienbuehl/ksecuremessage/model/DeviceRegistration;JLkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryId;Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationId;Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryId;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getAddress ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getAuthEpoch ()J
+	public final fun getAuthKeyInstalledAt ()Lkotlin/time/Instant;
+	public final fun getLastDeviceRecoveryId ()Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryId;
+	public final fun getRecoveryId ()Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryId;
+	public final fun getRegistration ()Ldev/kreienbuehl/ksecuremessage/model/DeviceRegistration;
+	public final fun getRotationId ()Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationId;
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/IdentityStore {
+	public abstract fun identity (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun store (Ldev/kreienbuehl/ksecuremessage/protocol/LocalIdentity;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryChallengeIssue {
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryChallengeIssue$Issued : dev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryChallengeIssue {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/storage/StoredLastDeviceRecoveryChallenge;)V
+	public final fun getChallenge ()Ldev/kreienbuehl/ksecuremessage/storage/StoredLastDeviceRecoveryChallenge;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryChallengeIssue$NotConfigured : dev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryChallengeIssue {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryChallengeIssue$NotConfigured;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryChallengeIssue$NotRegistered : dev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryChallengeIssue {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryChallengeIssue$NotRegistered;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryChallengeRequest {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryChallengeId;[BLkotlin/time/Instant;Lkotlin/time/Instant;)V
+	public final fun getCandidateId ()Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryChallengeId;
+	public final fun getCandidateNonce ()[B
+	public final fun getExpiresAt ()Lkotlin/time/Instant;
+	public final fun getNow ()Lkotlin/time/Instant;
+	public final fun getTarget ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract class dev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryKeyException : java/lang/Exception {
+	public synthetic fun <init> (Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryKeyException$Conflict : dev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryKeyException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryKeyException$EpochExhausted : dev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryKeyException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryReplacement {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationState;[BLdev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryChallengeId;[B[BLdev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryId;Lkotlin/time/Instant;)V
+	public final fun getChallengeId ()Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryChallengeId;
+	public final fun getChallengeNonce ()[B
+	public final fun getExpected ()Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationState;
+	public final fun getExpectedRecoveryPublicKey ()[B
+	public final fun getNow ()Lkotlin/time/Instant;
+	public final fun getRecoveryId ()Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryId;
+	public final fun getReplacementPublicKey ()[B
+	public final fun getTarget ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryReplacementResult : java/lang/Enum {
+	public static final field ALREADY_APPLIED Ldev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryReplacementResult;
+	public static final field CHALLENGE_INVALID Ldev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryReplacementResult;
+	public static final field CONFLICT Ldev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryReplacementResult;
+	public static final field EPOCH_EXHAUSTED Ldev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryReplacementResult;
+	public static final field EXPIRED Ldev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryReplacementResult;
+	public static final field NOT_CONFIGURED Ldev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryReplacementResult;
+	public static final field NOT_REGISTERED Ldev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryReplacementResult;
+	public static final field REPLACED Ldev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryReplacementResult;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryReplacementResult;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryReplacementResult;
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryRepository {
+	public abstract fun cancelRecoveryKeyReset (Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCancellation;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun challenge (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun completeRecoveryKeyReset (Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCompletionTransition;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun issueChallenge (Ldev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryChallengeRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun pendingRecoveryKeyReset-vKr61vg (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun recoveryKey-vKr61vg (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun recoveryKeyState-vKr61vg (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun registerRecoveryKey-dQoKru4 (Ljava/lang/String;[BLkotlin/time/Instant;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun requestRecoveryKeyReset (Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun revokeRecoveryKey (Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRevocationTransition;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun rotateRecoveryKey (Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRotationTransition;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/MailboxRepository {
+	public abstract fun drain (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun enqueue (Ldev/kreienbuehl/ksecuremessage/model/EncryptedEnvelope;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/PendingInboundMessage {
+	public synthetic fun <init> (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;JLkotlin/time/Instant;[BLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getFrame ()[B
+	public final fun getId-QjenJmk ()Lkotlin/uuid/Uuid;
+	public final fun getReceivedAt ()Lkotlin/time/Instant;
+	public final fun getSender ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getSequence ()J
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/PendingInboundStore {
+	public abstract fun contains-Lopdy3E (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun count (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun count$default (Ldev/kreienbuehl/ksecuremessage/storage/PendingInboundStore;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public abstract fun get-Lopdy3E (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun page (JILdev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun page$default (Ldev/kreienbuehl/ksecuremessage/storage/PendingInboundStore;JILdev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public abstract fun remove-Lopdy3E (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun store-C9eqJIM (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;[BLkotlin/time/Instant;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/PendingInboundStore$DefaultImpls {
+	public static synthetic fun count$default (Ldev/kreienbuehl/ksecuremessage/storage/PendingInboundStore;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun page$default (Ldev/kreienbuehl/ksecuremessage/storage/PendingInboundStore;JILdev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/PendingOutboundMessage {
+	public synthetic fun <init> (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;J[BLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getFrame ()[B
+	public final fun getId-QjenJmk ()Lkotlin/uuid/Uuid;
+	public final fun getRecipient ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getSequence ()J
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/PendingOutboundStore {
+	public abstract fun count (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun count$default (Ldev/kreienbuehl/ksecuremessage/storage/PendingOutboundStore;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public abstract fun get-Lopdy3E (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun page (JILdev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun page$default (Ldev/kreienbuehl/ksecuremessage/storage/PendingOutboundStore;JILdev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public abstract fun remove-Lopdy3E (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun store-tFwzz2k (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/PendingOutboundStore$DefaultImpls {
+	public static synthetic fun count$default (Ldev/kreienbuehl/ksecuremessage/storage/PendingOutboundStore;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun page$default (Ldev/kreienbuehl/ksecuremessage/storage/PendingOutboundStore;JILdev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public abstract class dev/kreienbuehl/ksecuremessage/storage/PreKeyPublicationException : java/lang/Exception {
+	public synthetic fun <init> (Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/PreKeyPublicationException$IdentityKeyConflict : dev/kreienbuehl/ksecuremessage/storage/PreKeyPublicationException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/PreKeyPublicationException$InvalidPublication : dev/kreienbuehl/ksecuremessage/storage/PreKeyPublicationException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/PreKeyPublicationException$OneTimePreKeyConflict : dev/kreienbuehl/ksecuremessage/storage/PreKeyPublicationException {
+	public synthetic fun <init> (ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getId-NOgk0_M ()I
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/PreKeyPublicationException$SignedPreKeyConflict : dev/kreienbuehl/ksecuremessage/storage/PreKeyPublicationException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/PreKeyRepository {
+	public abstract fun consumePreKeyBundle (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun oneTimePreKeyCount (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun publish (Ldev/kreienbuehl/ksecuremessage/model/PreKeyPublication;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/PreKeyStore {
+	public abstract fun currentSignedPreKey (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun highestOneTimePreKeyId-Zg4fqNc (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun highestSignedPreKeyId-kFfBZhI (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun oneTimePreKey-2IoSqr8 (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun oneTimePreKeyCount (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun publicOneTimePreKeys (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun removeOneTimePreKey-2IoSqr8 (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun removeSignedPreKey-4-mp6TI (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun signedPreKey-4-mp6TI (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun signedPreKeyInfo-4-mp6TI (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun signedPreKeyInfos (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun stampLegacySignedPreKeys (Lkotlin/time/Instant;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun storeCurrentSignedPreKey (Ldev/kreienbuehl/ksecuremessage/protocol/SignedPreKeyPair;Lkotlin/time/Instant;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun storeOneTimePreKeys (Ljava/util/List;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/ProcessedInboundMessage {
+	public synthetic fun <init> (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;Ldev/kreienbuehl/ksecuremessage/model/InboundFinalization;[BLkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/model/MessageDiscardReason;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getDigest ()[B
+	public final fun getDiscardReason ()Ldev/kreienbuehl/ksecuremessage/model/MessageDiscardReason;
+	public final fun getFinalization ()Ldev/kreienbuehl/ksecuremessage/model/InboundFinalization;
+	public final fun getFinalizedAt ()Lkotlin/time/Instant;
+	public final fun getId-QjenJmk ()Lkotlin/uuid/Uuid;
+	public final fun getSender ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/ProcessedInboundStore {
+	public abstract fun get-Lopdy3E (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun isProcessed-Lopdy3E (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun markCommitted-C9eqJIM (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;[BLkotlin/time/Instant;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun markDiscarded-Y9tnE8w (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;[BLkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/model/MessageDiscardReason;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun pruneFinalizedAtOrBefore (Lkotlin/time/Instant;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun stampLegacyCommitTimes (Lkotlin/time/Instant;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCancellation {
+	public synthetic fun <init> (Ljava/lang/String;Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetId;Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCancellationAuthority;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getAuthority ()Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCancellationAuthority;
+	public final fun getResetId ()Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetId;
+	public final fun getUserId-J0w1ygc ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCancellationAuthority {
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCancellationAuthority$Device : dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCancellationAuthority {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationState;)V
+	public final fun getRegistration ()Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationState;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCancellationAuthority$RecoveryKey : dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCancellationAuthority {
+	public fun <init> ([BJ)V
+	public final fun getEpoch ()J
+	public final fun getPublicKey ()[B
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCancellationResult : java/lang/Enum {
+	public static final field CANCELLED Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCancellationResult;
+	public static final field CONFLICT Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCancellationResult;
+	public static final field NOT_PENDING Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCancellationResult;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCancellationResult;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCancellationResult;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCompletionResult : java/lang/Enum {
+	public static final field ALREADY_APPLIED Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCompletionResult;
+	public static final field COMPLETED Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCompletionResult;
+	public static final field CONFLICT Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCompletionResult;
+	public static final field EPOCH_EXHAUSTED Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCompletionResult;
+	public static final field NOT_CONFIGURED Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCompletionResult;
+	public static final field NOT_PENDING Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCompletionResult;
+	public static final field NOT_YET_ELIGIBLE Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCompletionResult;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCompletionResult;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCompletionResult;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetCompletionTransition {
+	public synthetic fun <init> (Ljava/lang/String;Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetId;[BJLkotlin/time/Instant;Lkotlin/time/Instant;[BLdev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationState;Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCompletionId;Lkotlin/time/Instant;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getCompletionId ()Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCompletionId;
+	public final fun getEligibleAt ()Lkotlin/time/Instant;
+	public final fun getExpectedCompleter ()Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationState;
+	public final fun getExpectedEpoch ()J
+	public final fun getExpectedPublicKey ()[B
+	public final fun getNewPublicKey ()[B
+	public final fun getNow ()Lkotlin/time/Instant;
+	public final fun getRequestedAt ()Lkotlin/time/Instant;
+	public final fun getResetId ()Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetId;
+	public final fun getUserId-J0w1ygc ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetRequest {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationState;Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetId;Lkotlin/time/Instant;Lkotlin/time/Instant;)V
+	public final fun getCandidateId ()Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetId;
+	public final fun getEligibleAt ()Lkotlin/time/Instant;
+	public final fun getNow ()Lkotlin/time/Instant;
+	public final fun getRequester ()Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationState;
+	public final fun getUserId-J0w1ygc ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetRequestResult {
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetRequestResult$Conflict : dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetRequestResult {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetRequestResult$Conflict;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetRequestResult$Created : dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetRequestResult {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetStatus$Pending;)V
+	public final fun getReset ()Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetStatus$Pending;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetRequestResult$EpochExhausted : dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetRequestResult {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetRequestResult$EpochExhausted;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetRequestResult$Existing : dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetRequestResult {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetStatus$Pending;)V
+	public final fun getReset ()Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetStatus$Pending;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetRequestResult$NotConfigured : dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetRequestResult {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyResetRequestResult$NotConfigured;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRevocationResult : java/lang/Enum {
+	public static final field ALREADY_APPLIED Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRevocationResult;
+	public static final field CONFLICT Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRevocationResult;
+	public static final field EPOCH_EXHAUSTED Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRevocationResult;
+	public static final field NOT_CONFIGURED Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRevocationResult;
+	public static final field REPLAY Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRevocationResult;
+	public static final field REVOKED Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRevocationResult;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRevocationResult;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRevocationResult;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRevocationTransition {
+	public synthetic fun <init> (Ljava/lang/String;[BJLdev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationState;Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationId;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;Lkotlin/time/Instant;Lkotlin/time/Instant;Lkotlin/time/Instant;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getExpectedAuthorizer ()Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationState;
+	public final fun getExpectedEpoch ()J
+	public final fun getExpectedPublicKey ()[B
+	public final fun getNonce ()Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;
+	public final fun getNow ()Lkotlin/time/Instant;
+	public final fun getPruneBefore ()Lkotlin/time/Instant;
+	public final fun getRevocationId ()Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationId;
+	public final fun getTimestamp ()Lkotlin/time/Instant;
+	public final fun getUserId-J0w1ygc ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRotationResult : java/lang/Enum {
+	public static final field ALREADY_APPLIED Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRotationResult;
+	public static final field CONFLICT Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRotationResult;
+	public static final field EPOCH_EXHAUSTED Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRotationResult;
+	public static final field NOT_CONFIGURED Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRotationResult;
+	public static final field REPLAY Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRotationResult;
+	public static final field ROTATED Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRotationResult;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRotationResult;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRotationResult;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyRotationTransition {
+	public synthetic fun <init> (Ljava/lang/String;[BJ[BLdev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationState;Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationId;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;Lkotlin/time/Instant;Lkotlin/time/Instant;Lkotlin/time/Instant;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getExpectedAuthorizer ()Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationState;
+	public final fun getExpectedEpoch ()J
+	public final fun getExpectedPublicKey ()[B
+	public final fun getNewPublicKey ()[B
+	public final fun getNonce ()Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;
+	public final fun getNow ()Lkotlin/time/Instant;
+	public final fun getPruneBefore ()Lkotlin/time/Instant;
+	public final fun getRotationId ()Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationId;
+	public final fun getTimestamp ()Lkotlin/time/Instant;
+	public final fun getUserId-J0w1ygc ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyState {
+	public fun <init> (JLdev/kreienbuehl/ksecuremessage/storage/RecoveryKeyStatus;[BLkotlin/time/Instant;Lkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationId;Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationId;Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCompletionId;)V
+	public synthetic fun <init> (JLdev/kreienbuehl/ksecuremessage/storage/RecoveryKeyStatus;[BLkotlin/time/Instant;Lkotlin/time/Instant;Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationId;Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationId;Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCompletionId;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getEpoch ()J
+	public final fun getInstalledAt ()Lkotlin/time/Instant;
+	public final fun getPublicKey ()[B
+	public final fun getResetCompletionId ()Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCompletionId;
+	public final fun getRevocationId ()Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationId;
+	public final fun getRotationId ()Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationId;
+	public final fun getStatus ()Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyStatus;
+	public final fun getTransitionedAt ()Lkotlin/time/Instant;
+	public final fun isActive ([BJ)Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryKeyStatus : java/lang/Enum {
+	public static final field ACTIVE Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyStatus;
+	public static final field REVOKED Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyStatus;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyStatus;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/storage/RecoveryKeyStatus;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryReplacement {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationState;Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationState;[BLdev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryId;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;Lkotlin/time/Instant;Lkotlin/time/Instant;Lkotlin/time/Instant;)V
+	public final fun getExpectedAuthorizer ()Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationState;
+	public final fun getExpectedTarget ()Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationState;
+	public final fun getInstalledAt ()Lkotlin/time/Instant;
+	public final fun getNonce ()Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;
+	public final fun getPruneBefore ()Lkotlin/time/Instant;
+	public final fun getRecoveryId ()Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryId;
+	public final fun getReplacementPublicKey ()[B
+	public final fun getTarget ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getTimestamp ()Lkotlin/time/Instant;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RecoveryReplacementResult : java/lang/Enum {
+	public static final field ALREADY_APPLIED Ldev/kreienbuehl/ksecuremessage/storage/RecoveryReplacementResult;
+	public static final field CONFLICT Ldev/kreienbuehl/ksecuremessage/storage/RecoveryReplacementResult;
+	public static final field EPOCH_EXHAUSTED Ldev/kreienbuehl/ksecuremessage/storage/RecoveryReplacementResult;
+	public static final field REPLACED Ldev/kreienbuehl/ksecuremessage/storage/RecoveryReplacementResult;
+	public static final field REPLAY Ldev/kreienbuehl/ksecuremessage/storage/RecoveryReplacementResult;
+	public static final field TARGET_NOT_REGISTERED Ldev/kreienbuehl/ksecuremessage/storage/RecoveryReplacementResult;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/storage/RecoveryReplacementResult;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/storage/RecoveryReplacementResult;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RemoteIdentityRecord {
+	public fun <init> ([BLdev/kreienbuehl/ksecuremessage/protocol/VerificationState;)V
+	public final fun getIdentityKey ()[B
+	public final fun getVerification ()Ldev/kreienbuehl/ksecuremessage/protocol/VerificationState;
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/RemoteIdentityStore {
+	public abstract fun identityKey (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun record (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun replace (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[B[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun setVerification (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[BLdev/kreienbuehl/ksecuremessage/protocol/VerificationState;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun store (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RotationReplacement {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationState;[BLdev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationId;Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;Lkotlin/time/Instant;Lkotlin/time/Instant;Lkotlin/time/Instant;)V
+	public final fun getAddress ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getExpected ()Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationState;
+	public final fun getInstalledAt ()Lkotlin/time/Instant;
+	public final fun getNonce ()Ldev/kreienbuehl/ksecuremessage/protocol/RequestNonce;
+	public final fun getPruneBefore ()Lkotlin/time/Instant;
+	public final fun getReplacementPublicKey ()[B
+	public final fun getRotationId ()Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationId;
+	public final fun getTimestamp ()Lkotlin/time/Instant;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/RotationReplacementResult : java/lang/Enum {
+	public static final field ALREADY_APPLIED Ldev/kreienbuehl/ksecuremessage/storage/RotationReplacementResult;
+	public static final field CONFLICT Ldev/kreienbuehl/ksecuremessage/storage/RotationReplacementResult;
+	public static final field EPOCH_EXHAUSTED Ldev/kreienbuehl/ksecuremessage/storage/RotationReplacementResult;
+	public static final field NOT_REGISTERED Ldev/kreienbuehl/ksecuremessage/storage/RotationReplacementResult;
+	public static final field REPLACED Ldev/kreienbuehl/ksecuremessage/storage/RotationReplacementResult;
+	public static final field REPLAY Ldev/kreienbuehl/ksecuremessage/storage/RotationReplacementResult;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/storage/RotationReplacementResult;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/storage/RotationReplacementResult;
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/ServerStorage {
+	public abstract fun getAuthenticationNonces ()Ldev/kreienbuehl/ksecuremessage/storage/AuthenticationNonceRepository;
+	public abstract fun getDevices ()Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationRepository;
+	public abstract fun getLastDeviceRecovery ()Ldev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryRepository;
+	public abstract fun getMailboxes ()Ldev/kreienbuehl/ksecuremessage/storage/MailboxRepository;
+	public abstract fun getPreKeys ()Ldev/kreienbuehl/ksecuremessage/storage/PreKeyRepository;
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/SessionInitiationStore {
+	public abstract fun isRetired (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun removeRetiredFor-4-mp6TI (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun retire-3ZiTeqk (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId;Ldev/kreienbuehl/ksecuremessage/model/SignedPreKeyId;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun retiredSignedPreKeyIds (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/SessionStore {
+	public abstract fun load (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun remove (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun store (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/SignedPreKeyInfo {
+	public synthetic fun <init> (IZLkotlin/time/Instant;Lkotlin/time/Instant;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-R6Xuwhw ()I
+	public final fun component2 ()Z
+	public final fun component3 ()Lkotlin/time/Instant;
+	public final fun component4 ()Lkotlin/time/Instant;
+	public final fun copy-e-OV6pE (IZLkotlin/time/Instant;Lkotlin/time/Instant;)Ldev/kreienbuehl/ksecuremessage/storage/SignedPreKeyInfo;
+	public static synthetic fun copy-e-OV6pE$default (Ldev/kreienbuehl/ksecuremessage/storage/SignedPreKeyInfo;IZLkotlin/time/Instant;Lkotlin/time/Instant;ILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/storage/SignedPreKeyInfo;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCreatedAt ()Lkotlin/time/Instant;
+	public final fun getId-R6Xuwhw ()I
+	public final fun getReplacedAt ()Lkotlin/time/Instant;
+	public fun hashCode ()I
+	public final fun isCurrent ()Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/StoredLastDeviceRecoveryChallenge {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryChallenge;[BJ)V
+	public final fun getAuthPublicKey ()[B
+	public final fun getChallenge ()Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryChallenge;
+	public final fun getRecoveryKeyEpoch ()J
+	public fun toString ()Ljava/lang/String;
+}
+

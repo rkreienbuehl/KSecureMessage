@@ -1,0 +1,1019 @@
+// Klib ABI Dump
+// Targets: [iosArm64, iosSimulatorArm64, iosX64, js, linuxX64, macosArm64, macosX64, mingwX64, wasmJs]
+// Rendering settings:
+// - Signature version: 2
+// - Show manifest properties: true
+// - Show declarations: true
+
+// Library unique name: <dev.kreienbuehl.ksecuremessage.client:core>
+final enum class dev.kreienbuehl.ksecuremessage.client/AbandonStatus : kotlin/Enum<dev.kreienbuehl.ksecuremessage.client/AbandonStatus> { // dev.kreienbuehl.ksecuremessage.client/AbandonStatus|null[0]
+    enum entry ABANDONED // dev.kreienbuehl.ksecuremessage.client/AbandonStatus.ABANDONED|null[0]
+    enum entry NOT_PENDING // dev.kreienbuehl.ksecuremessage.client/AbandonStatus.NOT_PENDING|null[0]
+
+    final val entries // dev.kreienbuehl.ksecuremessage.client/AbandonStatus.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.client/AbandonStatus> // dev.kreienbuehl.ksecuremessage.client/AbandonStatus.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.client/AbandonStatus // dev.kreienbuehl.ksecuremessage.client/AbandonStatus.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.client/AbandonStatus> // dev.kreienbuehl.ksecuremessage.client/AbandonStatus.values|values#static(){}[0]
+}
+
+final enum class dev.kreienbuehl.ksecuremessage.client/CommitStatus : kotlin/Enum<dev.kreienbuehl.ksecuremessage.client/CommitStatus> { // dev.kreienbuehl.ksecuremessage.client/CommitStatus|null[0]
+    enum entry ALREADY_COMMITTED // dev.kreienbuehl.ksecuremessage.client/CommitStatus.ALREADY_COMMITTED|null[0]
+    enum entry ALREADY_DISCARDED // dev.kreienbuehl.ksecuremessage.client/CommitStatus.ALREADY_DISCARDED|null[0]
+    enum entry COMMITTED // dev.kreienbuehl.ksecuremessage.client/CommitStatus.COMMITTED|null[0]
+
+    final val entries // dev.kreienbuehl.ksecuremessage.client/CommitStatus.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.client/CommitStatus> // dev.kreienbuehl.ksecuremessage.client/CommitStatus.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.client/CommitStatus // dev.kreienbuehl.ksecuremessage.client/CommitStatus.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.client/CommitStatus> // dev.kreienbuehl.ksecuremessage.client/CommitStatus.values|values#static(){}[0]
+}
+
+final enum class dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealthInconsistency : kotlin/Enum<dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealthInconsistency> { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealthInconsistency|null[0]
+    enum entry MULTIPLE_PENDING_TRANSITIONS // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealthInconsistency.MULTIPLE_PENDING_TRANSITIONS|null[0]
+    enum entry ROTATION_PENDING_WITHOUT_ACTIVE_KEY // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealthInconsistency.ROTATION_PENDING_WITHOUT_ACTIVE_KEY|null[0]
+
+    final val entries // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealthInconsistency.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealthInconsistency> // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealthInconsistency.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealthInconsistency // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealthInconsistency.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealthInconsistency> // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealthInconsistency.values|values#static(){}[0]
+}
+
+final enum class dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRecoveryKind : kotlin/Enum<dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRecoveryKind> { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRecoveryKind|null[0]
+    enum entry DEVICE_RECOVERY // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRecoveryKind.DEVICE_RECOVERY|null[0]
+    enum entry LAST_DEVICE_RECOVERY // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRecoveryKind.LAST_DEVICE_RECOVERY|null[0]
+
+    final val entries // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRecoveryKind.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRecoveryKind> // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRecoveryKind.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRecoveryKind // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRecoveryKind.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRecoveryKind> // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRecoveryKind.values|values#static(){}[0]
+}
+
+final enum class dev.kreienbuehl.ksecuremessage.client/DiscardStatus : kotlin/Enum<dev.kreienbuehl.ksecuremessage.client/DiscardStatus> { // dev.kreienbuehl.ksecuremessage.client/DiscardStatus|null[0]
+    enum entry ALREADY_COMMITTED // dev.kreienbuehl.ksecuremessage.client/DiscardStatus.ALREADY_COMMITTED|null[0]
+    enum entry ALREADY_DISCARDED // dev.kreienbuehl.ksecuremessage.client/DiscardStatus.ALREADY_DISCARDED|null[0]
+    enum entry DISCARDED // dev.kreienbuehl.ksecuremessage.client/DiscardStatus.DISCARDED|null[0]
+
+    final val entries // dev.kreienbuehl.ksecuremessage.client/DiscardStatus.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.client/DiscardStatus> // dev.kreienbuehl.ksecuremessage.client/DiscardStatus.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.client/DiscardStatus // dev.kreienbuehl.ksecuremessage.client/DiscardStatus.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.client/DiscardStatus> // dev.kreienbuehl.ksecuremessage.client/DiscardStatus.values|values#static(){}[0]
+}
+
+final enum class dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetResult : kotlin/Enum<dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetResult> { // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetResult|null[0]
+    enum entry ALREADY_ACTIVE // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetResult.ALREADY_ACTIVE|null[0]
+    enum entry COMPLETED // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetResult.COMPLETED|null[0]
+
+    final val entries // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetResult.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetResult> // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetResult.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetResult // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetResult.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetResult> // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetResult.values|values#static(){}[0]
+}
+
+final enum class dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRevocationResult : kotlin/Enum<dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRevocationResult> { // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRevocationResult|null[0]
+    enum entry ALREADY_REVOKED // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRevocationResult.ALREADY_REVOKED|null[0]
+    enum entry REVOKED // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRevocationResult.REVOKED|null[0]
+
+    final val entries // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRevocationResult.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRevocationResult> // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRevocationResult.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRevocationResult // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRevocationResult.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRevocationResult> // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRevocationResult.values|values#static(){}[0]
+}
+
+final enum class dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRotationResult : kotlin/Enum<dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRotationResult> { // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRotationResult|null[0]
+    enum entry ALREADY_ACTIVE // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRotationResult.ALREADY_ACTIVE|null[0]
+    enum entry ROTATED // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRotationResult.ROTATED|null[0]
+
+    final val entries // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRotationResult.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRotationResult> // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRotationResult.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRotationResult // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRotationResult.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRotationResult> // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRotationResult.values|values#static(){}[0]
+}
+
+final enum class dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwarenessInconsistency : kotlin/Enum<dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwarenessInconsistency> { // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwarenessInconsistency|null[0]
+    enum entry RESET_EPOCH_MISMATCH // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwarenessInconsistency.RESET_EPOCH_MISMATCH|null[0]
+    enum entry RESET_KEY_MISMATCH // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwarenessInconsistency.RESET_KEY_MISMATCH|null[0]
+    enum entry RESET_OF_OTHER_USER // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwarenessInconsistency.RESET_OF_OTHER_USER|null[0]
+    enum entry RESET_WITHOUT_ACTIVE_RECOVERY_KEY // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwarenessInconsistency.RESET_WITHOUT_ACTIVE_RECOVERY_KEY|null[0]
+
+    final val entries // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwarenessInconsistency.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwarenessInconsistency> // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwarenessInconsistency.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwarenessInconsistency // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwarenessInconsistency.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwarenessInconsistency> // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwarenessInconsistency.values|values#static(){}[0]
+}
+
+abstract fun interface dev.kreienbuehl.ksecuremessage.client/ServerRequestSigner { // dev.kreienbuehl.ksecuremessage.client/ServerRequestSigner|null[0]
+    abstract suspend fun sign(dev.kreienbuehl.ksecuremessage.protocol/ServerRequest): dev.kreienbuehl.ksecuremessage.protocol/RequestAuthentication // dev.kreienbuehl.ksecuremessage.client/ServerRequestSigner.sign|sign(dev.kreienbuehl.ksecuremessage.protocol.ServerRequest){}[0]
+}
+
+abstract interface dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport|null[0]
+    abstract suspend fun cancelLastDeviceRecoveryKeyReset(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId, dev.kreienbuehl.ksecuremessage.client/ServerRequestSigner) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.cancelLastDeviceRecoveryKeyReset|cancelLastDeviceRecoveryKeyReset(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetId;dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner){}[0]
+    abstract suspend fun cancelLastDeviceRecoveryKeyResetByRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationAuthorization) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.cancelLastDeviceRecoveryKeyResetByRecoveryKey|cancelLastDeviceRecoveryKeyResetByRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCancellationAuthorization){}[0]
+    abstract suspend fun completeLastDeviceRecoveryKeyReset(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionAuthorization, dev.kreienbuehl.ksecuremessage.client/ServerRequestSigner) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.completeLastDeviceRecoveryKeyReset|completeLastDeviceRecoveryKeyReset(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCompletionAuthorization;dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner){}[0]
+    abstract suspend fun fetchPreKeyBundle(dev.kreienbuehl.ksecuremessage.model/DeviceAddress): dev.kreienbuehl.ksecuremessage.model/PreKeyBundle // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.fetchPreKeyBundle|fetchPreKeyBundle(dev.kreienbuehl.ksecuremessage.model.DeviceAddress){}[0]
+    abstract suspend fun lastDeviceRecoveryChallenge(dev.kreienbuehl.ksecuremessage.model/DeviceAddress): dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.lastDeviceRecoveryChallenge|lastDeviceRecoveryChallenge(dev.kreienbuehl.ksecuremessage.model.DeviceAddress){}[0]
+    abstract suspend fun lastDeviceRecoveryKeyResetStatus(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.client/ServerRequestSigner): dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.lastDeviceRecoveryKeyResetStatus|lastDeviceRecoveryKeyResetStatus(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner){}[0]
+    abstract suspend fun lastDeviceRecoveryKeyResetStatusByRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQuery): dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.lastDeviceRecoveryKeyResetStatusByRecoveryKey|lastDeviceRecoveryKeyResetStatusByRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetStatusQuery){}[0]
+    abstract suspend fun lastDeviceRecoveryKeyStatus(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.client/ServerRequestSigner): dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.lastDeviceRecoveryKeyStatus|lastDeviceRecoveryKeyStatus(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner){}[0]
+    abstract suspend fun publishPreKeys(dev.kreienbuehl.ksecuremessage.model/PreKeyPublication, dev.kreienbuehl.ksecuremessage.client/ServerRequestSigner) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.publishPreKeys|publishPreKeys(dev.kreienbuehl.ksecuremessage.model.PreKeyPublication;dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner){}[0]
+    abstract suspend fun receive(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.client/ServerRequestSigner): kotlin.collections/List<dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope> // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.receive|receive(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner){}[0]
+    abstract suspend fun recoverDevice(dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryAuthorization) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.recoverDevice|recoverDevice(dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization){}[0]
+    abstract suspend fun recoverLastDevice(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryAuthorization) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.recoverLastDevice|recoverLastDevice(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization){}[0]
+    abstract suspend fun registerDevice(dev.kreienbuehl.ksecuremessage.model/DeviceRegistration, dev.kreienbuehl.ksecuremessage.client/ServerRequestSigner) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.registerDevice|registerDevice(dev.kreienbuehl.ksecuremessage.model.DeviceRegistration;dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner){}[0]
+    abstract suspend fun registerLastDeviceRecoveryKey(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKeyRegistration, dev.kreienbuehl.ksecuremessage.client/ServerRequestSigner) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.registerLastDeviceRecoveryKey|registerLastDeviceRecoveryKey(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration;dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner){}[0]
+    abstract suspend fun registrationStatus(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.client/ServerRequestSigner): dev.kreienbuehl.ksecuremessage.model/DeviceAuthenticationRegistrationStatus // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.registrationStatus|registrationStatus(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner){}[0]
+    abstract suspend fun requestLastDeviceRecoveryKeyReset(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.client/ServerRequestSigner): dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.requestLastDeviceRecoveryKeyReset|requestLastDeviceRecoveryKeyReset(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner){}[0]
+    abstract suspend fun revokeLastDeviceRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationAuthorization, dev.kreienbuehl.ksecuremessage.client/ServerRequestSigner) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.revokeLastDeviceRecoveryKey|revokeLastDeviceRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization;dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner){}[0]
+    abstract suspend fun rotateDeviceAuthenticationKey(dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationAuthorization) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.rotateDeviceAuthenticationKey|rotateDeviceAuthenticationKey(dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization){}[0]
+    abstract suspend fun rotateLastDeviceRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationAuthorization, dev.kreienbuehl.ksecuremessage.client/ServerRequestSigner) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.rotateLastDeviceRecoveryKey|rotateLastDeviceRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization;dev.kreienbuehl.ksecuremessage.client.ServerRequestSigner){}[0]
+    abstract suspend fun send(dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport.send|send(dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope){}[0]
+}
+
+sealed interface dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth|null[0]
+    final class Healthy : dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Healthy|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus, dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy?) // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Healthy.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRotationStatus;dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRotationPolicy?){}[0]
+
+        final val policy // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Healthy.policy|{}policy[0]
+            final fun <get-policy>(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy? // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Healthy.policy.<get-policy>|<get-policy>(){}[0]
+        final val status // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Healthy.status|{}status[0]
+            final fun <get-status>(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Healthy.status.<get-status>|<get-status>(){}[0]
+
+        final fun component1(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Healthy.component1|component1(){}[0]
+        final fun component2(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy? // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Healthy.component2|component2(){}[0]
+        final fun copy(dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus = ..., dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy? = ...): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Healthy // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Healthy.copy|copy(dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRotationStatus;dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRotationPolicy?){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Healthy.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Healthy.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Healthy.toString|toString(){}[0]
+    }
+
+    final class Inconsistent : dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Inconsistent|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealthInconsistency) // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Inconsistent.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationHealthInconsistency){}[0]
+
+        final val reason // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Inconsistent.reason|{}reason[0]
+            final fun <get-reason>(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealthInconsistency // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Inconsistent.reason.<get-reason>|<get-reason>(){}[0]
+
+        final fun component1(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealthInconsistency // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Inconsistent.component1|component1(){}[0]
+        final fun copy(dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealthInconsistency = ...): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Inconsistent // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Inconsistent.copy|copy(dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationHealthInconsistency){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Inconsistent.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Inconsistent.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Inconsistent.toString|toString(){}[0]
+    }
+
+    final class RecoveryPending : dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RecoveryPending|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRecoveryKind) // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RecoveryPending.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRecoveryKind){}[0]
+
+        final val kind // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RecoveryPending.kind|{}kind[0]
+            final fun <get-kind>(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRecoveryKind // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RecoveryPending.kind.<get-kind>|<get-kind>(){}[0]
+
+        final fun component1(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRecoveryKind // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RecoveryPending.component1|component1(){}[0]
+        final fun copy(dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRecoveryKind = ...): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RecoveryPending // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RecoveryPending.copy|copy(dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRecoveryKind){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RecoveryPending.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RecoveryPending.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RecoveryPending.toString|toString(){}[0]
+    }
+
+    final class RotationDue : dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RotationDue|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus, dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy) // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RotationDue.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRotationStatus;dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRotationPolicy){}[0]
+
+        final val policy // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RotationDue.policy|{}policy[0]
+            final fun <get-policy>(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RotationDue.policy.<get-policy>|<get-policy>(){}[0]
+        final val status // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RotationDue.status|{}status[0]
+            final fun <get-status>(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RotationDue.status.<get-status>|<get-status>(){}[0]
+
+        final fun component1(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RotationDue.component1|component1(){}[0]
+        final fun component2(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RotationDue.component2|component2(){}[0]
+        final fun copy(dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus = ..., dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy = ...): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RotationDue // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RotationDue.copy|copy(dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRotationStatus;dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRotationPolicy){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RotationDue.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RotationDue.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RotationDue.toString|toString(){}[0]
+    }
+
+    final object ActiveKeyMissing : dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.ActiveKeyMissing|null[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.ActiveKeyMissing.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.ActiveKeyMissing.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.ActiveKeyMissing.toString|toString(){}[0]
+    }
+
+    final object RotationPending : dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RotationPending|null[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RotationPending.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RotationPending.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.RotationPending.toString|toString(){}[0]
+    }
+
+    final object Unregistered : dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Unregistered|null[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Unregistered.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Unregistered.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth.Unregistered.toString|toString(){}[0]
+    }
+}
+
+sealed interface dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision|null[0]
+    final class Due : dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.Due|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus) // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.Due.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRotationStatus){}[0]
+
+        final val status // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.Due.status|{}status[0]
+            final fun <get-status>(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.Due.status.<get-status>|<get-status>(){}[0]
+
+        final fun component1(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.Due.component1|component1(){}[0]
+        final fun copy(dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus = ...): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.Due // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.Due.copy|copy(dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRotationStatus){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.Due.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.Due.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.Due.toString|toString(){}[0]
+    }
+
+    final class NotNeeded : dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.NotNeeded|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus) // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.NotNeeded.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRotationStatus){}[0]
+
+        final val status // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.NotNeeded.status|{}status[0]
+            final fun <get-status>(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.NotNeeded.status.<get-status>|<get-status>(){}[0]
+
+        final fun component1(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.NotNeeded.component1|component1(){}[0]
+        final fun copy(dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus = ...): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.NotNeeded // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.NotNeeded.copy|copy(dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRotationStatus){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.NotNeeded.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.NotNeeded.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.NotNeeded.toString|toString(){}[0]
+    }
+
+    final object RecoveryPending : dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.RecoveryPending|null[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.RecoveryPending.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.RecoveryPending.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.RecoveryPending.toString|toString(){}[0]
+    }
+
+    final object RotationPending : dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.RotationPending|null[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.RotationPending.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.RotationPending.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision.RotationPending.toString|toString(){}[0]
+    }
+}
+
+sealed interface dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult|null[0]
+    final class NotNeeded : dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.NotNeeded|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus) // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.NotNeeded.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRotationStatus){}[0]
+
+        final val status // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.NotNeeded.status|{}status[0]
+            final fun <get-status>(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.NotNeeded.status.<get-status>|<get-status>(){}[0]
+
+        final fun component1(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.NotNeeded.component1|component1(){}[0]
+        final fun copy(dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus = ...): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.NotNeeded // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.NotNeeded.copy|copy(dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRotationStatus){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.NotNeeded.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.NotNeeded.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.NotNeeded.toString|toString(){}[0]
+    }
+
+    final class Rotated : dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.Rotated|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus) // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.Rotated.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRotationStatus){}[0]
+
+        final val previous // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.Rotated.previous|{}previous[0]
+            final fun <get-previous>(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.Rotated.previous.<get-previous>|<get-previous>(){}[0]
+
+        final fun component1(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.Rotated.component1|component1(){}[0]
+        final fun copy(dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus = ...): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.Rotated // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.Rotated.copy|copy(dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRotationStatus){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.Rotated.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.Rotated.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.Rotated.toString|toString(){}[0]
+    }
+
+    final object RecoveryInProgress : dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.RecoveryInProgress|null[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.RecoveryInProgress.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.RecoveryInProgress.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.RecoveryInProgress.toString|toString(){}[0]
+    }
+
+    final object ResumedPendingRotation : dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.ResumedPendingRotation|null[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.ResumedPendingRotation.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.ResumedPendingRotation.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult.ResumedPendingRotation.toString|toString(){}[0]
+    }
+}
+
+sealed interface dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetCancellationResult { // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetCancellationResult|null[0]
+    final class NotPending : dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetCancellationResult { // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetCancellationResult.NotPending|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus?, dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus?) // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetCancellationResult.NotPending.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.LastDeviceRecoveryKeyStatus?;dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus?){}[0]
+
+        final val currentReset // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetCancellationResult.NotPending.currentReset|{}currentReset[0]
+            final fun <get-currentReset>(): dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus? // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetCancellationResult.NotPending.currentReset.<get-currentReset>|<get-currentReset>(){}[0]
+        final val recoveryKeyStatus // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetCancellationResult.NotPending.recoveryKeyStatus|{}recoveryKeyStatus[0]
+            final fun <get-recoveryKeyStatus>(): dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus? // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetCancellationResult.NotPending.recoveryKeyStatus.<get-recoveryKeyStatus>|<get-recoveryKeyStatus>(){}[0]
+
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetCancellationResult.NotPending.toString|toString(){}[0]
+    }
+
+    final object Cancelled : dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetCancellationResult { // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetCancellationResult.Cancelled|null[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetCancellationResult.Cancelled.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetCancellationResult.Cancelled.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetCancellationResult.Cancelled.toString|toString(){}[0]
+    }
+}
+
+sealed interface dev.kreienbuehl.ksecuremessage.client/ReceiveResult { // dev.kreienbuehl.ksecuremessage.client/ReceiveResult|null[0]
+    abstract val id // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.id|{}id[0]
+        abstract fun <get-id>(): dev.kreienbuehl.ksecuremessage.model/LogicalMessageId // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.id.<get-id>|<get-id>(){}[0]
+    abstract val sender // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.sender|{}sender[0]
+        abstract fun <get-sender>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.sender.<get-sender>|<get-sender>(){}[0]
+
+    final class Acknowledgement : dev.kreienbuehl.ksecuremessage.client/ReceiveResult { // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.Acknowledgement|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/LogicalMessageId, kotlin/Boolean) // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.Acknowledgement.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.LogicalMessageId;kotlin.Boolean){}[0]
+
+        final val cleared // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.Acknowledgement.cleared|{}cleared[0]
+            final fun <get-cleared>(): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.Acknowledgement.cleared.<get-cleared>|<get-cleared>(){}[0]
+        final val id // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.Acknowledgement.id|{}id[0]
+            final fun <get-id>(): dev.kreienbuehl.ksecuremessage.model/LogicalMessageId // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.Acknowledgement.id.<get-id>|<get-id>(){}[0]
+        final val sender // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.Acknowledgement.sender|{}sender[0]
+            final fun <get-sender>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.Acknowledgement.sender.<get-sender>|<get-sender>(){}[0]
+    }
+
+    final class AlreadyCommitted : dev.kreienbuehl.ksecuremessage.client/ReceiveResult { // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.AlreadyCommitted|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/LogicalMessageId, kotlin/Boolean) // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.AlreadyCommitted.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.LogicalMessageId;kotlin.Boolean){}[0]
+
+        final val ackSent // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.AlreadyCommitted.ackSent|{}ackSent[0]
+            final fun <get-ackSent>(): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.AlreadyCommitted.ackSent.<get-ackSent>|<get-ackSent>(){}[0]
+        final val id // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.AlreadyCommitted.id|{}id[0]
+            final fun <get-id>(): dev.kreienbuehl.ksecuremessage.model/LogicalMessageId // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.AlreadyCommitted.id.<get-id>|<get-id>(){}[0]
+        final val sender // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.AlreadyCommitted.sender|{}sender[0]
+            final fun <get-sender>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.AlreadyCommitted.sender.<get-sender>|<get-sender>(){}[0]
+    }
+
+    final class AlreadyDiscarded : dev.kreienbuehl.ksecuremessage.client/ReceiveResult { // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.AlreadyDiscarded|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/LogicalMessageId, kotlin/Boolean) // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.AlreadyDiscarded.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.LogicalMessageId;kotlin.Boolean){}[0]
+
+        final val ackSent // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.AlreadyDiscarded.ackSent|{}ackSent[0]
+            final fun <get-ackSent>(): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.AlreadyDiscarded.ackSent.<get-ackSent>|<get-ackSent>(){}[0]
+        final val id // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.AlreadyDiscarded.id|{}id[0]
+            final fun <get-id>(): dev.kreienbuehl.ksecuremessage.model/LogicalMessageId // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.AlreadyDiscarded.id.<get-id>|<get-id>(){}[0]
+        final val sender // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.AlreadyDiscarded.sender|{}sender[0]
+            final fun <get-sender>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.AlreadyDiscarded.sender.<get-sender>|<get-sender>(){}[0]
+    }
+
+    final class Delivery : dev.kreienbuehl.ksecuremessage.client/ReceiveResult { // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.Delivery|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/ReceivedMessage) // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.Delivery.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.ReceivedMessage){}[0]
+
+        final val id // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.Delivery.id|{}id[0]
+            final fun <get-id>(): dev.kreienbuehl.ksecuremessage.model/LogicalMessageId // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.Delivery.id.<get-id>|<get-id>(){}[0]
+        final val message // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.Delivery.message|{}message[0]
+            final fun <get-message>(): dev.kreienbuehl.ksecuremessage.client/ReceivedMessage // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.Delivery.message.<get-message>|<get-message>(){}[0]
+        final val sender // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.Delivery.sender|{}sender[0]
+            final fun <get-sender>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/ReceiveResult.Delivery.sender.<get-sender>|<get-sender>(){}[0]
+    }
+}
+
+sealed interface dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness { // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness|null[0]
+    final class Eligible : dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness { // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Eligible|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending, kotlin.time/Instant) // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Eligible.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus.Pending;kotlin.time.Instant){}[0]
+
+        final val evaluatedAt // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Eligible.evaluatedAt|{}evaluatedAt[0]
+            final fun <get-evaluatedAt>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Eligible.evaluatedAt.<get-evaluatedAt>|<get-evaluatedAt>(){}[0]
+        final val reset // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Eligible.reset|{}reset[0]
+            final fun <get-reset>(): dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Eligible.reset.<get-reset>|<get-reset>(){}[0]
+
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Eligible.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Eligible.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Eligible.toString|toString(){}[0]
+    }
+
+    final class Inconsistent : dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness { // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Inconsistent|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwarenessInconsistency) // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Inconsistent.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.RecoveryKeyResetAwarenessInconsistency){}[0]
+
+        final val reason // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Inconsistent.reason|{}reason[0]
+            final fun <get-reason>(): dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwarenessInconsistency // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Inconsistent.reason.<get-reason>|<get-reason>(){}[0]
+
+        final fun component1(): dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwarenessInconsistency // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Inconsistent.component1|component1(){}[0]
+        final fun copy(dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwarenessInconsistency = ...): dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Inconsistent // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Inconsistent.copy|copy(dev.kreienbuehl.ksecuremessage.client.RecoveryKeyResetAwarenessInconsistency){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Inconsistent.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Inconsistent.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Inconsistent.toString|toString(){}[0]
+    }
+
+    final class Pending : dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness { // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Pending|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending, kotlin.time/Instant) // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Pending.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus.Pending;kotlin.time.Instant){}[0]
+
+        final val evaluatedAt // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Pending.evaluatedAt|{}evaluatedAt[0]
+            final fun <get-evaluatedAt>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Pending.evaluatedAt.<get-evaluatedAt>|<get-evaluatedAt>(){}[0]
+        final val remainingUntilEligible // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Pending.remainingUntilEligible|{}remainingUntilEligible[0]
+            final fun <get-remainingUntilEligible>(): kotlin.time/Duration // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Pending.remainingUntilEligible.<get-remainingUntilEligible>|<get-remainingUntilEligible>(){}[0]
+        final val reset // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Pending.reset|{}reset[0]
+            final fun <get-reset>(): dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Pending.reset.<get-reset>|<get-reset>(){}[0]
+
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Pending.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Pending.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.Pending.toString|toString(){}[0]
+    }
+
+    final object None : dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness { // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.None|null[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.None.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.None.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness.None.toString|toString(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.client/CommitResult { // dev.kreienbuehl.ksecuremessage.client/CommitResult|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/LogicalMessageId, dev.kreienbuehl.ksecuremessage.client/CommitStatus, kotlin/Boolean) // dev.kreienbuehl.ksecuremessage.client/CommitResult.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.LogicalMessageId;dev.kreienbuehl.ksecuremessage.client.CommitStatus;kotlin.Boolean){}[0]
+
+    final val ackSent // dev.kreienbuehl.ksecuremessage.client/CommitResult.ackSent|{}ackSent[0]
+        final fun <get-ackSent>(): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/CommitResult.ackSent.<get-ackSent>|<get-ackSent>(){}[0]
+    final val id // dev.kreienbuehl.ksecuremessage.client/CommitResult.id|{}id[0]
+        final fun <get-id>(): dev.kreienbuehl.ksecuremessage.model/LogicalMessageId // dev.kreienbuehl.ksecuremessage.client/CommitResult.id.<get-id>|<get-id>(){}[0]
+    final val sender // dev.kreienbuehl.ksecuremessage.client/CommitResult.sender|{}sender[0]
+        final fun <get-sender>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/CommitResult.sender.<get-sender>|<get-sender>(){}[0]
+    final val status // dev.kreienbuehl.ksecuremessage.client/CommitResult.status|{}status[0]
+        final fun <get-status>(): dev.kreienbuehl.ksecuremessage.client/CommitStatus // dev.kreienbuehl.ksecuremessage.client/CommitResult.status.<get-status>|<get-status>(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy|null[0]
+    constructor <init>(kotlin.time/Duration) // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy.<init>|<init>(kotlin.time.Duration){}[0]
+
+    final val maxKeyAge // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy.maxKeyAge|{}maxKeyAge[0]
+        final fun <get-maxKeyAge>(): kotlin.time/Duration // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy.maxKeyAge.<get-maxKeyAge>|<get-maxKeyAge>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy.hashCode|hashCode(){}[0]
+    final fun isDue(kotlin.time/Duration): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy.isDue|isDue(kotlin.time.Duration){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus { // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus|null[0]
+    constructor <init>(kotlin/Long, kotlin.time/Instant, kotlin.time/Instant, kotlin/Boolean, kotlin/Boolean) // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.<init>|<init>(kotlin.Long;kotlin.time.Instant;kotlin.time.Instant;kotlin.Boolean;kotlin.Boolean){}[0]
+
+    final val age // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.age|{}age[0]
+        final fun <get-age>(): kotlin.time/Duration // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.age.<get-age>|<get-age>(){}[0]
+    final val authEpoch // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.authEpoch|{}authEpoch[0]
+        final fun <get-authEpoch>(): kotlin/Long // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.authEpoch.<get-authEpoch>|<get-authEpoch>(){}[0]
+    final val authKeyInstalledAt // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.authKeyInstalledAt|{}authKeyInstalledAt[0]
+        final fun <get-authKeyInstalledAt>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.authKeyInstalledAt.<get-authKeyInstalledAt>|<get-authKeyInstalledAt>(){}[0]
+    final val evaluatedAt // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.evaluatedAt|{}evaluatedAt[0]
+        final fun <get-evaluatedAt>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.evaluatedAt.<get-evaluatedAt>|<get-evaluatedAt>(){}[0]
+    final val pendingRecovery // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.pendingRecovery|{}pendingRecovery[0]
+        final fun <get-pendingRecovery>(): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.pendingRecovery.<get-pendingRecovery>|<get-pendingRecovery>(){}[0]
+    final val pendingRotation // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.pendingRotation|{}pendingRotation[0]
+        final fun <get-pendingRotation>(): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.pendingRotation.<get-pendingRotation>|<get-pendingRotation>(){}[0]
+
+    final fun component1(): kotlin/Long // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.component1|component1(){}[0]
+    final fun component2(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.component2|component2(){}[0]
+    final fun component3(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.component3|component3(){}[0]
+    final fun component4(): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.component4|component4(){}[0]
+    final fun component5(): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.component5|component5(){}[0]
+    final fun copy(kotlin/Long = ..., kotlin.time/Instant = ..., kotlin.time/Instant = ..., kotlin/Boolean = ..., kotlin/Boolean = ...): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.copy|copy(kotlin.Long;kotlin.time.Instant;kotlin.time.Instant;kotlin.Boolean;kotlin.Boolean){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.client/DiscardResult { // dev.kreienbuehl.ksecuremessage.client/DiscardResult|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/LogicalMessageId, dev.kreienbuehl.ksecuremessage.client/DiscardStatus, kotlin/Boolean) // dev.kreienbuehl.ksecuremessage.client/DiscardResult.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.LogicalMessageId;dev.kreienbuehl.ksecuremessage.client.DiscardStatus;kotlin.Boolean){}[0]
+
+    final val ackSent // dev.kreienbuehl.ksecuremessage.client/DiscardResult.ackSent|{}ackSent[0]
+        final fun <get-ackSent>(): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/DiscardResult.ackSent.<get-ackSent>|<get-ackSent>(){}[0]
+    final val id // dev.kreienbuehl.ksecuremessage.client/DiscardResult.id|{}id[0]
+        final fun <get-id>(): dev.kreienbuehl.ksecuremessage.model/LogicalMessageId // dev.kreienbuehl.ksecuremessage.client/DiscardResult.id.<get-id>|<get-id>(){}[0]
+    final val sender // dev.kreienbuehl.ksecuremessage.client/DiscardResult.sender|{}sender[0]
+        final fun <get-sender>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/DiscardResult.sender.<get-sender>|<get-sender>(){}[0]
+    final val status // dev.kreienbuehl.ksecuremessage.client/DiscardResult.status|{}status[0]
+        final fun <get-status>(): dev.kreienbuehl.ksecuremessage.client/DiscardStatus // dev.kreienbuehl.ksecuremessage.client/DiscardResult.status.<get-status>|<get-status>(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.client/PendingMessage { // dev.kreienbuehl.ksecuremessage.client/PendingMessage|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/LogicalMessageId, kotlin/Long, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.client/PendingMessage.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.LogicalMessageId;kotlin.Long;kotlin.ByteArray){}[0]
+
+    final val id // dev.kreienbuehl.ksecuremessage.client/PendingMessage.id|{}id[0]
+        final fun <get-id>(): dev.kreienbuehl.ksecuremessage.model/LogicalMessageId // dev.kreienbuehl.ksecuremessage.client/PendingMessage.id.<get-id>|<get-id>(){}[0]
+    final val plaintext // dev.kreienbuehl.ksecuremessage.client/PendingMessage.plaintext|{}plaintext[0]
+        final fun <get-plaintext>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.client/PendingMessage.plaintext.<get-plaintext>|<get-plaintext>(){}[0]
+    final val recipient // dev.kreienbuehl.ksecuremessage.client/PendingMessage.recipient|{}recipient[0]
+        final fun <get-recipient>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/PendingMessage.recipient.<get-recipient>|<get-recipient>(){}[0]
+    final val sequence // dev.kreienbuehl.ksecuremessage.client/PendingMessage.sequence|{}sequence[0]
+        final fun <get-sequence>(): kotlin/Long // dev.kreienbuehl.ksecuremessage.client/PendingMessage.sequence.<get-sequence>|<get-sequence>(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.client/PendingMessagePage { // dev.kreienbuehl.ksecuremessage.client/PendingMessagePage|null[0]
+    constructor <init>(kotlin.collections/List<dev.kreienbuehl.ksecuremessage.client/PendingMessage>, kotlin/Long?) // dev.kreienbuehl.ksecuremessage.client/PendingMessagePage.<init>|<init>(kotlin.collections.List<dev.kreienbuehl.ksecuremessage.client.PendingMessage>;kotlin.Long?){}[0]
+
+    final val messages // dev.kreienbuehl.ksecuremessage.client/PendingMessagePage.messages|{}messages[0]
+        final fun <get-messages>(): kotlin.collections/List<dev.kreienbuehl.ksecuremessage.client/PendingMessage> // dev.kreienbuehl.ksecuremessage.client/PendingMessagePage.messages.<get-messages>|<get-messages>(){}[0]
+    final val nextAfterSequence // dev.kreienbuehl.ksecuremessage.client/PendingMessagePage.nextAfterSequence|{}nextAfterSequence[0]
+        final fun <get-nextAfterSequence>(): kotlin/Long? // dev.kreienbuehl.ksecuremessage.client/PendingMessagePage.nextAfterSequence.<get-nextAfterSequence>|<get-nextAfterSequence>(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.client/PendingMessagePage.Companion|null[0]
+        final const val MAX_SIZE // dev.kreienbuehl.ksecuremessage.client/PendingMessagePage.Companion.MAX_SIZE|{}MAX_SIZE[0]
+            final fun <get-MAX_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/PendingMessagePage.Companion.MAX_SIZE.<get-MAX_SIZE>|<get-MAX_SIZE>(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.client/PendingReceivedMessagePage { // dev.kreienbuehl.ksecuremessage.client/PendingReceivedMessagePage|null[0]
+    constructor <init>(kotlin.collections/List<dev.kreienbuehl.ksecuremessage.client/ReceivedMessage>, kotlin/Long?) // dev.kreienbuehl.ksecuremessage.client/PendingReceivedMessagePage.<init>|<init>(kotlin.collections.List<dev.kreienbuehl.ksecuremessage.client.ReceivedMessage>;kotlin.Long?){}[0]
+
+    final val messages // dev.kreienbuehl.ksecuremessage.client/PendingReceivedMessagePage.messages|{}messages[0]
+        final fun <get-messages>(): kotlin.collections/List<dev.kreienbuehl.ksecuremessage.client/ReceivedMessage> // dev.kreienbuehl.ksecuremessage.client/PendingReceivedMessagePage.messages.<get-messages>|<get-messages>(){}[0]
+    final val nextAfterSequence // dev.kreienbuehl.ksecuremessage.client/PendingReceivedMessagePage.nextAfterSequence|{}nextAfterSequence[0]
+        final fun <get-nextAfterSequence>(): kotlin/Long? // dev.kreienbuehl.ksecuremessage.client/PendingReceivedMessagePage.nextAfterSequence.<get-nextAfterSequence>|<get-nextAfterSequence>(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.client/PendingReceivedMessagePage.Companion|null[0]
+        final const val MAX_SIZE // dev.kreienbuehl.ksecuremessage.client/PendingReceivedMessagePage.Companion.MAX_SIZE|{}MAX_SIZE[0]
+            final fun <get-MAX_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/PendingReceivedMessagePage.Companion.MAX_SIZE.<get-MAX_SIZE>|<get-MAX_SIZE>(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.client/PreKeyConfiguration { // dev.kreienbuehl.ksecuremessage.client/PreKeyConfiguration|null[0]
+    constructor <init>(kotlin/Int = ..., kotlin.time/Duration = ..., kotlin.time/Duration = ...) // dev.kreienbuehl.ksecuremessage.client/PreKeyConfiguration.<init>|<init>(kotlin.Int;kotlin.time.Duration;kotlin.time.Duration){}[0]
+
+    final val oneTimePreKeyTarget // dev.kreienbuehl.ksecuremessage.client/PreKeyConfiguration.oneTimePreKeyTarget|{}oneTimePreKeyTarget[0]
+        final fun <get-oneTimePreKeyTarget>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/PreKeyConfiguration.oneTimePreKeyTarget.<get-oneTimePreKeyTarget>|<get-oneTimePreKeyTarget>(){}[0]
+    final val signedPreKeyGracePeriod // dev.kreienbuehl.ksecuremessage.client/PreKeyConfiguration.signedPreKeyGracePeriod|{}signedPreKeyGracePeriod[0]
+        final fun <get-signedPreKeyGracePeriod>(): kotlin.time/Duration // dev.kreienbuehl.ksecuremessage.client/PreKeyConfiguration.signedPreKeyGracePeriod.<get-signedPreKeyGracePeriod>|<get-signedPreKeyGracePeriod>(){}[0]
+    final val signedPreKeyRotationAge // dev.kreienbuehl.ksecuremessage.client/PreKeyConfiguration.signedPreKeyRotationAge|{}signedPreKeyRotationAge[0]
+        final fun <get-signedPreKeyRotationAge>(): kotlin.time/Duration // dev.kreienbuehl.ksecuremessage.client/PreKeyConfiguration.signedPreKeyRotationAge.<get-signedPreKeyRotationAge>|<get-signedPreKeyRotationAge>(){}[0]
+
+    final fun component1(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/PreKeyConfiguration.component1|component1(){}[0]
+    final fun component2(): kotlin.time/Duration // dev.kreienbuehl.ksecuremessage.client/PreKeyConfiguration.component2|component2(){}[0]
+    final fun component3(): kotlin.time/Duration // dev.kreienbuehl.ksecuremessage.client/PreKeyConfiguration.component3|component3(){}[0]
+    final fun copy(kotlin/Int = ..., kotlin.time/Duration = ..., kotlin.time/Duration = ...): dev.kreienbuehl.ksecuremessage.client/PreKeyConfiguration // dev.kreienbuehl.ksecuremessage.client/PreKeyConfiguration.copy|copy(kotlin.Int;kotlin.time.Duration;kotlin.time.Duration){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/PreKeyConfiguration.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/PreKeyConfiguration.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/PreKeyConfiguration.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.client/ProcessedInboundRetentionPolicy { // dev.kreienbuehl.ksecuremessage.client/ProcessedInboundRetentionPolicy|null[0]
+    constructor <init>(kotlin.time/Duration) // dev.kreienbuehl.ksecuremessage.client/ProcessedInboundRetentionPolicy.<init>|<init>(kotlin.time.Duration){}[0]
+
+    final val maxAge // dev.kreienbuehl.ksecuremessage.client/ProcessedInboundRetentionPolicy.maxAge|{}maxAge[0]
+        final fun <get-maxAge>(): kotlin.time/Duration // dev.kreienbuehl.ksecuremessage.client/ProcessedInboundRetentionPolicy.maxAge.<get-maxAge>|<get-maxAge>(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.client/ReceivedMessage { // dev.kreienbuehl.ksecuremessage.client/ReceivedMessage|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/LogicalMessageId, kotlin/Long, kotlin.time/Instant, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.client/ReceivedMessage.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.LogicalMessageId;kotlin.Long;kotlin.time.Instant;kotlin.ByteArray){}[0]
+
+    final val id // dev.kreienbuehl.ksecuremessage.client/ReceivedMessage.id|{}id[0]
+        final fun <get-id>(): dev.kreienbuehl.ksecuremessage.model/LogicalMessageId // dev.kreienbuehl.ksecuremessage.client/ReceivedMessage.id.<get-id>|<get-id>(){}[0]
+    final val plaintext // dev.kreienbuehl.ksecuremessage.client/ReceivedMessage.plaintext|{}plaintext[0]
+        final fun <get-plaintext>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.client/ReceivedMessage.plaintext.<get-plaintext>|<get-plaintext>(){}[0]
+    final val receivedAt // dev.kreienbuehl.ksecuremessage.client/ReceivedMessage.receivedAt|{}receivedAt[0]
+        final fun <get-receivedAt>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.client/ReceivedMessage.receivedAt.<get-receivedAt>|<get-receivedAt>(){}[0]
+    final val sender // dev.kreienbuehl.ksecuremessage.client/ReceivedMessage.sender|{}sender[0]
+        final fun <get-sender>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/ReceivedMessage.sender.<get-sender>|<get-sender>(){}[0]
+    final val sequence // dev.kreienbuehl.ksecuremessage.client/ReceivedMessage.sequence|{}sequence[0]
+        final fun <get-sequence>(): kotlin/Long // dev.kreienbuehl.ksecuremessage.client/ReceivedMessage.sequence.<get-sequence>|<get-sequence>(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.client/RemoteIdentityChange { // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityChange|null[0]
+    final val presentedIdentityKey // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityChange.presentedIdentityKey|{}presentedIdentityKey[0]
+        final fun <get-presentedIdentityKey>(): dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityChange.presentedIdentityKey.<get-presentedIdentityKey>|<get-presentedIdentityKey>(){}[0]
+    final val previousIdentityKey // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityChange.previousIdentityKey|{}previousIdentityKey[0]
+        final fun <get-previousIdentityKey>(): dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityChange.previousIdentityKey.<get-previousIdentityKey>|<get-previousIdentityKey>(){}[0]
+    final val remote // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityChange.remote|{}remote[0]
+        final fun <get-remote>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityChange.remote.<get-remote>|<get-remote>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityChange.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityChange.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityChange.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.client/RemoteIdentityTrust { // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityTrust|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey, dev.kreienbuehl.ksecuremessage.protocol/VerificationState) // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityTrust.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.protocol.PublicIdentityKey;dev.kreienbuehl.ksecuremessage.protocol.VerificationState){}[0]
+
+    final val address // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityTrust.address|{}address[0]
+        final fun <get-address>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityTrust.address.<get-address>|<get-address>(){}[0]
+    final val identityKey // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityTrust.identityKey|{}identityKey[0]
+        final fun <get-identityKey>(): dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityTrust.identityKey.<get-identityKey>|<get-identityKey>(){}[0]
+    final val verification // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityTrust.verification|{}verification[0]
+        final fun <get-verification>(): dev.kreienbuehl.ksecuremessage.protocol/VerificationState // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityTrust.verification.<get-verification>|<get-verification>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityTrust.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityTrust.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.client/RemoteIdentityTrust.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.client/SecureMessageClient { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.storage/ClientStorage, dev.kreienbuehl.ksecuremessage.protocol/ProtocolEngine, dev.kreienbuehl.ksecuremessage.client/SecureMessageTransport, dev.kreienbuehl.ksecuremessage.client/PreKeyConfiguration = ..., kotlin.time/Clock = ...) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.storage.ClientStorage;dev.kreienbuehl.ksecuremessage.protocol.ProtocolEngine;dev.kreienbuehl.ksecuremessage.client.SecureMessageTransport;dev.kreienbuehl.ksecuremessage.client.PreKeyConfiguration;kotlin.time.Clock){}[0]
+
+    final val localAddress // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.localAddress|{}localAddress[0]
+        final fun <get-localAddress>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.localAddress.<get-localAddress>|<get-localAddress>(){}[0]
+
+    final suspend fun abandonPendingMessage(dev.kreienbuehl.ksecuremessage.client/PendingMessage): dev.kreienbuehl.ksecuremessage.client/AbandonStatus // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.abandonPendingMessage|abandonPendingMessage(dev.kreienbuehl.ksecuremessage.client.PendingMessage){}[0]
+    final suspend fun abandonPendingMessage(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/LogicalMessageId): dev.kreienbuehl.ksecuremessage.client/AbandonStatus // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.abandonPendingMessage|abandonPendingMessage(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.LogicalMessageId){}[0]
+    final suspend fun acceptRemoteIdentityChange(dev.kreienbuehl.ksecuremessage.client/RemoteIdentityChange) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.acceptRemoteIdentityChange|acceptRemoteIdentityChange(dev.kreienbuehl.ksecuremessage.client.RemoteIdentityChange){}[0]
+    final suspend fun authorizeDeviceRecovery(dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest): dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryAuthorization // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.authorizeDeviceRecovery|authorizeDeviceRecovery(dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryRequest){}[0]
+    final suspend fun cancelDeviceAuthenticationRecovery() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.cancelDeviceAuthenticationRecovery|cancelDeviceAuthenticationRecovery(){}[0]
+    final suspend fun cancelDeviceAuthenticationRotation() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.cancelDeviceAuthenticationRotation|cancelDeviceAuthenticationRotation(){}[0]
+    final suspend fun cancelLastDeviceRecovery() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.cancelLastDeviceRecovery|cancelLastDeviceRecovery(){}[0]
+    final suspend fun cancelLastDeviceRecoveryKeyReset(dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending): dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetCancellationResult // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.cancelLastDeviceRecoveryKeyReset|cancelLastDeviceRecoveryKeyReset(dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus.Pending){}[0]
+    final suspend fun cancelLastDeviceRecoveryKeyResetByRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey, dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending): dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetCancellationResult // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.cancelLastDeviceRecoveryKeyResetByRecoveryKey|cancelLastDeviceRecoveryKeyResetByRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey;dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus.Pending){}[0]
+    final suspend fun commitReceivedMessage(dev.kreienbuehl.ksecuremessage.client/ReceivedMessage): dev.kreienbuehl.ksecuremessage.client/CommitResult // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.commitReceivedMessage|commitReceivedMessage(dev.kreienbuehl.ksecuremessage.client.ReceivedMessage){}[0]
+    final suspend fun commitReceivedMessage(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/LogicalMessageId): dev.kreienbuehl.ksecuremessage.client/CommitResult // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.commitReceivedMessage|commitReceivedMessage(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.LogicalMessageId){}[0]
+    final suspend fun compareSafetyNumber(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberComparison // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.compareSafetyNumber|compareSafetyNumber(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.ByteArray){}[0]
+    final suspend fun completeDeviceAuthenticationRecovery(dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryAuthorization) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.completeDeviceAuthenticationRecovery|completeDeviceAuthenticationRecovery(dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization){}[0]
+    final suspend fun completeDeviceAuthenticationRotation() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.completeDeviceAuthenticationRotation|completeDeviceAuthenticationRotation(){}[0]
+    final suspend fun completeLastDeviceRecovery(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.completeLastDeviceRecovery|completeLastDeviceRecovery(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey){}[0]
+    final suspend fun completeLastDeviceRecoveryKeyReset(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey): dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyResetResult // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.completeLastDeviceRecoveryKeyReset|completeLastDeviceRecoveryKeyReset(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey){}[0]
+    final suspend fun createLastDeviceRecoveryKey(): dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.createLastDeviceRecoveryKey|createLastDeviceRecoveryKey(){}[0]
+    final suspend fun currentPreKeyBundle(): dev.kreienbuehl.ksecuremessage.model/PreKeyBundle // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.currentPreKeyBundle|currentPreKeyBundle(){}[0]
+    final suspend fun decrypt(dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope): dev.kreienbuehl.ksecuremessage.client/ReceiveResult // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.decrypt|decrypt(dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope){}[0]
+    final suspend fun deviceAuthenticationHealth(dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy? = ...): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationHealth // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.deviceAuthenticationHealth|deviceAuthenticationHealth(dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRotationPolicy?){}[0]
+    final suspend fun deviceAuthenticationRotationStatus(): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationStatus // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.deviceAuthenticationRotationStatus|deviceAuthenticationRotationStatus(){}[0]
+    final suspend fun discardReceivedMessage(dev.kreienbuehl.ksecuremessage.client/ReceivedMessage, dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason): dev.kreienbuehl.ksecuremessage.client/DiscardResult // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.discardReceivedMessage|discardReceivedMessage(dev.kreienbuehl.ksecuremessage.client.ReceivedMessage;dev.kreienbuehl.ksecuremessage.model.MessageDiscardReason){}[0]
+    final suspend fun discardReceivedMessage(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/LogicalMessageId, dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason): dev.kreienbuehl.ksecuremessage.client/DiscardResult // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.discardReceivedMessage|discardReceivedMessage(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.LogicalMessageId;dev.kreienbuehl.ksecuremessage.model.MessageDiscardReason){}[0]
+    final suspend fun evaluateDeviceAuthenticationRotation(dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationDecision // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.evaluateDeviceAuthenticationRotation|evaluateDeviceAuthenticationRotation(dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRotationPolicy){}[0]
+    final suspend fun initialize() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.initialize|initialize(){}[0]
+    final suspend fun lastDeviceRecoveryKeyResetStatus(): dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.lastDeviceRecoveryKeyResetStatus|lastDeviceRecoveryKeyResetStatus(){}[0]
+    final suspend fun lastDeviceRecoveryKeyResetStatusByRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey): dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.lastDeviceRecoveryKeyResetStatusByRecoveryKey|lastDeviceRecoveryKeyResetStatusByRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey){}[0]
+    final suspend fun lastDeviceRecoveryKeyStatus(): dev.kreienbuehl.ksecuremessage.model/LastDeviceRecoveryKeyStatus // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.lastDeviceRecoveryKeyStatus|lastDeviceRecoveryKeyStatus(){}[0]
+    final suspend fun markRemoteIdentityUnverified(dev.kreienbuehl.ksecuremessage.model/DeviceAddress) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.markRemoteIdentityUnverified|markRemoteIdentityUnverified(dev.kreienbuehl.ksecuremessage.model.DeviceAddress){}[0]
+    final suspend fun markRemoteIdentityVerified(dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.markRemoteIdentityVerified|markRemoteIdentityVerified(dev.kreienbuehl.ksecuremessage.protocol.SafetyNumber){}[0]
+    final suspend fun pendingMessageCount(dev.kreienbuehl.ksecuremessage.model/DeviceAddress? = ...): kotlin/Long // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.pendingMessageCount|pendingMessageCount(dev.kreienbuehl.ksecuremessage.model.DeviceAddress?){}[0]
+    final suspend fun pendingMessages(kotlin/Long? = ..., kotlin/Int, dev.kreienbuehl.ksecuremessage.model/DeviceAddress? = ...): dev.kreienbuehl.ksecuremessage.client/PendingMessagePage // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.pendingMessages|pendingMessages(kotlin.Long?;kotlin.Int;dev.kreienbuehl.ksecuremessage.model.DeviceAddress?){}[0]
+    final suspend fun pendingReceivedMessageCount(dev.kreienbuehl.ksecuremessage.model/DeviceAddress? = ...): kotlin/Long // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.pendingReceivedMessageCount|pendingReceivedMessageCount(dev.kreienbuehl.ksecuremessage.model.DeviceAddress?){}[0]
+    final suspend fun pendingReceivedMessages(kotlin/Long? = ..., kotlin/Int, dev.kreienbuehl.ksecuremessage.model/DeviceAddress? = ...): dev.kreienbuehl.ksecuremessage.client/PendingReceivedMessagePage // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.pendingReceivedMessages|pendingReceivedMessages(kotlin.Long?;kotlin.Int;dev.kreienbuehl.ksecuremessage.model.DeviceAddress?){}[0]
+    final suspend fun prepareDeviceAuthenticationRecovery(dev.kreienbuehl.ksecuremessage.model/DeviceAddress): dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.prepareDeviceAuthenticationRecovery|prepareDeviceAuthenticationRecovery(dev.kreienbuehl.ksecuremessage.model.DeviceAddress){}[0]
+    final suspend fun prepareDeviceAuthenticationRotation() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.prepareDeviceAuthenticationRotation|prepareDeviceAuthenticationRotation(){}[0]
+    final suspend fun prepareLastDeviceRecovery() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.prepareLastDeviceRecovery|prepareLastDeviceRecovery(){}[0]
+    final suspend fun pruneProcessedMessages(dev.kreienbuehl.ksecuremessage.client/ProcessedInboundRetentionPolicy): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.pruneProcessedMessages|pruneProcessedMessages(dev.kreienbuehl.ksecuremessage.client.ProcessedInboundRetentionPolicy){}[0]
+    final suspend fun publicOneTimePreKeys(): kotlin.collections/List<dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey> // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.publicOneTimePreKeys|publicOneTimePreKeys(){}[0]
+    final suspend fun publishPreKeys() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.publishPreKeys|publishPreKeys(){}[0]
+    final suspend fun receive(): kotlin.collections/List<dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope> // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.receive|receive(){}[0]
+    final suspend fun recoverLastDevice(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.recoverLastDevice|recoverLastDevice(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey){}[0]
+    final suspend fun recoveryKeyResetAwareness(): dev.kreienbuehl.ksecuremessage.client/RecoveryKeyResetAwareness // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.recoveryKeyResetAwareness|recoveryKeyResetAwareness(){}[0]
+    final suspend fun registerDevice() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.registerDevice|registerDevice(){}[0]
+    final suspend fun registerLastDeviceRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.registerLastDeviceRecoveryKey|registerLastDeviceRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey){}[0]
+    final suspend fun remoteIdentityKey(dev.kreienbuehl.ksecuremessage.model/DeviceAddress): kotlin/ByteArray? // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.remoteIdentityKey|remoteIdentityKey(dev.kreienbuehl.ksecuremessage.model.DeviceAddress){}[0]
+    final suspend fun remoteIdentityTrust(dev.kreienbuehl.ksecuremessage.model/DeviceAddress): dev.kreienbuehl.ksecuremessage.client/RemoteIdentityTrust? // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.remoteIdentityTrust|remoteIdentityTrust(dev.kreienbuehl.ksecuremessage.model.DeviceAddress){}[0]
+    final suspend fun requestLastDeviceRecoveryKeyReset(): dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.requestLastDeviceRecoveryKeyReset|requestLastDeviceRecoveryKeyReset(){}[0]
+    final suspend fun resolveDeviceAuthenticationRecovery(): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.resolveDeviceAuthenticationRecovery|resolveDeviceAuthenticationRecovery(){}[0]
+    final suspend fun resolveDeviceAuthenticationRotation(): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.resolveDeviceAuthenticationRotation|resolveDeviceAuthenticationRotation(){}[0]
+    final suspend fun resolveLastDeviceRecovery(): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.resolveLastDeviceRecovery|resolveLastDeviceRecovery(){}[0]
+    final suspend fun retryPendingMessages(dev.kreienbuehl.ksecuremessage.model/DeviceAddress): kotlin.collections/List<dev.kreienbuehl.ksecuremessage.model/LogicalMessageId> // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.retryPendingMessages|retryPendingMessages(dev.kreienbuehl.ksecuremessage.model.DeviceAddress){}[0]
+    final suspend fun revokeLastDeviceRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey): dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRevocationResult // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.revokeLastDeviceRecoveryKey|revokeLastDeviceRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey){}[0]
+    final suspend fun rotateDeviceAuthenticationKey() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.rotateDeviceAuthenticationKey|rotateDeviceAuthenticationKey(){}[0]
+    final suspend fun rotateDeviceAuthenticationKeyIfNeeded(dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationPolicy): dev.kreienbuehl.ksecuremessage.client/DeviceAuthenticationRotationResult // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.rotateDeviceAuthenticationKeyIfNeeded|rotateDeviceAuthenticationKeyIfNeeded(dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationRotationPolicy){}[0]
+    final suspend fun rotateLastDeviceRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey, dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey): dev.kreienbuehl.ksecuremessage.client/LastDeviceRecoveryKeyRotationResult // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.rotateLastDeviceRecoveryKey|rotateLastDeviceRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey;dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey){}[0]
+    final suspend fun rotateSignedPreKey(): dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.rotateSignedPreKey|rotateSignedPreKey(){}[0]
+    final suspend fun safetyNumber(dev.kreienbuehl.ksecuremessage.client/RemoteIdentityChange): dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.safetyNumber|safetyNumber(dev.kreienbuehl.ksecuremessage.client.RemoteIdentityChange){}[0]
+    final suspend fun safetyNumber(dev.kreienbuehl.ksecuremessage.model/DeviceAddress): dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.safetyNumber|safetyNumber(dev.kreienbuehl.ksecuremessage.model.DeviceAddress){}[0]
+    final suspend fun send(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.client/SentMessage // dev.kreienbuehl.ksecuremessage.client/SecureMessageClient.send|send(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.ByteArray){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.client/SentMessage { // dev.kreienbuehl.ksecuremessage.client/SentMessage|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/LogicalMessageId, dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope) // dev.kreienbuehl.ksecuremessage.client/SentMessage.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.LogicalMessageId;dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope){}[0]
+
+    final val envelope // dev.kreienbuehl.ksecuremessage.client/SentMessage.envelope|{}envelope[0]
+        final fun <get-envelope>(): dev.kreienbuehl.ksecuremessage.model/EncryptedEnvelope // dev.kreienbuehl.ksecuremessage.client/SentMessage.envelope.<get-envelope>|<get-envelope>(){}[0]
+    final val id // dev.kreienbuehl.ksecuremessage.client/SentMessage.id|{}id[0]
+        final fun <get-id>(): dev.kreienbuehl.ksecuremessage.model/LogicalMessageId // dev.kreienbuehl.ksecuremessage.client/SentMessage.id.<get-id>|<get-id>(){}[0]
+}
+
+sealed class dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException : kotlin/Exception { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException|null[0]
+    final class DeviceAuthenticationRecoveryInProgress : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.DeviceAuthenticationRecoveryInProgress|null[0]
+        constructor <init>() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.DeviceAuthenticationRecoveryInProgress.<init>|<init>(){}[0]
+    }
+
+    final class DeviceAuthenticationRotationInProgress : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.DeviceAuthenticationRotationInProgress|null[0]
+        constructor <init>() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.DeviceAuthenticationRotationInProgress.<init>|<init>(){}[0]
+    }
+
+    final class ExpiredSignedPreKey : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.ExpiredSignedPreKey|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.ExpiredSignedPreKey.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId){}[0]
+
+        final val address // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.ExpiredSignedPreKey.address|{}address[0]
+            final fun <get-address>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.ExpiredSignedPreKey.address.<get-address>|<get-address>(){}[0]
+        final val signedPreKeyId // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.ExpiredSignedPreKey.signedPreKeyId|{}signedPreKeyId[0]
+            final fun <get-signedPreKeyId>(): dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.ExpiredSignedPreKey.signedPreKeyId.<get-signedPreKeyId>|<get-signedPreKeyId>(){}[0]
+    }
+
+    final class IdentityChanged : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.IdentityChanged|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/RemoteIdentityChange) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.IdentityChanged.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.RemoteIdentityChange){}[0]
+
+        final val address // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.IdentityChanged.address|{}address[0]
+            final fun <get-address>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.IdentityChanged.address.<get-address>|<get-address>(){}[0]
+        final val change // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.IdentityChanged.change|{}change[0]
+            final fun <get-change>(): dev.kreienbuehl.ksecuremessage.client/RemoteIdentityChange // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.IdentityChanged.change.<get-change>|<get-change>(){}[0]
+        final val pinnedIdentityKey // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.IdentityChanged.pinnedIdentityKey|{}pinnedIdentityKey[0]
+            final fun <get-pinnedIdentityKey>(): dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.IdentityChanged.pinnedIdentityKey.<get-pinnedIdentityKey>|<get-pinnedIdentityKey>(){}[0]
+        final val presentedIdentityKey // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.IdentityChanged.presentedIdentityKey|{}presentedIdentityKey[0]
+            final fun <get-presentedIdentityKey>(): dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.IdentityChanged.presentedIdentityKey.<get-presentedIdentityKey>|<get-presentedIdentityKey>(){}[0]
+    }
+
+    final class InconsistentStorage : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.InconsistentStorage|null[0]
+        constructor <init>(kotlin/String) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.InconsistentStorage.<init>|<init>(kotlin.String){}[0]
+    }
+
+    final class InvalidDeviceAuthenticationRotation : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.InvalidDeviceAuthenticationRotation|null[0]
+        constructor <init>(kotlin/String) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.InvalidDeviceAuthenticationRotation.<init>|<init>(kotlin.String){}[0]
+    }
+
+    final class InvalidDeviceRecovery : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.InvalidDeviceRecovery|null[0]
+        constructor <init>(kotlin/String) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.InvalidDeviceRecovery.<init>|<init>(kotlin.String){}[0]
+    }
+
+    final class InvalidLastDeviceRecovery : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.InvalidLastDeviceRecovery|null[0]
+        constructor <init>(kotlin/String) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.InvalidLastDeviceRecovery.<init>|<init>(kotlin.String){}[0]
+    }
+
+    final class InvalidSafetyNumberPayload : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.InvalidSafetyNumberPayload|null[0]
+        constructor <init>(kotlin/Throwable) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.InvalidSafetyNumberPayload.<init>|<init>(kotlin.Throwable){}[0]
+    }
+
+    final class LastDeviceRecoveryInProgress : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.LastDeviceRecoveryInProgress|null[0]
+        constructor <init>() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.LastDeviceRecoveryInProgress.<init>|<init>(){}[0]
+    }
+
+    final class LastDeviceRecoveryKeyMismatch : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.LastDeviceRecoveryKeyMismatch|null[0]
+        constructor <init>() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.LastDeviceRecoveryKeyMismatch.<init>|<init>(){}[0]
+    }
+
+    final class LastDeviceRecoveryKeyNotConfigured : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.LastDeviceRecoveryKeyNotConfigured|null[0]
+        constructor <init>() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.LastDeviceRecoveryKeyNotConfigured.<init>|<init>(){}[0]
+    }
+
+    final class LastDeviceRecoveryKeyResetNotPending : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.LastDeviceRecoveryKeyResetNotPending|null[0]
+        constructor <init>() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.LastDeviceRecoveryKeyResetNotPending.<init>|<init>(){}[0]
+    }
+
+    final class LogicalMessageConflict : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.LogicalMessageConflict|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/LogicalMessageId) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.LogicalMessageConflict.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.LogicalMessageId){}[0]
+
+        final val messageId // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.LogicalMessageConflict.messageId|{}messageId[0]
+            final fun <get-messageId>(): dev.kreienbuehl.ksecuremessage.model/LogicalMessageId // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.LogicalMessageConflict.messageId.<get-messageId>|<get-messageId>(){}[0]
+        final val sender // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.LogicalMessageConflict.sender|{}sender[0]
+            final fun <get-sender>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.LogicalMessageConflict.sender.<get-sender>|<get-sender>(){}[0]
+    }
+
+    final class MessageNotSent : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.MessageNotSent|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.model/LogicalMessageId, kotlin/Throwable) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.MessageNotSent.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.LogicalMessageId;kotlin.Throwable){}[0]
+
+        final val messageId // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.MessageNotSent.messageId|{}messageId[0]
+            final fun <get-messageId>(): dev.kreienbuehl.ksecuremessage.model/LogicalMessageId // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.MessageNotSent.messageId.<get-messageId>|<get-messageId>(){}[0]
+    }
+
+    final class NoPendingDeviceAuthenticationRotation : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.NoPendingDeviceAuthenticationRotation|null[0]
+        constructor <init>() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.NoPendingDeviceAuthenticationRotation.<init>|<init>(){}[0]
+    }
+
+    final class NoPendingDeviceRecovery : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.NoPendingDeviceRecovery|null[0]
+        constructor <init>() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.NoPendingDeviceRecovery.<init>|<init>(){}[0]
+    }
+
+    final class NoPendingLastDeviceRecovery : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.NoPendingLastDeviceRecovery|null[0]
+        constructor <init>() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.NoPendingLastDeviceRecovery.<init>|<init>(){}[0]
+    }
+
+    final class NotInitialized : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.NotInitialized|null[0]
+        constructor <init>() // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.NotInitialized.<init>|<init>(){}[0]
+    }
+
+    final class PreKeyIdsExhausted : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.PreKeyIdsExhausted|null[0]
+        constructor <init>(kotlin/String) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.PreKeyIdsExhausted.<init>|<init>(kotlin.String){}[0]
+    }
+
+    final class ReceivedMessageNotPending : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.ReceivedMessageNotPending|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/LogicalMessageId) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.ReceivedMessageNotPending.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.LogicalMessageId){}[0]
+
+        final val messageId // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.ReceivedMessageNotPending.messageId|{}messageId[0]
+            final fun <get-messageId>(): dev.kreienbuehl.ksecuremessage.model/LogicalMessageId // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.ReceivedMessageNotPending.messageId.<get-messageId>|<get-messageId>(){}[0]
+        final val sender // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.ReceivedMessageNotPending.sender|{}sender[0]
+            final fun <get-sender>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.ReceivedMessageNotPending.sender.<get-sender>|<get-sender>(){}[0]
+    }
+
+    final class RemoteIdentityConflict : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.RemoteIdentityConflict|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.RemoteIdentityConflict.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress){}[0]
+
+        final val address // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.RemoteIdentityConflict.address|{}address[0]
+            final fun <get-address>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.RemoteIdentityConflict.address.<get-address>|<get-address>(){}[0]
+    }
+
+    final class RemoteIdentityNotKnown : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.RemoteIdentityNotKnown|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.RemoteIdentityNotKnown.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress){}[0]
+
+        final val address // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.RemoteIdentityNotKnown.address|{}address[0]
+            final fun <get-address>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.RemoteIdentityNotKnown.address.<get-address>|<get-address>(){}[0]
+    }
+
+    final class SessionCollision : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.SessionCollision|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.SessionCollision.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress){}[0]
+
+        final val address // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.SessionCollision.address|{}address[0]
+            final fun <get-address>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.SessionCollision.address.<get-address>|<get-address>(){}[0]
+    }
+
+    final class StaleSessionInitiation : dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.StaleSessionInitiation|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress) // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.StaleSessionInitiation.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress){}[0]
+
+        final val address // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.StaleSessionInitiation.address|{}address[0]
+            final fun <get-address>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/SecureMessageClientException.StaleSessionInitiation.address.<get-address>|<get-address>(){}[0]
+    }
+}
+
+sealed class dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException : kotlin/Exception { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException|null[0]
+    final enum class AuthenticationFailure : kotlin/Enum<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailure> { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailure|null[0]
+        enum entry EXPIRED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailure.EXPIRED|null[0]
+        enum entry INVALID // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailure.INVALID|null[0]
+        enum entry MISSING // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailure.MISSING|null[0]
+        enum entry NOT_REGISTERED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailure.NOT_REGISTERED|null[0]
+        enum entry REPLAY // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailure.REPLAY|null[0]
+
+        final val entries // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailure.entries|#static{}entries[0]
+            final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailure> // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailure.entries.<get-entries>|<get-entries>#static(){}[0]
+
+        final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailure // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailure.valueOf|valueOf#static(kotlin.String){}[0]
+        final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailure> // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailure.values|values#static(){}[0]
+    }
+
+    final enum class LastDeviceRecoveryFailure : kotlin/Enum<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryFailure> { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryFailure|null[0]
+        enum entry CHALLENGE_INVALID // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryFailure.CHALLENGE_INVALID|null[0]
+        enum entry CONFLICT // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryFailure.CONFLICT|null[0]
+        enum entry EPOCH_EXHAUSTED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryFailure.EPOCH_EXHAUSTED|null[0]
+        enum entry EXPIRED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryFailure.EXPIRED|null[0]
+        enum entry INVALID_PROOF // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryFailure.INVALID_PROOF|null[0]
+        enum entry INVALID_REQUEST // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryFailure.INVALID_REQUEST|null[0]
+        enum entry NOT_CONFIGURED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryFailure.NOT_CONFIGURED|null[0]
+        enum entry TARGET_NOT_REGISTERED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryFailure.TARGET_NOT_REGISTERED|null[0]
+
+        final val entries // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryFailure.entries|#static{}entries[0]
+            final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryFailure> // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryFailure.entries.<get-entries>|<get-entries>#static(){}[0]
+
+        final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryFailure // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryFailure.valueOf|valueOf#static(kotlin.String){}[0]
+        final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryFailure> // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryFailure.values|values#static(){}[0]
+    }
+
+    final enum class Reason : kotlin/Enum<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.Reason> { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.Reason|null[0]
+        enum entry IDENTITY_KEY_CONFLICT // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.Reason.IDENTITY_KEY_CONFLICT|null[0]
+        enum entry INVALID_PUBLICATION // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.Reason.INVALID_PUBLICATION|null[0]
+        enum entry ONE_TIME_PRE_KEY_CONFLICT // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.Reason.ONE_TIME_PRE_KEY_CONFLICT|null[0]
+        enum entry SIGNED_PRE_KEY_CONFLICT // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.Reason.SIGNED_PRE_KEY_CONFLICT|null[0]
+
+        final val entries // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.Reason.entries|#static{}entries[0]
+            final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.Reason> // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.Reason.entries.<get-entries>|<get-entries>#static(){}[0]
+
+        final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.Reason // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.Reason.valueOf|valueOf#static(kotlin.String){}[0]
+        final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.Reason> // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.Reason.values|values#static(){}[0]
+    }
+
+    final enum class RecoveryFailure : kotlin/Enum<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure> { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure|null[0]
+        enum entry AUTHORIZER_NOT_REGISTERED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure.AUTHORIZER_NOT_REGISTERED|null[0]
+        enum entry CONFLICT // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure.CONFLICT|null[0]
+        enum entry CROSS_USER // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure.CROSS_USER|null[0]
+        enum entry EPOCH_EXHAUSTED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure.EPOCH_EXHAUSTED|null[0]
+        enum entry EXPIRED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure.EXPIRED|null[0]
+        enum entry INVALID_PROOF // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure.INVALID_PROOF|null[0]
+        enum entry INVALID_REQUEST // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure.INVALID_REQUEST|null[0]
+        enum entry REPLAY // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure.REPLAY|null[0]
+        enum entry SELF_AUTHORIZATION // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure.SELF_AUTHORIZATION|null[0]
+        enum entry TARGET_NOT_REGISTERED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure.TARGET_NOT_REGISTERED|null[0]
+
+        final val entries // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure.entries|#static{}entries[0]
+            final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure> // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure.entries.<get-entries>|<get-entries>#static(){}[0]
+
+        final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure.valueOf|valueOf#static(kotlin.String){}[0]
+        final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure> // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure.values|values#static(){}[0]
+    }
+
+    final enum class RecoveryKeyFailure : kotlin/Enum<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyFailure> { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyFailure|null[0]
+        enum entry CONFLICT // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyFailure.CONFLICT|null[0]
+        enum entry EPOCH_EXHAUSTED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyFailure.EPOCH_EXHAUSTED|null[0]
+        enum entry INVALID // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyFailure.INVALID|null[0]
+
+        final val entries // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyFailure.entries|#static{}entries[0]
+            final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyFailure> // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyFailure.entries.<get-entries>|<get-entries>#static(){}[0]
+
+        final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyFailure // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyFailure.valueOf|valueOf#static(kotlin.String){}[0]
+        final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyFailure> // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyFailure.values|values#static(){}[0]
+    }
+
+    final enum class RecoveryKeyResetFailure : kotlin/Enum<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure> { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure|null[0]
+        enum entry CONFLICT // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure.CONFLICT|null[0]
+        enum entry EPOCH_EXHAUSTED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure.EPOCH_EXHAUSTED|null[0]
+        enum entry EXPIRED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure.EXPIRED|null[0]
+        enum entry INVALID_PROOF // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure.INVALID_PROOF|null[0]
+        enum entry INVALID_REQUEST // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure.INVALID_REQUEST|null[0]
+        enum entry NOT_AVAILABLE // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure.NOT_AVAILABLE|null[0]
+        enum entry NOT_CONFIGURED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure.NOT_CONFIGURED|null[0]
+        enum entry NOT_PENDING // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure.NOT_PENDING|null[0]
+        enum entry NOT_YET_ELIGIBLE // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure.NOT_YET_ELIGIBLE|null[0]
+
+        final val entries // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure.entries|#static{}entries[0]
+            final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure> // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure.entries.<get-entries>|<get-entries>#static(){}[0]
+
+        final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure.valueOf|valueOf#static(kotlin.String){}[0]
+        final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure> // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure.values|values#static(){}[0]
+    }
+
+    final enum class RecoveryKeyTransitionFailure : kotlin/Enum<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure> { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure|null[0]
+        enum entry CONFLICT // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure.CONFLICT|null[0]
+        enum entry EPOCH_EXHAUSTED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure.EPOCH_EXHAUSTED|null[0]
+        enum entry EXPIRED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure.EXPIRED|null[0]
+        enum entry INVALID_PROOF // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure.INVALID_PROOF|null[0]
+        enum entry INVALID_REQUEST // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure.INVALID_REQUEST|null[0]
+        enum entry NOT_CONFIGURED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure.NOT_CONFIGURED|null[0]
+        enum entry REPLAY // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure.REPLAY|null[0]
+
+        final val entries // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure.entries|#static{}entries[0]
+            final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure> // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure.entries.<get-entries>|<get-entries>#static(){}[0]
+
+        final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure.valueOf|valueOf#static(kotlin.String){}[0]
+        final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure> // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure.values|values#static(){}[0]
+    }
+
+    final enum class RotationFailure : kotlin/Enum<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RotationFailure> { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RotationFailure|null[0]
+        enum entry CONFLICT // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RotationFailure.CONFLICT|null[0]
+        enum entry EPOCH_EXHAUSTED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RotationFailure.EPOCH_EXHAUSTED|null[0]
+        enum entry EXPIRED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RotationFailure.EXPIRED|null[0]
+        enum entry INVALID_PROOF // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RotationFailure.INVALID_PROOF|null[0]
+        enum entry INVALID_REQUEST // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RotationFailure.INVALID_REQUEST|null[0]
+        enum entry NOT_REGISTERED // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RotationFailure.NOT_REGISTERED|null[0]
+        enum entry REPLAY // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RotationFailure.REPLAY|null[0]
+
+        final val entries // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RotationFailure.entries|#static{}entries[0]
+            final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RotationFailure> // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RotationFailure.entries.<get-entries>|<get-entries>#static(){}[0]
+
+        final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RotationFailure // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RotationFailure.valueOf|valueOf#static(kotlin.String){}[0]
+        final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RotationFailure> // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RotationFailure.values|values#static(){}[0]
+    }
+
+    final class AuthenticationFailed : dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailed|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailure) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailed.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.AuthenticationFailure){}[0]
+
+        final val failure // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailed.failure|{}failure[0]
+            final fun <get-failure>(): dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailure // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.AuthenticationFailed.failure.<get-failure>|<get-failure>(){}[0]
+    }
+
+    final class DeviceAuthenticationRotationRejected : dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.DeviceAuthenticationRotationRejected|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RotationFailure) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.DeviceAuthenticationRotationRejected.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RotationFailure){}[0]
+
+        final val reason // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.DeviceAuthenticationRotationRejected.reason|{}reason[0]
+            final fun <get-reason>(): dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RotationFailure // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.DeviceAuthenticationRotationRejected.reason.<get-reason>|<get-reason>(){}[0]
+    }
+
+    final class DeviceNotFound : dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.DeviceNotFound|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.DeviceNotFound.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress){}[0]
+
+        final val address // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.DeviceNotFound.address|{}address[0]
+            final fun <get-address>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.DeviceNotFound.address.<get-address>|<get-address>(){}[0]
+    }
+
+    final class DeviceRecoveryRejected : dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.DeviceRecoveryRejected|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.DeviceRecoveryRejected.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RecoveryFailure){}[0]
+
+        final val reason // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.DeviceRecoveryRejected.reason|{}reason[0]
+            final fun <get-reason>(): dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryFailure // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.DeviceRecoveryRejected.reason.<get-reason>|<get-reason>(){}[0]
+    }
+
+    final class DeviceRegistrationConflict : dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.DeviceRegistrationConflict|null[0]
+        constructor <init>() // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.DeviceRegistrationConflict.<init>|<init>(){}[0]
+    }
+
+    final class LastDeviceRecoveryKeyRejected : dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryKeyRejected|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyFailure) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryKeyRejected.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RecoveryKeyFailure){}[0]
+
+        final val reason // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryKeyRejected.reason|{}reason[0]
+            final fun <get-reason>(): dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyFailure // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryKeyRejected.reason.<get-reason>|<get-reason>(){}[0]
+    }
+
+    final class LastDeviceRecoveryRejected : dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryRejected|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryFailure) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryRejected.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.LastDeviceRecoveryFailure){}[0]
+
+        final val reason // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryRejected.reason|{}reason[0]
+            final fun <get-reason>(): dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryFailure // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.LastDeviceRecoveryRejected.reason.<get-reason>|<get-reason>(){}[0]
+    }
+
+    final class PublicationRejected : dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.PublicationRejected|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.Reason) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.PublicationRejected.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.Reason){}[0]
+
+        final val reason // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.PublicationRejected.reason|{}reason[0]
+            final fun <get-reason>(): dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.Reason // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.PublicationRejected.reason.<get-reason>|<get-reason>(){}[0]
+    }
+
+    final class RecoveryKeyResetRejected : dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetRejected|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetRejected.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RecoveryKeyResetFailure){}[0]
+
+        final val reason // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetRejected.reason|{}reason[0]
+            final fun <get-reason>(): dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetFailure // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyResetRejected.reason.<get-reason>|<get-reason>(){}[0]
+    }
+
+    final class RecoveryKeyRevocationRejected : dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyRevocationRejected|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyRevocationRejected.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RecoveryKeyTransitionFailure){}[0]
+
+        final val reason // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyRevocationRejected.reason|{}reason[0]
+            final fun <get-reason>(): dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyRevocationRejected.reason.<get-reason>|<get-reason>(){}[0]
+    }
+
+    final class RecoveryKeyRotationRejected : dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyRotationRejected|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyRotationRejected.<init>|<init>(dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException.RecoveryKeyTransitionFailure){}[0]
+
+        final val reason // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyRotationRejected.reason|{}reason[0]
+            final fun <get-reason>(): dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyTransitionFailure // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RecoveryKeyRotationRejected.reason.<get-reason>|<get-reason>(){}[0]
+    }
+
+    final class RegistrationRejected : dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RegistrationRejected|null[0]
+        constructor <init>() // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.RegistrationRejected.<init>|<init>(){}[0]
+    }
+
+    final class UnexpectedResponse : dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException { // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.UnexpectedResponse|null[0]
+        constructor <init>(kotlin/Int) // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.UnexpectedResponse.<init>|<init>(kotlin.Int){}[0]
+
+        final val status // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.UnexpectedResponse.status|{}status[0]
+            final fun <get-status>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.client/SecureMessageTransportException.UnexpectedResponse.status.<get-status>|<get-status>(){}[0]
+    }
+}

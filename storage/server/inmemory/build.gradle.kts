@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.android.kotlin.multiplatform.library)
 }
 
+description = "KSecureMessage in-memory server storage for tests and examples (not persistent)."
+
 kotlin {
     jvm()
 

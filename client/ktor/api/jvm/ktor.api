@@ -1,0 +1,25 @@
+public final class dev/kreienbuehl/ksecuremessage/client/ktor/KtorSecureMessageTransport : dev/kreienbuehl/ksecuremessage/client/SecureMessageTransport {
+	public fun <init> (Ljava/lang/String;Lio/ktor/client/HttpClient;)V
+	public synthetic fun <init> (Ljava/lang/String;Lio/ktor/client/HttpClient;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun cancelLastDeviceRecoveryKeyReset (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetId;Ldev/kreienbuehl/ksecuremessage/client/ServerRequestSigner;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun cancelLastDeviceRecoveryKeyResetByRecoveryKey (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCancellationAuthorization;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun completeLastDeviceRecoveryKeyReset (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCompletionAuthorization;Ldev/kreienbuehl/ksecuremessage/client/ServerRequestSigner;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun fetchPreKeyBundle (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun lastDeviceRecoveryChallenge (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun lastDeviceRecoveryKeyResetStatus (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/client/ServerRequestSigner;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun lastDeviceRecoveryKeyResetStatusByRecoveryKey (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetStatusQuery;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun lastDeviceRecoveryKeyStatus (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/client/ServerRequestSigner;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun publishPreKeys (Ldev/kreienbuehl/ksecuremessage/model/PreKeyPublication;Ldev/kreienbuehl/ksecuremessage/client/ServerRequestSigner;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun receive (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/client/ServerRequestSigner;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun recoverDevice (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryAuthorization;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun recoverLastDevice (Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryAuthorization;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun registerDevice (Ldev/kreienbuehl/ksecuremessage/model/DeviceRegistration;Ldev/kreienbuehl/ksecuremessage/client/ServerRequestSigner;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun registerLastDeviceRecoveryKey (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKeyRegistration;Ldev/kreienbuehl/ksecuremessage/client/ServerRequestSigner;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun registrationStatus (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/client/ServerRequestSigner;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun requestLastDeviceRecoveryKeyReset (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/client/ServerRequestSigner;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun revokeLastDeviceRecoveryKey (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationAuthorization;Ldev/kreienbuehl/ksecuremessage/client/ServerRequestSigner;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun rotateDeviceAuthenticationKey (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationAuthorization;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun rotateLastDeviceRecoveryKey (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationAuthorization;Ldev/kreienbuehl/ksecuremessage/client/ServerRequestSigner;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun send (Ldev/kreienbuehl/ksecuremessage/model/EncryptedEnvelope;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+

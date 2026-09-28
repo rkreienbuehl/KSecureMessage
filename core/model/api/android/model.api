@@ -1,0 +1,553 @@
+public abstract interface annotation class dev/kreienbuehl/ksecuremessage/InternalKSecureMessageApi : java/lang/annotation/Annotation {
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/model/CiphertextMessage {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/model/CiphertextMessage$Companion;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/CiphertextMessage$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/DeviceAddress {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-J0w1ygc ()Ljava/lang/String;
+	public final fun component2-ljcKsEQ ()Ljava/lang/String;
+	public final fun copy-NP0zGJc (Ljava/lang/String;Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public static synthetic fun copy-NP0zGJc$default (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDeviceId-ljcKsEQ ()Ljava/lang/String;
+	public final fun getUserId-J0w1ygc ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class dev/kreienbuehl/ksecuremessage/model/DeviceAddress$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/DeviceAddress$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/DeviceAuthenticationRegistrationStatus {
+	public fun <init> (JLkotlin/time/Instant;)V
+	public final fun component1 ()J
+	public final fun component2 ()Lkotlin/time/Instant;
+	public final fun copy (JLkotlin/time/Instant;)Ldev/kreienbuehl/ksecuremessage/model/DeviceAuthenticationRegistrationStatus;
+	public static synthetic fun copy$default (Ldev/kreienbuehl/ksecuremessage/model/DeviceAuthenticationRegistrationStatus;JLkotlin/time/Instant;ILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/model/DeviceAuthenticationRegistrationStatus;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAuthEpoch ()J
+	public final fun getAuthKeyInstalledAt ()Lkotlin/time/Instant;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/DeviceId {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/model/DeviceId$Companion;
+	public static final synthetic fun box-impl (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/model/DeviceId;
+	public static fun constructor-impl (Ljava/lang/String;)Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final synthetic class dev/kreienbuehl/ksecuremessage/model/DeviceId$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/model/DeviceId$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize-_23UiRk (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/String;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize-n0fcrd0 (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/String;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/DeviceId$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/DeviceRegistration {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[B)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAddress ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getPublicKey ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/EncryptedEnvelope {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/model/EncryptedEnvelope$Companion;
+	public synthetic fun <init> (Ljava/lang/String;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;I[BILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;I[BLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-Pkn9uec ()Ljava/lang/String;
+	public final fun component2 ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun component3 ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun component4 ()I
+	public final fun component5 ()[B
+	public final fun copy-8adguzU (Ljava/lang/String;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;I[B)Ldev/kreienbuehl/ksecuremessage/model/EncryptedEnvelope;
+	public static synthetic fun copy-8adguzU$default (Ldev/kreienbuehl/ksecuremessage/model/EncryptedEnvelope;Ljava/lang/String;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;I[BILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/model/EncryptedEnvelope;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId-Pkn9uec ()Ljava/lang/String;
+	public final fun getPayload ()[B
+	public final fun getProtocolVersion ()I
+	public final fun getRecipient ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getSender ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class dev/kreienbuehl/ksecuremessage/model/EncryptedEnvelope$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/model/EncryptedEnvelope$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/kreienbuehl/ksecuremessage/model/EncryptedEnvelope;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/kreienbuehl/ksecuremessage/model/EncryptedEnvelope;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/EncryptedEnvelope$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/InboundFinalization : java/lang/Enum {
+	public static final field COMMITTED Ldev/kreienbuehl/ksecuremessage/model/InboundFinalization;
+	public static final field DISCARDED Ldev/kreienbuehl/ksecuremessage/model/InboundFinalization;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/model/InboundFinalization;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/model/InboundFinalization;
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/model/LastDeviceRecoveryKeyStatus {
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/LastDeviceRecoveryKeyStatus$Active : dev/kreienbuehl/ksecuremessage/model/LastDeviceRecoveryKeyStatus {
+	public fun <init> (JLkotlin/time/Instant;[B)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEpoch ()J
+	public final fun getInstalledAt ()Lkotlin/time/Instant;
+	public final fun getPublicKey ()[B
+	public fun hashCode ()I
+	public final fun isKey ([B)Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/LastDeviceRecoveryKeyStatus$Revoked : dev/kreienbuehl/ksecuremessage/model/LastDeviceRecoveryKeyStatus {
+	public fun <init> (JLkotlin/time/Instant;)V
+	public final fun component1 ()J
+	public final fun component2 ()Lkotlin/time/Instant;
+	public final fun copy (JLkotlin/time/Instant;)Ldev/kreienbuehl/ksecuremessage/model/LastDeviceRecoveryKeyStatus$Revoked;
+	public static synthetic fun copy$default (Ldev/kreienbuehl/ksecuremessage/model/LastDeviceRecoveryKeyStatus$Revoked;JLkotlin/time/Instant;ILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/model/LastDeviceRecoveryKeyStatus$Revoked;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEpoch ()J
+	public final fun getRevokedAt ()Lkotlin/time/Instant;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/LastDeviceRecoveryKeyStatus$Unconfigured : dev/kreienbuehl/ksecuremessage/model/LastDeviceRecoveryKeyStatus {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/model/LastDeviceRecoveryKeyStatus$Unconfigured;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/LogicalMessageId {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/model/LogicalMessageId$Companion;
+	public static final field SIZE I
+	public static final synthetic fun box-impl (Lkotlin/uuid/Uuid;)Ldev/kreienbuehl/ksecuremessage/model/LogicalMessageId;
+	public static fun constructor-impl (Lkotlin/uuid/Uuid;)Lkotlin/uuid/Uuid;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Lkotlin/uuid/Uuid;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Lkotlin/uuid/Uuid;Lkotlin/uuid/Uuid;)Z
+	public final fun getUuid ()Lkotlin/uuid/Uuid;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Lkotlin/uuid/Uuid;)I
+	public static final fun toByteArray-impl (Lkotlin/uuid/Uuid;)[B
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Lkotlin/uuid/Uuid;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Lkotlin/uuid/Uuid;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/LogicalMessageId$Companion {
+	public final fun fromByteArray-P_2oNR0 ([B)Lkotlin/uuid/Uuid;
+	public final fun random-QjenJmk ()Lkotlin/uuid/Uuid;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/MessageDiscardReason : java/lang/Enum {
+	public static final field INVALID_APPLICATION_STATE Ldev/kreienbuehl/ksecuremessage/model/MessageDiscardReason;
+	public static final field OTHER Ldev/kreienbuehl/ksecuremessage/model/MessageDiscardReason;
+	public static final field POLICY_REJECTED Ldev/kreienbuehl/ksecuremessage/model/MessageDiscardReason;
+	public static final field UNSUPPORTED_CONTENT Ldev/kreienbuehl/ksecuremessage/model/MessageDiscardReason;
+	public static final field USER_REJECTED Ldev/kreienbuehl/ksecuremessage/model/MessageDiscardReason;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/model/MessageDiscardReason;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/model/MessageDiscardReason;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/MessageId {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/model/MessageId$Companion;
+	public static final synthetic fun box-impl (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/model/MessageId;
+	public static fun constructor-impl (Ljava/lang/String;)Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final synthetic class dev/kreienbuehl/ksecuremessage/model/MessageId$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/model/MessageId$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize-Wma4JH8 (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/String;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize-zbPlZEI (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/String;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/MessageId$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId$Companion;
+	public static final synthetic fun box-impl (I)Ldev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;
+	public static fun constructor-impl (I)I
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (ILjava/lang/Object;)Z
+	public static final fun equals-impl0 (II)Z
+	public final fun getValue ()I
+	public fun hashCode ()I
+	public static fun hashCode-impl (I)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (I)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()I
+}
+
+public final synthetic class dev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize-agmAbNo (Lkotlinx/serialization/encoding/Decoder;)I
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize-MOWd_sI (Lkotlinx/serialization/encoding/Encoder;I)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/PreKeyBundle {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/model/PreKeyBundle$Companion;
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[BLdev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey;Ldev/kreienbuehl/ksecuremessage/model/PublicOneTimePreKey;)V
+	public synthetic fun <init> (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[BLdev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey;Ldev/kreienbuehl/ksecuremessage/model/PublicOneTimePreKey;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun component2 ()[B
+	public final fun component3 ()Ldev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey;
+	public final fun component4 ()Ldev/kreienbuehl/ksecuremessage/model/PublicOneTimePreKey;
+	public final fun copy (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[BLdev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey;Ldev/kreienbuehl/ksecuremessage/model/PublicOneTimePreKey;)Ldev/kreienbuehl/ksecuremessage/model/PreKeyBundle;
+	public static synthetic fun copy$default (Ldev/kreienbuehl/ksecuremessage/model/PreKeyBundle;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[BLdev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey;Ldev/kreienbuehl/ksecuremessage/model/PublicOneTimePreKey;ILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/model/PreKeyBundle;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAddress ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getIdentityKey ()[B
+	public final fun getOneTimePreKey ()Ldev/kreienbuehl/ksecuremessage/model/PublicOneTimePreKey;
+	public final fun getSignedPreKey ()Ldev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class dev/kreienbuehl/ksecuremessage/model/PreKeyBundle$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/model/PreKeyBundle$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/kreienbuehl/ksecuremessage/model/PreKeyBundle;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/kreienbuehl/ksecuremessage/model/PreKeyBundle;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/PreKeyBundle$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/PreKeyMessage : dev/kreienbuehl/ksecuremessage/model/CiphertextMessage {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage$Companion;
+	public synthetic fun <init> ([B[BILdev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()[B
+	public final fun component2 ()[B
+	public final fun component3-R6Xuwhw ()I
+	public final fun component4-GolpFjg ()Ldev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;
+	public final fun component5 ()Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage;
+	public final fun copy-FF6axS8 ([B[BILdev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage;)Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;
+	public static synthetic fun copy-FF6axS8$default (Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;[B[BILdev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage;ILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEphemeralKey ()[B
+	public final fun getIdentityKey ()[B
+	public final fun getMessage ()Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage;
+	public final fun getOneTimePreKeyId-GolpFjg ()Ldev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;
+	public final fun getSignedPreKeyId-R6Xuwhw ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class dev/kreienbuehl/ksecuremessage/model/PreKeyMessage$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/PreKeyMessage$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/PreKeyPublication {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/model/PreKeyPublication$Companion;
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[BLdev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey;Ljava/util/List;)V
+	public final fun component1 ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun component2 ()[B
+	public final fun component3 ()Ldev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey;
+	public final fun component4 ()Ljava/util/List;
+	public final fun copy (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[BLdev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey;Ljava/util/List;)Ldev/kreienbuehl/ksecuremessage/model/PreKeyPublication;
+	public static synthetic fun copy$default (Ldev/kreienbuehl/ksecuremessage/model/PreKeyPublication;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[BLdev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey;Ljava/util/List;ILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/model/PreKeyPublication;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAddress ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getIdentityKey ()[B
+	public final fun getOneTimePreKeys ()Ljava/util/List;
+	public final fun getSignedPreKey ()Ldev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class dev/kreienbuehl/ksecuremessage/model/PreKeyPublication$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/model/PreKeyPublication$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/kreienbuehl/ksecuremessage/model/PreKeyPublication;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/kreienbuehl/ksecuremessage/model/PreKeyPublication;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/PreKeyPublication$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/PublicOneTimePreKey {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/model/PublicOneTimePreKey$Companion;
+	public synthetic fun <init> (I[BLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-NOgk0_M ()I
+	public final fun component2 ()[B
+	public final fun copy-2IoSqr8 (I[B)Ldev/kreienbuehl/ksecuremessage/model/PublicOneTimePreKey;
+	public static synthetic fun copy-2IoSqr8$default (Ldev/kreienbuehl/ksecuremessage/model/PublicOneTimePreKey;I[BILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/model/PublicOneTimePreKey;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId-NOgk0_M ()I
+	public final fun getPublicKey ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class dev/kreienbuehl/ksecuremessage/model/PublicOneTimePreKey$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/model/PublicOneTimePreKey$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/kreienbuehl/ksecuremessage/model/PublicOneTimePreKey;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/kreienbuehl/ksecuremessage/model/PublicOneTimePreKey;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/PublicOneTimePreKey$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey$Companion;
+	public synthetic fun <init> (I[B[BLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-R6Xuwhw ()I
+	public final fun component2 ()[B
+	public final fun component3 ()[B
+	public final fun copy-tn3CzqU (I[B[B)Ldev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey;
+	public static synthetic fun copy-tn3CzqU$default (Ldev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey;I[B[BILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId-R6Xuwhw ()I
+	public final fun getPublicKey ()[B
+	public final fun getSignature ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class dev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/PublicSignedPreKey$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/RatchetMessage : dev/kreienbuehl/ksecuremessage/model/CiphertextMessage {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage$Companion;
+	public fun <init> ([B)V
+	public final fun component1 ()[B
+	public final fun copy ([B)Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage;
+	public static synthetic fun copy$default (Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage;[BILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class dev/kreienbuehl/ksecuremessage/model/RatchetMessage$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/RatchetMessage$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetId {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetId$Companion;
+	public static final field SIZE I
+	public static final field TEXT_LENGTH I
+	public fun <init> ([B)V
+	public final fun encode ()Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBytes ()[B
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetId$Companion {
+	public final fun decode (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetId;
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetStatus {
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetStatus$None : dev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetStatus {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetStatus$None;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetStatus$Pending : dev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetStatus {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetId;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/time/Instant;Lkotlin/time/Instant;J[B)V
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEligibleAt ()Lkotlin/time/Instant;
+	public final fun getRecoveryKeyEpoch ()J
+	public final fun getRecoveryPublicKey ()[B
+	public final fun getRequestedAt ()Lkotlin/time/Instant;
+	public final fun getRequestedBy ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getResetId ()Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetId;
+	public final fun getUserId-J0w1ygc ()Ljava/lang/String;
+	public fun hashCode ()I
+	public final fun isEligibleAt (Lkotlin/time/Instant;)Z
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/SignedPreKeyId {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/model/SignedPreKeyId$Companion;
+	public static final synthetic fun box-impl (I)Ldev/kreienbuehl/ksecuremessage/model/SignedPreKeyId;
+	public static fun constructor-impl (I)I
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (ILjava/lang/Object;)Z
+	public static final fun equals-impl0 (II)Z
+	public final fun getValue ()I
+	public fun hashCode ()I
+	public static fun hashCode-impl (I)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (I)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()I
+}
+
+public final synthetic class dev/kreienbuehl/ksecuremessage/model/SignedPreKeyId$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/model/SignedPreKeyId$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize-1xTa_ho (Lkotlinx/serialization/encoding/Decoder;)I
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize-kvbah3Y (Lkotlinx/serialization/encoding/Encoder;I)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/SignedPreKeyId$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/UserId {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/model/UserId$Companion;
+	public static final synthetic fun box-impl (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/model/UserId;
+	public static fun constructor-impl (Ljava/lang/String;)Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final synthetic class dev/kreienbuehl/ksecuremessage/model/UserId$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/model/UserId$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun deserialize-tlkl-wE (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/String;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public final fun serialize-Fwqmsi0 (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/String;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/UserId$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+

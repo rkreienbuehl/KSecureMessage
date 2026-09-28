@@ -1,5 +1,6 @@
 package dev.kreienbuehl.ksecuremessage.protocol
 
+import dev.kreienbuehl.ksecuremessage.InternalKSecureMessageApi
 import dev.kreienbuehl.ksecuremessage.model.CiphertextMessage
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyMessage
@@ -24,6 +25,7 @@ import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
  * well-formed message is rejected with a [ProtocolException], never partially
  * accepted. Encoding is deterministic.
  */
+@InternalKSecureMessageApi
 object CiphertextMessageCodec {
     const val WIRE_VERSION: Int = 0x01
     const val TYPE_RATCHET_MESSAGE: Int = 0x01

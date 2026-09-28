@@ -1,0 +1,14 @@
+public final class dev/kreienbuehl/ksecuremessage/storage/client/inmemory/InMemoryClientStorage : dev/kreienbuehl/ksecuremessage/storage/ClientStorage {
+	public fun <init> ()V
+	public fun getDeviceAuthentication ()Ldev/kreienbuehl/ksecuremessage/storage/DeviceAuthenticationKeyStore;
+	public fun getIdentity ()Ldev/kreienbuehl/ksecuremessage/storage/IdentityStore;
+	public fun getPendingInbound ()Ldev/kreienbuehl/ksecuremessage/storage/PendingInboundStore;
+	public fun getPendingOutbound ()Ldev/kreienbuehl/ksecuremessage/storage/PendingOutboundStore;
+	public fun getPreKeys ()Ldev/kreienbuehl/ksecuremessage/storage/PreKeyStore;
+	public fun getProcessedInbound ()Ldev/kreienbuehl/ksecuremessage/storage/ProcessedInboundStore;
+	public fun getRemoteIdentities ()Ldev/kreienbuehl/ksecuremessage/storage/RemoteIdentityStore;
+	public fun getSessionInitiations ()Ldev/kreienbuehl/ksecuremessage/storage/SessionInitiationStore;
+	public fun getSessions ()Ldev/kreienbuehl/ksecuremessage/storage/SessionStore;
+	public fun transaction (Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+

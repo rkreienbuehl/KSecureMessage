@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.android.kotlin.multiplatform.library)
 }
 
+description = "KSecureMessage client: session setup, reliable messaging, identity trust and device authentication lifecycle."
+
 kotlin {
     jvm()
 

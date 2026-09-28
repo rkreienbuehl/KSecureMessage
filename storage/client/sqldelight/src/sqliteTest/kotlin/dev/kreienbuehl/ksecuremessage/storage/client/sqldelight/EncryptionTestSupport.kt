@@ -5,7 +5,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization
-import dev.kreienbuehl.ksecuremessage.client.PendingReceivedPage
+import dev.kreienbuehl.ksecuremessage.client.PendingReceivedMessagePage
 import dev.kreienbuehl.ksecuremessage.client.ReceiveResult
 import dev.kreienbuehl.ksecuremessage.client.ReceivedMessage
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageClient
@@ -220,7 +220,7 @@ suspend fun SecureMessageClient.allPendingReceivedMessages(): List<ReceivedMessa
     val all = mutableListOf<ReceivedMessage>()
     var after: Long? = null
     do {
-        val page = pendingReceivedMessages(after, PendingReceivedPage.MAX_SIZE)
+        val page = pendingReceivedMessages(after, PendingReceivedMessagePage.MAX_SIZE)
         all += page.messages
         after = page.nextAfterSequence
     } while (after != null)

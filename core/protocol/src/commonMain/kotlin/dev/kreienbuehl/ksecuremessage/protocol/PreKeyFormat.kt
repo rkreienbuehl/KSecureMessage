@@ -1,5 +1,6 @@
 package dev.kreienbuehl.ksecuremessage.protocol
 
+import dev.kreienbuehl.ksecuremessage.InternalKSecureMessageApi
 import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 
 /**
@@ -8,6 +9,7 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
  * publications without Kodium. This is a format check only: it does not
  * verify the signed prekey signature, which initiators do before X3DH.
  */
+@InternalKSecureMessageApi
 object PreKeyFormat {
     /** Size of an encoded public key: X25519 key followed by Ed25519 key. */
     const val PUBLIC_KEY_SIZE: Int = ProtocolConstants.PUBLIC_KEY_SIZE

@@ -379,7 +379,7 @@ class MessageDiscardTest {
         val exact = bob.client.pendingReceivedMessages(second.messages.first().sequence - 1, 3)
         assertEquals(second.messages.map { it.sequence }, exact.messages.map { it.sequence })
 
-        val all = bob.client.pendingReceivedMessages(limit = PendingReceivedPage.MAX_SIZE)
+        val all = bob.client.pendingReceivedMessages(limit = PendingReceivedMessagePage.MAX_SIZE)
         assertEquals(texts, all.messages.map { it.plaintext.decodeToString() })
         assertNull(all.nextAfterSequence)
         val sequences = all.messages.map { it.sequence }
@@ -404,20 +404,20 @@ class MessageDiscardTest {
         val bob = device(BOB)
         assertFailsWith<IllegalArgumentException> { bob.client.pendingReceivedMessages(limit = 0) }
         assertFailsWith<IllegalArgumentException> { bob.client.pendingReceivedMessages(limit = -1) }
-        assertFailsWith<IllegalArgumentException> { bob.client.pendingReceivedMessages(limit = PendingReceivedPage.MAX_SIZE + 1) }
+        assertFailsWith<IllegalArgumentException> { bob.client.pendingReceivedMessages(limit = PendingReceivedMessagePage.MAX_SIZE + 1) }
         assertFailsWith<IllegalArgumentException> { bob.client.pendingReceivedMessages(-1, 1) }
-        assertEquals(emptyList(), bob.client.pendingReceivedMessages(0, PendingReceivedPage.MAX_SIZE).messages)
+        assertEquals(emptyList(), bob.client.pendingReceivedMessages(0, PendingReceivedMessagePage.MAX_SIZE).messages)
     }
 
     @Test
     fun pagesAreBoundedByTheMaximumSize() = runTest {
         val alice = device(ALICE)
         val bob = device(BOB)
-        repeat(PendingReceivedPage.MAX_SIZE + 5) { alice.send(bob, "m$it") }
+        repeat(PendingReceivedMessagePage.MAX_SIZE + 5) { alice.send(bob, "m$it") }
         bob.inbox().forEach { bob.receive(it) }
-        val first = bob.client.pendingReceivedMessages(limit = PendingReceivedPage.MAX_SIZE)
-        assertEquals(PendingReceivedPage.MAX_SIZE, first.messages.size)
-        val rest = bob.client.pendingReceivedMessages(first.nextAfterSequence, PendingReceivedPage.MAX_SIZE)
+        val first = bob.client.pendingReceivedMessages(limit = PendingReceivedMessagePage.MAX_SIZE)
+        assertEquals(PendingReceivedMessagePage.MAX_SIZE, first.messages.size)
+        val rest = bob.client.pendingReceivedMessages(first.nextAfterSequence, PendingReceivedMessagePage.MAX_SIZE)
         assertEquals(5, rest.messages.size)
         assertNull(rest.nextAfterSequence)
     }

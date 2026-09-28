@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.android.kotlin.multiplatform.library)
 }
 
+description = "KSecureMessage storage contracts for client and server persistence."
+
 kotlin {
     jvm()
 

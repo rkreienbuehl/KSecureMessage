@@ -1,5 +1,6 @@
 package dev.kreienbuehl.ksecuremessage.storage.encryption
 
+import dev.kreienbuehl.ksecuremessage.InternalKSecureMessageApi
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
@@ -21,6 +22,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
  * partial or default value; every failure throws a
  * [StorageEncryptionException].
  */
+@InternalKSecureMessageApi
 interface ClientRecordCipher {
     /** The key this cipher seals with (the current storage key). */
     val keyId: StorageKeyId
@@ -108,6 +110,7 @@ interface ClientRecordCipher {
  * records of [current] and of every [retained] key, chosen by the key ID in
  * each record. Retained keys are for storage key rotation only.
  */
+@InternalKSecureMessageApi
 fun ClientRecordCipher(current: StorageEncryptionKey, vararg retained: StorageEncryptionKey): ClientRecordCipher =
     AeadClientRecordCipher(StorageCipher(current, retained.toList()))
 
@@ -116,6 +119,7 @@ fun ClientRecordCipher(current: StorageEncryptionKey, vararg retained: StorageEn
  * storage key rotation (docs/storage-key-rotation.md). Only the format
  * module knows the record layout; storage adapters use this instead.
  */
+@InternalKSecureMessageApi
 object SealedRecords {
     /** Size of the record header that [header] returns. */
     const val HEADER_SIZE: Int = EncryptedRecordFormat.HEADER_SIZE

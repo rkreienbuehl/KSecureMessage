@@ -65,7 +65,7 @@ sealed interface ReceiveResult {
 class ReceivedMessage(sender, id, sequence: Long, receivedAt: Instant, plaintext: ByteArray)
 
 suspend fun decrypt(envelope): ReceiveResult
-suspend fun pendingReceivedMessages(afterSequence: Long? = null, limit: Int, sender: DeviceAddress? = null): PendingReceivedPage  // M21
+suspend fun pendingReceivedMessages(afterSequence: Long? = null, limit: Int, sender: DeviceAddress? = null): PendingReceivedMessagePage  // M21
 suspend fun commitReceivedMessage(message: ReceivedMessage): CommitResult
 suspend fun commitReceivedMessage(sender: DeviceAddress, id: LogicalMessageId): CommitResult
 class CommitResult(sender, id, status: CommitStatus /* COMMITTED, ALREADY_COMMITTED, ALREADY_DISCARDED (M21) */, ackSent: Boolean)
@@ -88,7 +88,7 @@ again, which helps an application that is unsure whether its first commit
 call completed.
 
 Milestone 21 replaced the unbounded list with a page (at most
-`PendingReceivedPage.MAX_SIZE` = 100 messages, cursor = the last sequence
+`PendingReceivedMessagePage.MAX_SIZE` = 100 messages, cursor = the last sequence
 seen; see [message-discard.md](message-discard.md#pagination)) and added
 `ReceiveResult.AlreadyDiscarded`, `discardReceivedMessage` and
 `pendingReceivedMessageCount`.

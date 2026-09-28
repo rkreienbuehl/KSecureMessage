@@ -1,5 +1,6 @@
 package dev.kreienbuehl.ksecuremessage.protocol
 
+import dev.kreienbuehl.ksecuremessage.InternalKSecureMessageApi
 import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 
 /**
@@ -7,6 +8,7 @@ import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
  * that is the ratchet plaintext (docs/message-reliability.md). It is
  * encrypted, so the server never sees it.
  */
+@InternalKSecureMessageApi
 sealed interface SecurePayload {
     val id: LogicalMessageId
 
@@ -33,6 +35,7 @@ sealed interface SecurePayload {
  * treats input as untrusted: anything that is not exactly one well-formed
  * frame is rejected with a [ProtocolException]. Encoding is deterministic.
  */
+@InternalKSecureMessageApi
 object SecurePayloadCodec {
     const val VERSION: Int = 0x01
     const val TYPE_APPLICATION_MESSAGE: Int = 0x01

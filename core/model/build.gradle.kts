@@ -6,6 +6,8 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+description = "KSecureMessage core model: addresses, identifiers, envelopes and public key bundles."
+
 kotlin {
     jvm()
 

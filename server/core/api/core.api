@@ -1,0 +1,344 @@
+public final class dev/kreienbuehl/ksecuremessage/server/AuthenticatedDevice {
+	public final fun getAddress ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
+	public final fun getEndpoint ()Ldev/kreienbuehl/ksecuremessage/server/ProtectedEndpoint;
+}
+
+public abstract class dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationException : java/lang/Exception {
+	public synthetic fun <init> (Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationException$AuthenticationReplay : dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationException$DeviceNotRegistered : dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationException$ExpiredAuthentication : dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationException$InvalidAuthentication : dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationException$MissingAuthentication : dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationException {
+	public fun <init> ()V
+}
+
+public abstract class dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationException : java/lang/Exception {
+	public synthetic fun <init> (Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationException$Conflict : dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationException$EpochExhausted : dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationException$Expired : dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationException$InvalidProof : dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationException$InvalidRotation : dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationException$NotRegistered : dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationException$Replay : dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationOutcome : java/lang/Enum {
+	public static final field ALREADY_APPLIED Ldev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationOutcome;
+	public static final field ROTATED Ldev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationOutcome;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationOutcome;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/server/DeviceAuthenticationRotationOutcome;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticator {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/server/DeviceAuthenticator$Companion;
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationRepository;Ldev/kreienbuehl/ksecuremessage/storage/AuthenticationNonceRepository;Lkotlin/time/Clock;)V
+	public synthetic fun <init> (Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationRepository;Ldev/kreienbuehl/ksecuremessage/storage/AuthenticationNonceRepository;Lkotlin/time/Clock;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun authenticate (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/server/ProtectedEndpoint;[BLdev/kreienbuehl/ksecuremessage/protocol/RequestAuthentication;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceAuthenticator$Companion {
+	public final fun getWINDOW-UwyO8pc ()J
+}
+
+public abstract class dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException : java/lang/Exception {
+	public synthetic fun <init> (Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException$AuthorizerNotRegistered : dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException$Conflict : dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException$CrossUser : dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException$EpochExhausted : dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException$Expired : dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException$InvalidProof : dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException$InvalidRecovery : dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException$Replay : dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException$SelfAuthorization : dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException$TargetNotRegistered : dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryOutcome : java/lang/Enum {
+	public static final field ALREADY_APPLIED Ldev/kreienbuehl/ksecuremessage/server/DeviceRecoveryOutcome;
+	public static final field REPLACED Ldev/kreienbuehl/ksecuremessage/server/DeviceRecoveryOutcome;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/server/DeviceRecoveryOutcome;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/server/DeviceRecoveryOutcome;
+}
+
+public abstract class dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryException : java/lang/Exception {
+	public synthetic fun <init> (Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryException$ChallengeInvalid : dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryException$Conflict : dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryException$EpochExhausted : dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryException$Expired : dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryException$InvalidKeyRegistration : dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryException$InvalidProof : dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryException$InvalidRequest : dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryException$NotConfigured : dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryException$TargetNotRegistered : dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryOutcome : java/lang/Enum {
+	public static final field ALREADY_APPLIED Ldev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryOutcome;
+	public static final field REPLACED Ldev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryOutcome;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryOutcome;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/server/LastDeviceRecoveryOutcome;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/PreKeyService {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/storage/PreKeyRepository;)V
+	public final fun fetchPreKeyBundle (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun publish (Ldev/kreienbuehl/ksecuremessage/model/PreKeyPublication;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/ProtectedEndpoint : java/lang/Enum {
+	public static final field CANCEL_LAST_DEVICE_RECOVERY_KEY_RESET Ldev/kreienbuehl/ksecuremessage/server/ProtectedEndpoint;
+	public static final field COMPLETE_LAST_DEVICE_RECOVERY_KEY_RESET Ldev/kreienbuehl/ksecuremessage/server/ProtectedEndpoint;
+	public static final field DRAIN_MAILBOX Ldev/kreienbuehl/ksecuremessage/server/ProtectedEndpoint;
+	public static final field PUBLISH_PRE_KEYS Ldev/kreienbuehl/ksecuremessage/server/ProtectedEndpoint;
+	public static final field READ_LAST_DEVICE_RECOVERY_KEY Ldev/kreienbuehl/ksecuremessage/server/ProtectedEndpoint;
+	public static final field READ_LAST_DEVICE_RECOVERY_KEY_RESET Ldev/kreienbuehl/ksecuremessage/server/ProtectedEndpoint;
+	public static final field READ_REGISTRATION Ldev/kreienbuehl/ksecuremessage/server/ProtectedEndpoint;
+	public static final field REGISTER_LAST_DEVICE_RECOVERY_KEY Ldev/kreienbuehl/ksecuremessage/server/ProtectedEndpoint;
+	public static final field REQUEST_LAST_DEVICE_RECOVERY_KEY_RESET Ldev/kreienbuehl/ksecuremessage/server/ProtectedEndpoint;
+	public static final field REVOKE_LAST_DEVICE_RECOVERY_KEY Ldev/kreienbuehl/ksecuremessage/server/ProtectedEndpoint;
+	public static final field ROTATE_LAST_DEVICE_RECOVERY_KEY Ldev/kreienbuehl/ksecuremessage/server/ProtectedEndpoint;
+	public final fun getEndpoint ()Ljava/lang/String;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getMethod ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/server/ProtectedEndpoint;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/server/ProtectedEndpoint;
+}
+
+public abstract class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyLifecycleException : java/lang/Exception {
+	public synthetic fun <init> (Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyLifecycleException$Conflict : dev/kreienbuehl/ksecuremessage/server/RecoveryKeyLifecycleException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyLifecycleException$EpochExhausted : dev/kreienbuehl/ksecuremessage/server/RecoveryKeyLifecycleException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyLifecycleException$Expired : dev/kreienbuehl/ksecuremessage/server/RecoveryKeyLifecycleException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyLifecycleException$InvalidProof : dev/kreienbuehl/ksecuremessage/server/RecoveryKeyLifecycleException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyLifecycleException$InvalidRequest : dev/kreienbuehl/ksecuremessage/server/RecoveryKeyLifecycleException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyLifecycleException$NotConfigured : dev/kreienbuehl/ksecuremessage/server/RecoveryKeyLifecycleException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyLifecycleException$Replay : dev/kreienbuehl/ksecuremessage/server/RecoveryKeyLifecycleException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetCompletionOutcome : java/lang/Enum {
+	public static final field ALREADY_APPLIED Ldev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetCompletionOutcome;
+	public static final field COMPLETED Ldev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetCompletionOutcome;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetCompletionOutcome;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetCompletionOutcome;
+}
+
+public abstract class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetException : java/lang/Exception {
+	public synthetic fun <init> (Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetException$Conflict : dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetException$EpochExhausted : dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetException$Expired : dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetException$InvalidProof : dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetException$InvalidRequest : dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetException$NotAvailable : dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetException$NotConfigured : dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetException$NotPending : dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetException$NotYetEligible : dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetException {
+	public fun <init> ()V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetPolicy {
+	public synthetic fun <init> (JLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-UwyO8pc ()J
+	public final fun copy-LRDsOJo (J)Ldev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetPolicy;
+	public static synthetic fun copy-LRDsOJo$default (Ldev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetPolicy;JILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetPolicy;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDelay-UwyO8pc ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetRequestOutcome {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetStatus$Pending;Z)V
+	public final fun getCreated ()Z
+	public final fun getReset ()Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetStatus$Pending;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyRevocationOutcome : java/lang/Enum {
+	public static final field ALREADY_APPLIED Ldev/kreienbuehl/ksecuremessage/server/RecoveryKeyRevocationOutcome;
+	public static final field REVOKED Ldev/kreienbuehl/ksecuremessage/server/RecoveryKeyRevocationOutcome;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/server/RecoveryKeyRevocationOutcome;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/server/RecoveryKeyRevocationOutcome;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/RecoveryKeyRotationOutcome : java/lang/Enum {
+	public static final field ALREADY_APPLIED Ldev/kreienbuehl/ksecuremessage/server/RecoveryKeyRotationOutcome;
+	public static final field ROTATED Ldev/kreienbuehl/ksecuremessage/server/RecoveryKeyRotationOutcome;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/server/RecoveryKeyRotationOutcome;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/server/RecoveryKeyRotationOutcome;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/server/SecureMessageServer {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/storage/ServerStorage;Lkotlin/time/Clock;Ldev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetPolicy;)V
+	public synthetic fun <init> (Ldev/kreienbuehl/ksecuremessage/storage/ServerStorage;Lkotlin/time/Clock;Ldev/kreienbuehl/ksecuremessage/server/RecoveryKeyResetPolicy;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun authenticate (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/server/ProtectedEndpoint;[BLdev/kreienbuehl/ksecuremessage/protocol/RequestAuthentication;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun cancelLastDeviceRecoveryKeyReset (Ldev/kreienbuehl/ksecuremessage/server/AuthenticatedDevice;Ldev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetId;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun cancelLastDeviceRecoveryKeyResetByRecoveryKey (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCancellationAuthorization;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun completeLastDeviceRecoveryKeyReset (Ldev/kreienbuehl/ksecuremessage/server/AuthenticatedDevice;Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetCompletionAuthorization;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun fetchPreKeyBundle (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun lastDeviceRecoveryChallenge (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun lastDeviceRecoveryKeyResetStatus (Ldev/kreienbuehl/ksecuremessage/server/AuthenticatedDevice;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun lastDeviceRecoveryKeyResetStatusByRecoveryKey (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyResetStatusQuery;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun lastDeviceRecoveryKeyStatus (Ldev/kreienbuehl/ksecuremessage/server/AuthenticatedDevice;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun publishPreKeys (Ldev/kreienbuehl/ksecuremessage/server/AuthenticatedDevice;Ldev/kreienbuehl/ksecuremessage/model/PreKeyPublication;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun receive (Ldev/kreienbuehl/ksecuremessage/server/AuthenticatedDevice;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun recoverDevice (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryAuthorization;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun recoverLastDevice (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryAuthorization;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun registerDevice (Ldev/kreienbuehl/ksecuremessage/model/DeviceRegistration;[BLdev/kreienbuehl/ksecuremessage/protocol/RequestAuthentication;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun registerLastDeviceRecoveryKey (Ldev/kreienbuehl/ksecuremessage/server/AuthenticatedDevice;Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKeyRegistration;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun registrationStatus (Ldev/kreienbuehl/ksecuremessage/server/AuthenticatedDevice;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun relay (Ldev/kreienbuehl/ksecuremessage/model/EncryptedEnvelope;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun requestLastDeviceRecoveryKeyReset (Ldev/kreienbuehl/ksecuremessage/server/AuthenticatedDevice;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun revokeLastDeviceRecoveryKey (Ldev/kreienbuehl/ksecuremessage/server/AuthenticatedDevice;Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationAuthorization;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun rotateDeviceAuthenticationKey (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationAuthorization;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun rotateLastDeviceRecoveryKey (Ldev/kreienbuehl/ksecuremessage/server/AuthenticatedDevice;Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationAuthorization;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+

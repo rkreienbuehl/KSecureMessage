@@ -9,6 +9,8 @@ plugins {
     alias(libs.plugins.android.kotlin.multiplatform.library)
 }
 
+description = "KSecureMessage record-level client storage encryption (AES-256-GCM) and storage key providers API."
+
 kotlin {
     jvm()
 

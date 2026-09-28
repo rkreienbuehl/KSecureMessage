@@ -11,6 +11,16 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Node.js distribution for the JS/Wasm Node test runtime. The Kotlin
+        // Gradle plugin would otherwise add this repository to the project at
+        // execution time, which FAIL_ON_PROJECT_REPOS rejects; the root build
+        // script turns that off (downloadBaseUrl = null). docs/supported-platforms.md
+        ivy("https://nodejs.org/dist") {
+            name = "Node.js distributions"
+            patternLayout { artifact("v[revision]/[artifact](-v[revision]-[classifier]).[ext]") }
+            metadataSources { artifact() }
+            content { includeModule("org.nodejs", "node") }
+        }
     }
 }
 

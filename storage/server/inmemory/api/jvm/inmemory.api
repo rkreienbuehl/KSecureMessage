@@ -1,0 +1,9 @@
+public final class dev/kreienbuehl/ksecuremessage/storage/server/inmemory/InMemoryServerStorage : dev/kreienbuehl/ksecuremessage/storage/ServerStorage {
+	public fun <init> ()V
+	public fun getAuthenticationNonces ()Ldev/kreienbuehl/ksecuremessage/storage/AuthenticationNonceRepository;
+	public fun getDevices ()Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationRepository;
+	public fun getLastDeviceRecovery ()Ldev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryRepository;
+	public fun getMailboxes ()Ldev/kreienbuehl/ksecuremessage/storage/MailboxRepository;
+	public fun getPreKeys ()Ldev/kreienbuehl/ksecuremessage/storage/PreKeyRepository;
+}
+

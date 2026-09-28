@@ -6,6 +6,8 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+description = "KSecureMessage protocol engine: X3DH and Double Ratchet via Kodium, wire, payload, authentication and recovery formats."
+
 kotlin {
     jvm()
 

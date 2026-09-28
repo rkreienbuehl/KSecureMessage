@@ -1,0 +1,115 @@
+// Klib ABI Dump
+// Targets: [iosArm64, iosSimulatorArm64, iosX64, js, linuxX64, macosArm64, macosX64, mingwX64, wasmJs]
+// Rendering settings:
+// - Signature version: 2
+// - Show manifest properties: true
+// - Show declarations: true
+
+// Library unique name: <dev.kreienbuehl.ksecuremessage.storage:encryption>
+abstract interface dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher { // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher|null[0]
+    abstract val keyId // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.keyId|{}keyId[0]
+        abstract fun <get-keyId>(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.keyId.<get-keyId>|<get-keyId>(){}[0]
+    abstract val openableKeyIds // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.openableKeyIds|{}openableKeyIds[0]
+        abstract fun <get-openableKeyIds>(): kotlin.collections/Set<dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId> // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.openableKeyIds.<get-openableKeyIds>|<get-openableKeyIds>(){}[0]
+
+    abstract suspend fun openDeviceAuthenticationKey(kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.openDeviceAuthenticationKey|openDeviceAuthenticationKey(kotlin.ByteArray){}[0]
+    abstract suspend fun openDeviceAuthenticationLastDeviceRecoveryKey(kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.openDeviceAuthenticationLastDeviceRecoveryKey|openDeviceAuthenticationLastDeviceRecoveryKey(kotlin.ByteArray){}[0]
+    abstract suspend fun openDeviceAuthenticationRecoveryKey(kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.openDeviceAuthenticationRecoveryKey|openDeviceAuthenticationRecoveryKey(kotlin.ByteArray){}[0]
+    abstract suspend fun openDeviceAuthenticationRotationKey(kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.openDeviceAuthenticationRotationKey|openDeviceAuthenticationRotationKey(kotlin.ByteArray){}[0]
+    abstract suspend fun openIdentity(kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.protocol/LocalIdentity // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.openIdentity|openIdentity(kotlin.ByteArray){}[0]
+    abstract suspend fun openOneTimePreKey(dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId, kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.protocol/OneTimePreKeyPair // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.openOneTimePreKey|openOneTimePreKey(dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId;kotlin.ByteArray){}[0]
+    abstract suspend fun openPendingFrame(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/LogicalMessageId, kotlin/ByteArray): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.openPendingFrame|openPendingFrame(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.LogicalMessageId;kotlin.ByteArray){}[0]
+    abstract suspend fun openPendingInboundFrame(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/LogicalMessageId, kotlin/ByteArray): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.openPendingInboundFrame|openPendingInboundFrame(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.LogicalMessageId;kotlin.ByteArray){}[0]
+    abstract suspend fun openProcessedDigest(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/LogicalMessageId, kotlin/ByteArray): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.openProcessedDigest|openProcessedDigest(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.LogicalMessageId;kotlin.ByteArray){}[0]
+    abstract suspend fun openSession(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.protocol/SecureSession // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.openSession|openSession(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.ByteArray){}[0]
+    abstract suspend fun openSignedPreKey(dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId, kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.protocol/SignedPreKeyPair // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.openSignedPreKey|openSignedPreKey(dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId;kotlin.ByteArray){}[0]
+    abstract suspend fun sealDeviceAuthenticationKey(dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.sealDeviceAuthenticationKey|sealDeviceAuthenticationKey(dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair){}[0]
+    abstract suspend fun sealDeviceAuthenticationLastDeviceRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.sealDeviceAuthenticationLastDeviceRecoveryKey|sealDeviceAuthenticationLastDeviceRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair){}[0]
+    abstract suspend fun sealDeviceAuthenticationRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.sealDeviceAuthenticationRecoveryKey|sealDeviceAuthenticationRecoveryKey(dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair){}[0]
+    abstract suspend fun sealDeviceAuthenticationRotationKey(dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.sealDeviceAuthenticationRotationKey|sealDeviceAuthenticationRotationKey(dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair){}[0]
+    abstract suspend fun sealIdentity(dev.kreienbuehl.ksecuremessage.protocol/LocalIdentity): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.sealIdentity|sealIdentity(dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity){}[0]
+    abstract suspend fun sealKeyCheck(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.sealKeyCheck|sealKeyCheck(){}[0]
+    abstract suspend fun sealOneTimePreKey(dev.kreienbuehl.ksecuremessage.protocol/OneTimePreKeyPair): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.sealOneTimePreKey|sealOneTimePreKey(dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair){}[0]
+    abstract suspend fun sealPendingFrame(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/LogicalMessageId, kotlin/ByteArray): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.sealPendingFrame|sealPendingFrame(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.LogicalMessageId;kotlin.ByteArray){}[0]
+    abstract suspend fun sealPendingInboundFrame(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/LogicalMessageId, kotlin/ByteArray): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.sealPendingInboundFrame|sealPendingInboundFrame(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.LogicalMessageId;kotlin.ByteArray){}[0]
+    abstract suspend fun sealProcessedDigest(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/LogicalMessageId, kotlin/ByteArray): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.sealProcessedDigest|sealProcessedDigest(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.LogicalMessageId;kotlin.ByteArray){}[0]
+    abstract suspend fun sealSession(dev.kreienbuehl.ksecuremessage.protocol/SecureSession): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.sealSession|sealSession(dev.kreienbuehl.ksecuremessage.protocol.SecureSession){}[0]
+    abstract suspend fun sealSignedPreKey(dev.kreienbuehl.ksecuremessage.protocol/SignedPreKeyPair): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.sealSignedPreKey|sealSignedPreKey(dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair){}[0]
+    abstract suspend fun verifyKeyCheck(kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher.verifyKeyCheck|verifyKeyCheck(kotlin.ByteArray){}[0]
+}
+
+abstract interface dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyProvider { // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyProvider|null[0]
+    abstract suspend fun createKey(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyProvider.createKey|createKey(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+    abstract suspend fun key(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey? // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyProvider.key|key(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+    abstract suspend fun loadOrCreateKey(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyProvider.loadOrCreateKey|loadOrCreateKey(){}[0]
+    abstract suspend fun removeKey(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyProvider.removeKey|removeKey(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.storage.encryption/StaticStorageKeyProvider : dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyProvider { // dev.kreienbuehl.ksecuremessage.storage.encryption/StaticStorageKeyProvider|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey, kotlin/Array<out dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey>...) // dev.kreienbuehl.ksecuremessage.storage.encryption/StaticStorageKeyProvider.<init>|<init>(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionKey;kotlin.Array<out|dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionKey>...){}[0]
+
+    final suspend fun createKey(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey // dev.kreienbuehl.ksecuremessage.storage.encryption/StaticStorageKeyProvider.createKey|createKey(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+    final suspend fun key(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey? // dev.kreienbuehl.ksecuremessage.storage.encryption/StaticStorageKeyProvider.key|key(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+    final suspend fun loadOrCreateKey(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey // dev.kreienbuehl.ksecuremessage.storage.encryption/StaticStorageKeyProvider.loadOrCreateKey|loadOrCreateKey(){}[0]
+    final suspend fun removeKey(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.storage.encryption/StaticStorageKeyProvider.removeKey|removeKey(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey { // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey.<init>|<init>(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId;kotlin.ByteArray){}[0]
+
+    final val id // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey.id|{}id[0]
+        final fun <get-id>(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey.id.<get-id>|<get-id>(){}[0]
+
+    final fun copyBytes(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey.copyBytes|copyBytes(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey.toString|toString(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey.Companion|null[0]
+        final const val SIZE // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey.Companion.SIZE|{}SIZE[0]
+            final fun <get-SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey.Companion.SIZE.<get-SIZE>|<get-SIZE>(){}[0]
+
+        final fun generate(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey.Companion.generate|generate(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+    }
+}
+
+final value class dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId { // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId|null[0]
+    constructor <init>(kotlin/Int) // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId.<init>|<init>(kotlin.Int){}[0]
+
+    final val value // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId.value|{}value[0]
+        final fun <get-value>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId.value.<get-value>|<get-value>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId.toString|toString(){}[0]
+}
+
+sealed class dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionException : kotlin/Exception { // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionException|null[0]
+    final class AuthenticationFailed : dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionException { // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionException.AuthenticationFailed|null[0]
+        constructor <init>(kotlin/String) // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionException.AuthenticationFailed.<init>|<init>(kotlin.String){}[0]
+    }
+
+    final class KeyIdsExhausted : dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionException { // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionException.KeyIdsExhausted|null[0]
+        constructor <init>(kotlin/String) // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionException.KeyIdsExhausted.<init>|<init>(kotlin.String){}[0]
+    }
+
+    final class KeyUnavailable : dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionException { // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionException.KeyUnavailable|null[0]
+        constructor <init>(kotlin/String, kotlin/Throwable? = ...) // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionException.KeyUnavailable.<init>|<init>(kotlin.String;kotlin.Throwable?){}[0]
+    }
+
+    final class MalformedRecord : dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionException { // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionException.MalformedRecord|null[0]
+        constructor <init>(kotlin/String) // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionException.MalformedRecord.<init>|<init>(kotlin.String){}[0]
+    }
+
+    final class UnsupportedFormat : dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionException { // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionException.UnsupportedFormat|null[0]
+        constructor <init>(kotlin/String) // dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionException.UnsupportedFormat.<init>|<init>(kotlin.String){}[0]
+    }
+}
+
+final object dev.kreienbuehl.ksecuremessage.storage.encryption/SealedRecords { // dev.kreienbuehl.ksecuremessage.storage.encryption/SealedRecords|null[0]
+    final const val HEADER_SIZE // dev.kreienbuehl.ksecuremessage.storage.encryption/SealedRecords.HEADER_SIZE|{}HEADER_SIZE[0]
+        final fun <get-HEADER_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.storage.encryption/SealedRecords.HEADER_SIZE.<get-HEADER_SIZE>|<get-HEADER_SIZE>(){}[0]
+
+    final fun header(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.storage.encryption/SealedRecords.header|header(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+    final fun keyId(kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.encryption/SealedRecords.keyId|keyId(kotlin.ByteArray){}[0]
+}
+
+final fun dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey, kotlin/Array<out dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey>...): dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher // dev.kreienbuehl.ksecuremessage.storage.encryption/ClientRecordCipher|ClientRecordCipher(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionKey;kotlin.Array<out|dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionKey>...){}[0]

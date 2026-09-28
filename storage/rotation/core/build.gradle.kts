@@ -9,6 +9,8 @@ plugins {
     alias(libs.plugins.android.kotlin.multiplatform.library)
 }
 
+description = "KSecureMessage storage key rotation state machine (support module for persistent client storage)."
+
 kotlin {
     jvm()
 

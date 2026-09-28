@@ -1062,7 +1062,7 @@ class SecureMessageClient(
      * (`INVALID_PROOF` if [currentKey] is not the active key, `NOT_CONFIGURED`
      * if none is active).
      */
-    suspend fun lastDeviceRecoveryKeyResetStatus(currentKey: LastDeviceRecoveryKey): RecoveryKeyResetStatus =
+    suspend fun lastDeviceRecoveryKeyResetStatusByRecoveryKey(currentKey: LastDeviceRecoveryKey): RecoveryKeyResetStatus =
         transport.lastDeviceRecoveryKeyResetStatusByRecoveryKey(RecoveryKeyReset.statusQuery(currentKey, localAddress.userId, clock.now()))
 
     /**
@@ -1078,7 +1078,7 @@ class SecureMessageClient(
      * no longer the active key: a completion or rotation won) and no
      * recovery key status.
      */
-    suspend fun cancelLastDeviceRecoveryKeyReset(
+    suspend fun cancelLastDeviceRecoveryKeyResetByRecoveryKey(
         currentKey: LastDeviceRecoveryKey,
         reset: RecoveryKeyResetStatus.Pending,
     ): LastDeviceRecoveryKeyResetCancellationResult {
@@ -1090,7 +1090,7 @@ class SecureMessageClient(
         } catch (e: SecureMessageTransportException.RecoveryKeyResetRejected) {
             if (e.reason != SecureMessageTransportException.RecoveryKeyResetFailure.NOT_PENDING) throw e
             val current = try {
-                lastDeviceRecoveryKeyResetStatus(currentKey)
+                lastDeviceRecoveryKeyResetStatusByRecoveryKey(currentKey)
             } catch (f: SecureMessageTransportException.RecoveryKeyResetRejected) {
                 if (f.reason != SecureMessageTransportException.RecoveryKeyResetFailure.INVALID_PROOF &&
                     f.reason != SecureMessageTransportException.RecoveryKeyResetFailure.NOT_CONFIGURED
@@ -1507,7 +1507,7 @@ class SecureMessageClient(
         return PublicIdentityKey(identity.publicKey)
     }
 
-    suspend fun ensureSession(remote: DeviceAddress): SecureSession {
+    internal suspend fun ensureSession(remote: DeviceAddress): SecureSession {
         val bundle = fetchBundleIfNoSession(remote)
         return storage.transaction {
             sessions.load(remote) ?: initiateSession(remote, bundle).also { sessions.store(it) }
@@ -1758,7 +1758,7 @@ class SecureMessageClient(
     /**
      * One page of the received messages the application has not finalized
      * yet, with their plaintext (docs/message-discard.md): at most [limit]
-     * (1..[PendingReceivedPage.MAX_SIZE]) messages with a
+     * (1..[PendingReceivedMessagePage.MAX_SIZE]) messages with a
      * [ReceivedMessage.sequence] greater than [afterSequence] (from the
      * start if `null`), from [sender] only if given, in ascending sequence
      * order. Call it after a restart: a message stays pending until
@@ -1773,14 +1773,14 @@ class SecureMessageClient(
      * same global sequence as cursor.
      *
      * Throws [IllegalArgumentException] for a [limit] outside
-     * 1..[PendingReceivedPage.MAX_SIZE] or a negative [afterSequence].
+     * 1..[PendingReceivedMessagePage.MAX_SIZE] or a negative [afterSequence].
      */
     suspend fun pendingReceivedMessages(
         afterSequence: Long? = null,
         limit: Int,
         sender: DeviceAddress? = null,
-    ): PendingReceivedPage {
-        require(limit in 1..PendingReceivedPage.MAX_SIZE) { "limit must be in 1..${PendingReceivedPage.MAX_SIZE}" }
+    ): PendingReceivedMessagePage {
+        require(limit in 1..PendingReceivedMessagePage.MAX_SIZE) { "limit must be in 1..${PendingReceivedMessagePage.MAX_SIZE}" }
         require(afterSequence == null || afterSequence >= 0) { "afterSequence must not be negative" }
         val pending = storage.transaction {
             requireIdentity()
@@ -1790,7 +1790,7 @@ class SecureMessageClient(
         val more = pending.size > limit
         val messages = pending.take(limit).map { it.toReceivedMessage() }
         pending.drop(limit).forEach { it.frame.fill(0) }
-        return PendingReceivedPage(messages, if (more) messages.last().sequence else null)
+        return PendingReceivedMessagePage(messages, if (more) messages.last().sequence else null)
     }
 
     /** The number of received messages not finalized yet, from [sender] only if given. Opens no record. */

@@ -1,0 +1,24 @@
+public final class dev/kreienbuehl/ksecuremessage/storage/client/sqldelight/SqlDelightClientStorage : dev/kreienbuehl/ksecuremessage/storage/ClientStorage {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/storage/client/sqldelight/SqlDelightClientStorage$Companion;
+	public static final field DEFAULT_ROTATION_BATCH I
+	public fun getDeviceAuthentication ()Ldev/kreienbuehl/ksecuremessage/storage/DeviceAuthenticationKeyStore;
+	public fun getIdentity ()Ldev/kreienbuehl/ksecuremessage/storage/IdentityStore;
+	public fun getPendingInbound ()Ldev/kreienbuehl/ksecuremessage/storage/PendingInboundStore;
+	public fun getPendingOutbound ()Ldev/kreienbuehl/ksecuremessage/storage/PendingOutboundStore;
+	public fun getPreKeys ()Ldev/kreienbuehl/ksecuremessage/storage/PreKeyStore;
+	public fun getProcessedInbound ()Ldev/kreienbuehl/ksecuremessage/storage/ProcessedInboundStore;
+	public fun getRemoteIdentities ()Ldev/kreienbuehl/ksecuremessage/storage/RemoteIdentityStore;
+	public fun getSessionInitiations ()Ldev/kreienbuehl/ksecuremessage/storage/SessionInitiationStore;
+	public fun getSessions ()Ldev/kreienbuehl/ksecuremessage/storage/SessionStore;
+	public final fun resumeStorageKeyRotation (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun resumeStorageKeyRotation$default (Ldev/kreienbuehl/ksecuremessage/storage/client/sqldelight/SqlDelightClientStorage;ILkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun rotateStorageKey-wjI02yA (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun storageKeyRotationStatus (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun transaction (Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/client/sqldelight/SqlDelightClientStorage$Companion {
+	public final fun getSchema ()Lapp/cash/sqldelight/db/SqlSchema;
+	public final fun open (Lapp/cash/sqldelight/db/SqlDriver;Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyProvider;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+

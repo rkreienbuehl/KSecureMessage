@@ -7,6 +7,8 @@ plugins {
     alias(libs.plugins.android.kotlin.multiplatform.library)
 }
 
+description = "KSecureMessage storage key provider backed by the Android Keystore."
+
 kotlin {
     android {
         namespace = "dev.kreienbuehl.ksecuremessage.storage.keyprovider.android"

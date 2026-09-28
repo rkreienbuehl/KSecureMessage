@@ -245,7 +245,7 @@ internal suspend fun SecureMessageClient.allPendingReceivedMessages(sender: Devi
     val all = mutableListOf<ReceivedMessage>()
     var after: Long? = null
     do {
-        val page = pendingReceivedMessages(after, PendingReceivedPage.MAX_SIZE, sender)
+        val page = pendingReceivedMessages(after, PendingReceivedMessagePage.MAX_SIZE, sender)
         all += page.messages
         after = page.nextAfterSequence
     } while (after != null)

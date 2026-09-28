@@ -1,0 +1,15 @@
+public final class dev/kreienbuehl/ksecuremessage/storage/server/sqldelight/SqlDelightServerStorage : dev/kreienbuehl/ksecuremessage/storage/ServerStorage {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/storage/server/sqldelight/SqlDelightServerStorage$Companion;
+	public fun getAuthenticationNonces ()Ldev/kreienbuehl/ksecuremessage/storage/AuthenticationNonceRepository;
+	public fun getDevices ()Ldev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationRepository;
+	public fun getLastDeviceRecovery ()Ldev/kreienbuehl/ksecuremessage/storage/LastDeviceRecoveryRepository;
+	public fun getMailboxes ()Ldev/kreienbuehl/ksecuremessage/storage/MailboxRepository;
+	public fun getPreKeys ()Ldev/kreienbuehl/ksecuremessage/storage/PreKeyRepository;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/server/sqldelight/SqlDelightServerStorage$Companion {
+	public final fun getSchema ()Lapp/cash/sqldelight/db/SqlSchema;
+	public final fun open (Lapp/cash/sqldelight/db/SqlDriver;Lkotlinx/coroutines/CoroutineDispatcher;Lkotlin/time/Clock;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun open$default (Ldev/kreienbuehl/ksecuremessage/storage/server/sqldelight/SqlDelightServerStorage$Companion;Lapp/cash/sqldelight/db/SqlDriver;Lkotlinx/coroutines/CoroutineDispatcher;Lkotlin/time/Clock;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+

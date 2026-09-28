@@ -3,6 +3,8 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+description = "KSecureMessage server HTTP routes on Ktor (HTTP API v1)."
+
 kotlin {
     jvmToolchain(17)
 }

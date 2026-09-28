@@ -1,0 +1,135 @@
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationBackend {
+	public abstract fun activate (Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Preparing;Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionKey;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun complete (Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Retiring;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun exclusive (Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun keyReferences (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun markRetiring (Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Migrating;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun migrateBatch (Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Migrating;ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun prepare-8XOevYM (Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Stable;ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun remainingRecords (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun state (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationInProgressException : java/lang/IllegalStateException {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationStatus;)V
+	public final fun getStatus ()Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationStatus;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationManager {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationManager$Companion;
+	public static final field DEFAULT_BATCH_SIZE I
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationBackend;Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyProvider;)V
+	public final fun resume (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun resume$default (Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationManager;ILkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun rotate-wjI02yA (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun status (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationManager$Companion {
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationPhase : java/lang/Enum {
+	public static final field MIGRATING Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationPhase;
+	public static final field PREPARING Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationPhase;
+	public static final field RETIRING Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationPhase;
+	public static final field STABLE Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationPhase;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationPhase;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationPhase;
+}
+
+public abstract class dev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Companion;
+	public abstract fun getCurrentKeyId-F_II55g ()I
+	public abstract fun getHighestKeyId-F_II55g ()I
+	public abstract fun getPhase ()Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationPhase;
+	public fun getRequiredKeyIds ()Ljava/util/Set;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Companion {
+	public final fun of-zCZHnKM (Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationPhase;ILdev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyId;Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyId;Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyId;)Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Migrating : dev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState {
+	public synthetic fun <init> (IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-F_II55g ()I
+	public final fun component2-F_II55g ()I
+	public final fun component3-F_II55g ()I
+	public final fun copy-kos-ngI (III)Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Migrating;
+	public static synthetic fun copy-kos-ngI$default (Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Migrating;IIIILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Migrating;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCurrentKeyId-F_II55g ()I
+	public fun getHighestKeyId-F_II55g ()I
+	public fun getPhase ()Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationPhase;
+	public fun getRequiredKeyIds ()Ljava/util/Set;
+	public final fun getRetiringKeyId-F_II55g ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Preparing : dev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState {
+	public synthetic fun <init> (IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-F_II55g ()I
+	public final fun component2-F_II55g ()I
+	public final fun component3-F_II55g ()I
+	public final fun copy-kos-ngI (III)Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Preparing;
+	public static synthetic fun copy-kos-ngI$default (Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Preparing;IIIILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Preparing;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCurrentKeyId-F_II55g ()I
+	public fun getHighestKeyId-F_II55g ()I
+	public final fun getNextKeyId-F_II55g ()I
+	public fun getPhase ()Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationPhase;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Retiring : dev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState {
+	public synthetic fun <init> (IIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-F_II55g ()I
+	public final fun component2-F_II55g ()I
+	public final fun component3-F_II55g ()I
+	public final fun copy-kos-ngI (III)Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Retiring;
+	public static synthetic fun copy-kos-ngI$default (Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Retiring;IIIILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Retiring;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCurrentKeyId-F_II55g ()I
+	public fun getHighestKeyId-F_II55g ()I
+	public fun getPhase ()Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationPhase;
+	public final fun getRetiringKeyId-F_II55g ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Stable : dev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState {
+	public synthetic fun <init> (IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-F_II55g ()I
+	public final fun component2-F_II55g ()I
+	public final fun copy-EsB06Gk (II)Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Stable;
+	public static synthetic fun copy-EsB06Gk$default (Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Stable;IIILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationState$Stable;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCurrentKeyId-F_II55g ()I
+	public fun getHighestKeyId-F_II55g ()I
+	public fun getPhase ()Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationPhase;
+	public fun hashCode ()I
+	public final fun nextKeyId-F_II55g ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationStatus {
+	public synthetic fun <init> (Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationPhase;ILdev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyId;Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyId;JLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationPhase;
+	public final fun component2-F_II55g ()I
+	public final fun component3-IU97of8 ()Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyId;
+	public final fun component4-IU97of8 ()Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyId;
+	public final fun component5 ()J
+	public final fun copy-lE1usBU (Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationPhase;ILdev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyId;Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyId;J)Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationStatus;
+	public static synthetic fun copy-lE1usBU$default (Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationStatus;Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationPhase;ILdev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyId;Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyId;JILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationStatus;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCurrentKeyId-F_II55g ()I
+	public final fun getNextKeyId-IU97of8 ()Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyId;
+	public final fun getPhase ()Ldev/kreienbuehl/ksecuremessage/storage/rotation/StorageKeyRotationPhase;
+	public final fun getRemainingRecords ()J
+	public final fun getRetiringKeyId-IU97of8 ()Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyId;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+

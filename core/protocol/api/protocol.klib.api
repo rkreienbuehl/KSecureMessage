@@ -1,0 +1,1026 @@
+// Klib ABI Dump
+// Targets: [iosArm64, iosSimulatorArm64, iosX64, js, linuxX64, macosArm64, macosX64, mingwX64, wasmJs]
+// Rendering settings:
+// - Signature version: 2
+// - Show manifest properties: true
+// - Show declarations: true
+
+// Library unique name: <dev.kreienbuehl.ksecuremessage.core:protocol>
+final enum class dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberComparison : kotlin/Enum<dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberComparison> { // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberComparison|null[0]
+    enum entry DIFFERENT_DEVICES // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberComparison.DIFFERENT_DEVICES|null[0]
+    enum entry MATCH // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberComparison.MATCH|null[0]
+    enum entry MISMATCH // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberComparison.MISMATCH|null[0]
+
+    final val entries // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberComparison.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberComparison> // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberComparison.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberComparison // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberComparison.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberComparison> // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberComparison.values|values#static(){}[0]
+}
+
+final enum class dev.kreienbuehl.ksecuremessage.protocol/VerificationState : kotlin/Enum<dev.kreienbuehl.ksecuremessage.protocol/VerificationState> { // dev.kreienbuehl.ksecuremessage.protocol/VerificationState|null[0]
+    enum entry UNVERIFIED // dev.kreienbuehl.ksecuremessage.protocol/VerificationState.UNVERIFIED|null[0]
+    enum entry VERIFIED // dev.kreienbuehl.ksecuremessage.protocol/VerificationState.VERIFIED|null[0]
+
+    final val entries // dev.kreienbuehl.ksecuremessage.protocol/VerificationState.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.protocol/VerificationState> // dev.kreienbuehl.ksecuremessage.protocol/VerificationState.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.protocol/VerificationState // dev.kreienbuehl.ksecuremessage.protocol/VerificationState.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.protocol/VerificationState> // dev.kreienbuehl.ksecuremessage.protocol/VerificationState.values|values#static(){}[0]
+}
+
+abstract interface dev.kreienbuehl.ksecuremessage.protocol/ProtocolEngine { // dev.kreienbuehl.ksecuremessage.protocol/ProtocolEngine|null[0]
+    abstract fun sessionInfo(dev.kreienbuehl.ksecuremessage.protocol/SecureSession): dev.kreienbuehl.ksecuremessage.protocol/SessionInfo // dev.kreienbuehl.ksecuremessage.protocol/ProtocolEngine.sessionInfo|sessionInfo(dev.kreienbuehl.ksecuremessage.protocol.SecureSession){}[0]
+    abstract suspend fun acceptSession(dev.kreienbuehl.ksecuremessage.protocol/LocalIdentity, dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.protocol/SignedPreKeyPair, dev.kreienbuehl.ksecuremessage.protocol/OneTimePreKeyPair?, dev.kreienbuehl.ksecuremessage.model/PreKeyMessage): dev.kreienbuehl.ksecuremessage.protocol/SessionAcceptanceResult // dev.kreienbuehl.ksecuremessage.protocol/ProtocolEngine.acceptSession|acceptSession(dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity;dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair;dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair?;dev.kreienbuehl.ksecuremessage.model.PreKeyMessage){}[0]
+    abstract suspend fun createDeviceAuthenticationKey(): dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair // dev.kreienbuehl.ksecuremessage.protocol/ProtocolEngine.createDeviceAuthenticationKey|createDeviceAuthenticationKey(){}[0]
+    abstract suspend fun createIdentity(): dev.kreienbuehl.ksecuremessage.protocol/LocalIdentity // dev.kreienbuehl.ksecuremessage.protocol/ProtocolEngine.createIdentity|createIdentity(){}[0]
+    abstract suspend fun createLastDeviceRecoveryKey(): dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey // dev.kreienbuehl.ksecuremessage.protocol/ProtocolEngine.createLastDeviceRecoveryKey|createLastDeviceRecoveryKey(){}[0]
+    abstract suspend fun createOneTimePreKeys(dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId, kotlin/Int): kotlin.collections/List<dev.kreienbuehl.ksecuremessage.protocol/OneTimePreKeyPair> // dev.kreienbuehl.ksecuremessage.protocol/ProtocolEngine.createOneTimePreKeys|createOneTimePreKeys(dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId;kotlin.Int){}[0]
+    abstract suspend fun createSignedPreKey(dev.kreienbuehl.ksecuremessage.protocol/LocalIdentity, dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId): dev.kreienbuehl.ksecuremessage.protocol/SignedPreKeyPair // dev.kreienbuehl.ksecuremessage.protocol/ProtocolEngine.createSignedPreKey|createSignedPreKey(dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity;dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId){}[0]
+    abstract suspend fun decrypt(dev.kreienbuehl.ksecuremessage.protocol/SecureSession, dev.kreienbuehl.ksecuremessage.model/CiphertextMessage): dev.kreienbuehl.ksecuremessage.protocol/DecryptionResult // dev.kreienbuehl.ksecuremessage.protocol/ProtocolEngine.decrypt|decrypt(dev.kreienbuehl.ksecuremessage.protocol.SecureSession;dev.kreienbuehl.ksecuremessage.model.CiphertextMessage){}[0]
+    abstract suspend fun encrypt(dev.kreienbuehl.ksecuremessage.protocol/SecureSession, kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.protocol/EncryptionResult // dev.kreienbuehl.ksecuremessage.protocol/ProtocolEngine.encrypt|encrypt(dev.kreienbuehl.ksecuremessage.protocol.SecureSession;kotlin.ByteArray){}[0]
+    abstract suspend fun initiateSession(dev.kreienbuehl.ksecuremessage.protocol/LocalIdentity, dev.kreienbuehl.ksecuremessage.model/PreKeyBundle): dev.kreienbuehl.ksecuremessage.protocol/SecureSession // dev.kreienbuehl.ksecuremessage.protocol/ProtocolEngine.initiateSession|initiateSession(dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity;dev.kreienbuehl.ksecuremessage.model.PreKeyBundle){}[0]
+}
+
+sealed interface dev.kreienbuehl.ksecuremessage.protocol/SecurePayload { // dev.kreienbuehl.ksecuremessage.protocol/SecurePayload|null[0]
+    abstract val id // dev.kreienbuehl.ksecuremessage.protocol/SecurePayload.id|{}id[0]
+        abstract fun <get-id>(): dev.kreienbuehl.ksecuremessage.model/LogicalMessageId // dev.kreienbuehl.ksecuremessage.protocol/SecurePayload.id.<get-id>|<get-id>(){}[0]
+
+    final class Acknowledgement : dev.kreienbuehl.ksecuremessage.protocol/SecurePayload { // dev.kreienbuehl.ksecuremessage.protocol/SecurePayload.Acknowledgement|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.model/LogicalMessageId) // dev.kreienbuehl.ksecuremessage.protocol/SecurePayload.Acknowledgement.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.LogicalMessageId){}[0]
+
+        final val id // dev.kreienbuehl.ksecuremessage.protocol/SecurePayload.Acknowledgement.id|{}id[0]
+            final fun <get-id>(): dev.kreienbuehl.ksecuremessage.model/LogicalMessageId // dev.kreienbuehl.ksecuremessage.protocol/SecurePayload.Acknowledgement.id.<get-id>|<get-id>(){}[0]
+    }
+
+    final class ApplicationMessage : dev.kreienbuehl.ksecuremessage.protocol/SecurePayload { // dev.kreienbuehl.ksecuremessage.protocol/SecurePayload.ApplicationMessage|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.model/LogicalMessageId, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/SecurePayload.ApplicationMessage.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.LogicalMessageId;kotlin.ByteArray){}[0]
+
+        final val body // dev.kreienbuehl.ksecuremessage.protocol/SecurePayload.ApplicationMessage.body|{}body[0]
+            final fun <get-body>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/SecurePayload.ApplicationMessage.body.<get-body>|<get-body>(){}[0]
+        final val id // dev.kreienbuehl.ksecuremessage.protocol/SecurePayload.ApplicationMessage.id|{}id[0]
+            final fun <get-id>(): dev.kreienbuehl.ksecuremessage.model/LogicalMessageId // dev.kreienbuehl.ksecuremessage.protocol/SecurePayload.ApplicationMessage.id.<get-id>|<get-id>(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/DecryptionResult { // dev.kreienbuehl.ksecuremessage.protocol/DecryptionResult|null[0]
+    constructor <init>(kotlin/ByteArray, dev.kreienbuehl.ksecuremessage.protocol/SecureSession) // dev.kreienbuehl.ksecuremessage.protocol/DecryptionResult.<init>|<init>(kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.protocol.SecureSession){}[0]
+
+    final val plaintext // dev.kreienbuehl.ksecuremessage.protocol/DecryptionResult.plaintext|{}plaintext[0]
+        final fun <get-plaintext>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/DecryptionResult.plaintext.<get-plaintext>|<get-plaintext>(){}[0]
+    final val updatedSession // dev.kreienbuehl.ksecuremessage.protocol/DecryptionResult.updatedSession|{}updatedSession[0]
+        final fun <get-updatedSession>(): dev.kreienbuehl.ksecuremessage.protocol/SecureSession // dev.kreienbuehl.ksecuremessage.protocol/DecryptionResult.updatedSession.<get-updatedSession>|<get-updatedSession>(){}[0]
+
+    final fun component1(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/DecryptionResult.component1|component1(){}[0]
+    final fun component2(): dev.kreienbuehl.ksecuremessage.protocol/SecureSession // dev.kreienbuehl.ksecuremessage.protocol/DecryptionResult.component2|component2(){}[0]
+    final fun copy(kotlin/ByteArray = ..., dev.kreienbuehl.ksecuremessage.protocol/SecureSession = ...): dev.kreienbuehl.ksecuremessage.protocol/DecryptionResult // dev.kreienbuehl.ksecuremessage.protocol/DecryptionResult.copy|copy(kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.protocol.SecureSession){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/DecryptionResult.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/DecryptionResult.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/DecryptionResult.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair { // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair|null[0]
+    constructor <init>(kotlin/ByteArray, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair.<init>|<init>(kotlin.ByteArray;kotlin.ByteArray){}[0]
+
+    final val privateKey // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair.privateKey|{}privateKey[0]
+        final fun <get-privateKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair.privateKey.<get-privateKey>|<get-privateKey>(){}[0]
+    final val publicKey // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair.publicKey|{}publicKey[0]
+        final fun <get-publicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair.publicKey.<get-publicKey>|<get-publicKey>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationAuthorization { // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationAuthorization|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement, kotlin/ByteArray, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationAuthorization.<init>|<init>(dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationStatement;kotlin.ByteArray;kotlin.ByteArray){}[0]
+
+    final val authorizationSignature // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationAuthorization.authorizationSignature|{}authorizationSignature[0]
+        final fun <get-authorizationSignature>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationAuthorization.authorizationSignature.<get-authorizationSignature>|<get-authorizationSignature>(){}[0]
+    final val proofOfPossession // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationAuthorization.proofOfPossession|{}proofOfPossession[0]
+        final fun <get-proofOfPossession>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationAuthorization.proofOfPossession.<get-proofOfPossession>|<get-proofOfPossession>(){}[0]
+    final val statement // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationAuthorization.statement|{}statement[0]
+        final fun <get-statement>(): dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationAuthorization.statement.<get-statement>|<get-statement>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationAuthorization.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationId { // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationId|null[0]
+    constructor <init>(kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationId.<init>|<init>(kotlin.ByteArray){}[0]
+
+    final val bytes // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationId.bytes|{}bytes[0]
+        final fun <get-bytes>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationId.bytes.<get-bytes>|<get-bytes>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationId.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationId.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationId.toString|toString(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationId.Companion|null[0]
+        final const val SIZE // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationId.Companion.SIZE|{}SIZE[0]
+            final fun <get-SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationId.Companion.SIZE.<get-SIZE>|<get-SIZE>(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement { // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, kotlin/ByteArray, kotlin/ByteArray, kotlin/Long, kotlin.time/Instant, dev.kreienbuehl.ksecuremessage.protocol/RequestNonce) // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.ByteArray;kotlin.ByteArray;kotlin.Long;kotlin.time.Instant;dev.kreienbuehl.ksecuremessage.protocol.RequestNonce){}[0]
+
+    final val address // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement.address|{}address[0]
+        final fun <get-address>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement.address.<get-address>|<get-address>(){}[0]
+    final val currentPublicKey // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement.currentPublicKey|{}currentPublicKey[0]
+        final fun <get-currentPublicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement.currentPublicKey.<get-currentPublicKey>|<get-currentPublicKey>(){}[0]
+    final val expectedAuthEpoch // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement.expectedAuthEpoch|{}expectedAuthEpoch[0]
+        final fun <get-expectedAuthEpoch>(): kotlin/Long // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement.expectedAuthEpoch.<get-expectedAuthEpoch>|<get-expectedAuthEpoch>(){}[0]
+    final val nonce // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement.nonce|{}nonce[0]
+        final fun <get-nonce>(): dev.kreienbuehl.ksecuremessage.protocol/RequestNonce // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement.nonce.<get-nonce>|<get-nonce>(){}[0]
+    final val replacementPublicKey // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement.replacementPublicKey|{}replacementPublicKey[0]
+        final fun <get-replacementPublicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement.replacementPublicKey.<get-replacementPublicKey>|<get-replacementPublicKey>(){}[0]
+    final val timestamp // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement.timestamp|{}timestamp[0]
+        final fun <get-timestamp>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement.timestamp.<get-timestamp>|<get-timestamp>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryAuthorization { // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryAuthorization|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryAuthorization.<init>|<init>(dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryRequest;kotlin.ByteArray){}[0]
+
+    final val authorizerSignature // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryAuthorization.authorizerSignature|{}authorizerSignature[0]
+        final fun <get-authorizerSignature>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryAuthorization.authorizerSignature.<get-authorizerSignature>|<get-authorizerSignature>(){}[0]
+    final val request // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryAuthorization.request|{}request[0]
+        final fun <get-request>(): dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryAuthorization.request.<get-request>|<get-request>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryAuthorization.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryId { // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryId|null[0]
+    constructor <init>(kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryId.<init>|<init>(kotlin.ByteArray){}[0]
+
+    final val bytes // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryId.bytes|{}bytes[0]
+        final fun <get-bytes>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryId.bytes.<get-bytes>|<get-bytes>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryId.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryId.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryId.toString|toString(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryId.Companion|null[0]
+        final const val SIZE // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryId.Companion.SIZE|{}SIZE[0]
+            final fun <get-SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryId.Companion.SIZE.<get-SIZE>|<get-SIZE>(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest { // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/DeviceAddress, kotlin/ByteArray, kotlin.time/Instant, dev.kreienbuehl.ksecuremessage.protocol/RequestNonce, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.ByteArray;kotlin.time.Instant;dev.kreienbuehl.ksecuremessage.protocol.RequestNonce;kotlin.ByteArray){}[0]
+
+    final val authorizer // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest.authorizer|{}authorizer[0]
+        final fun <get-authorizer>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest.authorizer.<get-authorizer>|<get-authorizer>(){}[0]
+    final val nonce // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest.nonce|{}nonce[0]
+        final fun <get-nonce>(): dev.kreienbuehl.ksecuremessage.protocol/RequestNonce // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest.nonce.<get-nonce>|<get-nonce>(){}[0]
+    final val proofOfPossession // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest.proofOfPossession|{}proofOfPossession[0]
+        final fun <get-proofOfPossession>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest.proofOfPossession.<get-proofOfPossession>|<get-proofOfPossession>(){}[0]
+    final val replacementPublicKey // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest.replacementPublicKey|{}replacementPublicKey[0]
+        final fun <get-replacementPublicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest.replacementPublicKey.<get-replacementPublicKey>|<get-replacementPublicKey>(){}[0]
+    final val target // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest.target|{}target[0]
+        final fun <get-target>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest.target.<get-target>|<get-target>(){}[0]
+    final val timestamp // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest.timestamp|{}timestamp[0]
+        final fun <get-timestamp>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest.timestamp.<get-timestamp>|<get-timestamp>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/EncryptionResult { // dev.kreienbuehl.ksecuremessage.protocol/EncryptionResult|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/CiphertextMessage, dev.kreienbuehl.ksecuremessage.protocol/SecureSession) // dev.kreienbuehl.ksecuremessage.protocol/EncryptionResult.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.CiphertextMessage;dev.kreienbuehl.ksecuremessage.protocol.SecureSession){}[0]
+
+    final val message // dev.kreienbuehl.ksecuremessage.protocol/EncryptionResult.message|{}message[0]
+        final fun <get-message>(): dev.kreienbuehl.ksecuremessage.model/CiphertextMessage // dev.kreienbuehl.ksecuremessage.protocol/EncryptionResult.message.<get-message>|<get-message>(){}[0]
+    final val updatedSession // dev.kreienbuehl.ksecuremessage.protocol/EncryptionResult.updatedSession|{}updatedSession[0]
+        final fun <get-updatedSession>(): dev.kreienbuehl.ksecuremessage.protocol/SecureSession // dev.kreienbuehl.ksecuremessage.protocol/EncryptionResult.updatedSession.<get-updatedSession>|<get-updatedSession>(){}[0]
+
+    final fun component1(): dev.kreienbuehl.ksecuremessage.model/CiphertextMessage // dev.kreienbuehl.ksecuremessage.protocol/EncryptionResult.component1|component1(){}[0]
+    final fun component2(): dev.kreienbuehl.ksecuremessage.protocol/SecureSession // dev.kreienbuehl.ksecuremessage.protocol/EncryptionResult.component2|component2(){}[0]
+    final fun copy(dev.kreienbuehl.ksecuremessage.model/CiphertextMessage = ..., dev.kreienbuehl.ksecuremessage.protocol/SecureSession = ...): dev.kreienbuehl.ksecuremessage.protocol/EncryptionResult // dev.kreienbuehl.ksecuremessage.protocol/EncryptionResult.copy|copy(dev.kreienbuehl.ksecuremessage.model.CiphertextMessage;dev.kreienbuehl.ksecuremessage.protocol.SecureSession){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/EncryptionResult.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/EncryptionResult.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/EncryptionResult.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/KodiumProtocolEngine : dev.kreienbuehl.ksecuremessage.protocol/ProtocolEngine { // dev.kreienbuehl.ksecuremessage.protocol/KodiumProtocolEngine|null[0]
+    constructor <init>() // dev.kreienbuehl.ksecuremessage.protocol/KodiumProtocolEngine.<init>|<init>(){}[0]
+
+    final fun sessionInfo(dev.kreienbuehl.ksecuremessage.protocol/SecureSession): dev.kreienbuehl.ksecuremessage.protocol/SessionInfo // dev.kreienbuehl.ksecuremessage.protocol/KodiumProtocolEngine.sessionInfo|sessionInfo(dev.kreienbuehl.ksecuremessage.protocol.SecureSession){}[0]
+    final suspend fun acceptSession(dev.kreienbuehl.ksecuremessage.protocol/LocalIdentity, dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.protocol/SignedPreKeyPair, dev.kreienbuehl.ksecuremessage.protocol/OneTimePreKeyPair?, dev.kreienbuehl.ksecuremessage.model/PreKeyMessage): dev.kreienbuehl.ksecuremessage.protocol/SessionAcceptanceResult // dev.kreienbuehl.ksecuremessage.protocol/KodiumProtocolEngine.acceptSession|acceptSession(dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity;dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair;dev.kreienbuehl.ksecuremessage.protocol.OneTimePreKeyPair?;dev.kreienbuehl.ksecuremessage.model.PreKeyMessage){}[0]
+    final suspend fun createDeviceAuthenticationKey(): dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair // dev.kreienbuehl.ksecuremessage.protocol/KodiumProtocolEngine.createDeviceAuthenticationKey|createDeviceAuthenticationKey(){}[0]
+    final suspend fun createIdentity(): dev.kreienbuehl.ksecuremessage.protocol/LocalIdentity // dev.kreienbuehl.ksecuremessage.protocol/KodiumProtocolEngine.createIdentity|createIdentity(){}[0]
+    final suspend fun createLastDeviceRecoveryKey(): dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey // dev.kreienbuehl.ksecuremessage.protocol/KodiumProtocolEngine.createLastDeviceRecoveryKey|createLastDeviceRecoveryKey(){}[0]
+    final suspend fun createOneTimePreKeys(dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId, kotlin/Int): kotlin.collections/List<dev.kreienbuehl.ksecuremessage.protocol/OneTimePreKeyPair> // dev.kreienbuehl.ksecuremessage.protocol/KodiumProtocolEngine.createOneTimePreKeys|createOneTimePreKeys(dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId;kotlin.Int){}[0]
+    final suspend fun createSignedPreKey(dev.kreienbuehl.ksecuremessage.protocol/LocalIdentity, dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId): dev.kreienbuehl.ksecuremessage.protocol/SignedPreKeyPair // dev.kreienbuehl.ksecuremessage.protocol/KodiumProtocolEngine.createSignedPreKey|createSignedPreKey(dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity;dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId){}[0]
+    final suspend fun decrypt(dev.kreienbuehl.ksecuremessage.protocol/SecureSession, dev.kreienbuehl.ksecuremessage.model/CiphertextMessage): dev.kreienbuehl.ksecuremessage.protocol/DecryptionResult // dev.kreienbuehl.ksecuremessage.protocol/KodiumProtocolEngine.decrypt|decrypt(dev.kreienbuehl.ksecuremessage.protocol.SecureSession;dev.kreienbuehl.ksecuremessage.model.CiphertextMessage){}[0]
+    final suspend fun encrypt(dev.kreienbuehl.ksecuremessage.protocol/SecureSession, kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.protocol/EncryptionResult // dev.kreienbuehl.ksecuremessage.protocol/KodiumProtocolEngine.encrypt|encrypt(dev.kreienbuehl.ksecuremessage.protocol.SecureSession;kotlin.ByteArray){}[0]
+    final suspend fun initiateSession(dev.kreienbuehl.ksecuremessage.protocol/LocalIdentity, dev.kreienbuehl.ksecuremessage.model/PreKeyBundle): dev.kreienbuehl.ksecuremessage.protocol/SecureSession // dev.kreienbuehl.ksecuremessage.protocol/KodiumProtocolEngine.initiateSession|initiateSession(dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity;dev.kreienbuehl.ksecuremessage.model.PreKeyBundle){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryAuthorization { // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryAuthorization|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryStatement, kotlin/ByteArray, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryAuthorization.<init>|<init>(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryStatement;kotlin.ByteArray;kotlin.ByteArray){}[0]
+
+    final val proofOfPossession // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryAuthorization.proofOfPossession|{}proofOfPossession[0]
+        final fun <get-proofOfPossession>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryAuthorization.proofOfPossession.<get-proofOfPossession>|<get-proofOfPossession>(){}[0]
+    final val recoverySignature // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryAuthorization.recoverySignature|{}recoverySignature[0]
+        final fun <get-recoverySignature>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryAuthorization.recoverySignature.<get-recoverySignature>|<get-recoverySignature>(){}[0]
+    final val statement // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryAuthorization.statement|{}statement[0]
+        final fun <get-statement>(): dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryStatement // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryAuthorization.statement.<get-statement>|<get-statement>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryAuthorization.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge { // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallengeId, kotlin/ByteArray, kotlin/Long, kotlin.time/Instant) // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallengeId;kotlin.ByteArray;kotlin.Long;kotlin.time.Instant){}[0]
+
+    final val authEpoch // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge.authEpoch|{}authEpoch[0]
+        final fun <get-authEpoch>(): kotlin/Long // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge.authEpoch.<get-authEpoch>|<get-authEpoch>(){}[0]
+    final val expiresAt // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge.expiresAt|{}expiresAt[0]
+        final fun <get-expiresAt>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge.expiresAt.<get-expiresAt>|<get-expiresAt>(){}[0]
+    final val id // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge.id|{}id[0]
+        final fun <get-id>(): dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallengeId // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge.id.<get-id>|<get-id>(){}[0]
+    final val nonce // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge.nonce|{}nonce[0]
+        final fun <get-nonce>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge.nonce.<get-nonce>|<get-nonce>(){}[0]
+    final val target // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge.target|{}target[0]
+        final fun <get-target>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge.target.<get-target>|<get-target>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge.toString|toString(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge.Companion|null[0]
+        final const val NONCE_SIZE // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge.Companion.NONCE_SIZE|{}NONCE_SIZE[0]
+            final fun <get-NONCE_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge.Companion.NONCE_SIZE.<get-NONCE_SIZE>|<get-NONCE_SIZE>(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallengeId { // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallengeId|null[0]
+    constructor <init>(kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallengeId.<init>|<init>(kotlin.ByteArray){}[0]
+
+    final val bytes // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallengeId.bytes|{}bytes[0]
+        final fun <get-bytes>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallengeId.bytes.<get-bytes>|<get-bytes>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallengeId.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallengeId.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallengeId.toString|toString(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallengeId.Companion|null[0]
+        final const val SIZE // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallengeId.Companion.SIZE|{}SIZE[0]
+            final fun <get-SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallengeId.Companion.SIZE.<get-SIZE>|<get-SIZE>(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryId { // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryId|null[0]
+    constructor <init>(kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryId.<init>|<init>(kotlin.ByteArray){}[0]
+
+    final val bytes // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryId.bytes|{}bytes[0]
+        final fun <get-bytes>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryId.bytes.<get-bytes>|<get-bytes>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryId.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryId.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryId.toString|toString(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryId.Companion|null[0]
+        final const val SIZE // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryId.Companion.SIZE|{}SIZE[0]
+            final fun <get-SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryId.Companion.SIZE.<get-SIZE>|<get-SIZE>(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey { // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey|null[0]
+    final val publicKey // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey.publicKey|{}publicKey[0]
+        final fun <get-publicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey.publicKey.<get-publicKey>|<get-publicKey>(){}[0]
+
+    final fun encode(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey.encode|encode(){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey.toString|toString(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey.Companion|null[0]
+        final const val TEXT_LENGTH // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey.Companion.TEXT_LENGTH|{}TEXT_LENGTH[0]
+            final fun <get-TEXT_LENGTH>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey.Companion.TEXT_LENGTH.<get-TEXT_LENGTH>|<get-TEXT_LENGTH>(){}[0]
+
+        final fun decode(kotlin/String): dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey.Companion.decode|decode(kotlin.String){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKeyRegistration { // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKeyRegistration|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/UserId, kotlin/ByteArray, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKeyRegistration.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.UserId;kotlin.ByteArray;kotlin.ByteArray){}[0]
+
+    final val proofOfPossession // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKeyRegistration.proofOfPossession|{}proofOfPossession[0]
+        final fun <get-proofOfPossession>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKeyRegistration.proofOfPossession.<get-proofOfPossession>|<get-proofOfPossession>(){}[0]
+    final val publicKey // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKeyRegistration.publicKey|{}publicKey[0]
+        final fun <get-publicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKeyRegistration.publicKey.<get-publicKey>|<get-publicKey>(){}[0]
+    final val userId // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKeyRegistration.userId|{}userId[0]
+        final fun <get-userId>(): dev.kreienbuehl.ksecuremessage.model/UserId // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKeyRegistration.userId.<get-userId>|<get-userId>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKeyRegistration.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryStatement { // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryStatement|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge, kotlin/ByteArray, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryStatement.<init>|<init>(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge;kotlin.ByteArray;kotlin.ByteArray){}[0]
+
+    final val challenge // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryStatement.challenge|{}challenge[0]
+        final fun <get-challenge>(): dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryStatement.challenge.<get-challenge>|<get-challenge>(){}[0]
+    final val recoveryPublicKey // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryStatement.recoveryPublicKey|{}recoveryPublicKey[0]
+        final fun <get-recoveryPublicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryStatement.recoveryPublicKey.<get-recoveryPublicKey>|<get-recoveryPublicKey>(){}[0]
+    final val replacementPublicKey // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryStatement.replacementPublicKey|{}replacementPublicKey[0]
+        final fun <get-replacementPublicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryStatement.replacementPublicKey.<get-replacementPublicKey>|<get-replacementPublicKey>(){}[0]
+    final val target // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryStatement.target|{}target[0]
+        final fun <get-target>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryStatement.target.<get-target>|<get-target>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryStatement.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/LocalIdentity { // dev.kreienbuehl.ksecuremessage.protocol/LocalIdentity|null[0]
+    constructor <init>(kotlin/ByteArray, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/LocalIdentity.<init>|<init>(kotlin.ByteArray;kotlin.ByteArray){}[0]
+
+    final val privateKey // dev.kreienbuehl.ksecuremessage.protocol/LocalIdentity.privateKey|{}privateKey[0]
+        final fun <get-privateKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/LocalIdentity.privateKey.<get-privateKey>|<get-privateKey>(){}[0]
+    final val publicKey // dev.kreienbuehl.ksecuremessage.protocol/LocalIdentity.publicKey|{}publicKey[0]
+        final fun <get-publicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/LocalIdentity.publicKey.<get-publicKey>|<get-publicKey>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/LocalIdentity.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/OneTimePreKeyPair { // dev.kreienbuehl.ksecuremessage.protocol/OneTimePreKeyPair|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId, kotlin/ByteArray, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/OneTimePreKeyPair.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId;kotlin.ByteArray;kotlin.ByteArray){}[0]
+
+    final val id // dev.kreienbuehl.ksecuremessage.protocol/OneTimePreKeyPair.id|{}id[0]
+        final fun <get-id>(): dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId // dev.kreienbuehl.ksecuremessage.protocol/OneTimePreKeyPair.id.<get-id>|<get-id>(){}[0]
+    final val privateKey // dev.kreienbuehl.ksecuremessage.protocol/OneTimePreKeyPair.privateKey|{}privateKey[0]
+        final fun <get-privateKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/OneTimePreKeyPair.privateKey.<get-privateKey>|<get-privateKey>(){}[0]
+    final val publicKey // dev.kreienbuehl.ksecuremessage.protocol/OneTimePreKeyPair.publicKey|{}publicKey[0]
+        final fun <get-publicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/OneTimePreKeyPair.publicKey.<get-publicKey>|<get-publicKey>(){}[0]
+
+    final fun toPublic(): dev.kreienbuehl.ksecuremessage.model/PublicOneTimePreKey // dev.kreienbuehl.ksecuremessage.protocol/OneTimePreKeyPair.toPublic|toPublic(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/OneTimePreKeyPair.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey { // dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey|null[0]
+    constructor <init>(kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey.<init>|<init>(kotlin.ByteArray){}[0]
+
+    final val bytes // dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey.bytes|{}bytes[0]
+        final fun <get-bytes>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey.bytes.<get-bytes>|<get-bytes>(){}[0]
+
+    final fun contentEquals(kotlin/ByteArray): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey.contentEquals|contentEquals(kotlin.ByteArray){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey.toString|toString(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey.Companion|null[0]
+        final const val SIZE // dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey.Companion.SIZE|{}SIZE[0]
+            final fun <get-SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey.Companion.SIZE.<get-SIZE>|<get-SIZE>(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationAuthorization { // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationAuthorization|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationStatement, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationAuthorization.<init>|<init>(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCancellationStatement;kotlin.ByteArray){}[0]
+
+    final val signature // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationAuthorization.signature|{}signature[0]
+        final fun <get-signature>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationAuthorization.signature.<get-signature>|<get-signature>(){}[0]
+    final val statement // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationAuthorization.statement|{}statement[0]
+        final fun <get-statement>(): dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationStatement // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationAuthorization.statement.<get-statement>|<get-statement>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationAuthorization.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationStatement { // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationStatement|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/UserId, dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId, kotlin/Long, kotlin/ByteArray, kotlin.time/Instant, kotlin.time/Instant) // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationStatement.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.UserId;dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetId;kotlin.Long;kotlin.ByteArray;kotlin.time.Instant;kotlin.time.Instant){}[0]
+
+    final val currentPublicKey // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationStatement.currentPublicKey|{}currentPublicKey[0]
+        final fun <get-currentPublicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationStatement.currentPublicKey.<get-currentPublicKey>|<get-currentPublicKey>(){}[0]
+    final val eligibleAt // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationStatement.eligibleAt|{}eligibleAt[0]
+        final fun <get-eligibleAt>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationStatement.eligibleAt.<get-eligibleAt>|<get-eligibleAt>(){}[0]
+    final val expectedEpoch // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationStatement.expectedEpoch|{}expectedEpoch[0]
+        final fun <get-expectedEpoch>(): kotlin/Long // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationStatement.expectedEpoch.<get-expectedEpoch>|<get-expectedEpoch>(){}[0]
+    final val requestedAt // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationStatement.requestedAt|{}requestedAt[0]
+        final fun <get-requestedAt>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationStatement.requestedAt.<get-requestedAt>|<get-requestedAt>(){}[0]
+    final val resetId // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationStatement.resetId|{}resetId[0]
+        final fun <get-resetId>(): dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationStatement.resetId.<get-resetId>|<get-resetId>(){}[0]
+    final val userId // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationStatement.userId|{}userId[0]
+        final fun <get-userId>(): dev.kreienbuehl.ksecuremessage.model/UserId // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationStatement.userId.<get-userId>|<get-userId>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationStatement.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionAuthorization { // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionAuthorization|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionAuthorization.<init>|<init>(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCompletionStatement;kotlin.ByteArray){}[0]
+
+    final val newKeyProofOfPossession // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionAuthorization.newKeyProofOfPossession|{}newKeyProofOfPossession[0]
+        final fun <get-newKeyProofOfPossession>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionAuthorization.newKeyProofOfPossession.<get-newKeyProofOfPossession>|<get-newKeyProofOfPossession>(){}[0]
+    final val statement // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionAuthorization.statement|{}statement[0]
+        final fun <get-statement>(): dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionAuthorization.statement.<get-statement>|<get-statement>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionAuthorization.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionId { // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionId|null[0]
+    constructor <init>(kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionId.<init>|<init>(kotlin.ByteArray){}[0]
+
+    final val bytes // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionId.bytes|{}bytes[0]
+        final fun <get-bytes>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionId.bytes.<get-bytes>|<get-bytes>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionId.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionId.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionId.toString|toString(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionId.Companion|null[0]
+        final const val SIZE // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionId.Companion.SIZE|{}SIZE[0]
+            final fun <get-SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionId.Companion.SIZE.<get-SIZE>|<get-SIZE>(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement { // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/UserId, dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId, kotlin/Long, kotlin/ByteArray, kotlin/ByteArray, kotlin.time/Instant, kotlin.time/Instant, dev.kreienbuehl.ksecuremessage.model/DeviceAddress) // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.UserId;dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetId;kotlin.Long;kotlin.ByteArray;kotlin.ByteArray;kotlin.time.Instant;kotlin.time.Instant;dev.kreienbuehl.ksecuremessage.model.DeviceAddress){}[0]
+
+    final val completer // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement.completer|{}completer[0]
+        final fun <get-completer>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement.completer.<get-completer>|<get-completer>(){}[0]
+    final val currentPublicKey // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement.currentPublicKey|{}currentPublicKey[0]
+        final fun <get-currentPublicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement.currentPublicKey.<get-currentPublicKey>|<get-currentPublicKey>(){}[0]
+    final val eligibleAt // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement.eligibleAt|{}eligibleAt[0]
+        final fun <get-eligibleAt>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement.eligibleAt.<get-eligibleAt>|<get-eligibleAt>(){}[0]
+    final val expectedEpoch // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement.expectedEpoch|{}expectedEpoch[0]
+        final fun <get-expectedEpoch>(): kotlin/Long // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement.expectedEpoch.<get-expectedEpoch>|<get-expectedEpoch>(){}[0]
+    final val newPublicKey // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement.newPublicKey|{}newPublicKey[0]
+        final fun <get-newPublicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement.newPublicKey.<get-newPublicKey>|<get-newPublicKey>(){}[0]
+    final val requestedAt // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement.requestedAt|{}requestedAt[0]
+        final fun <get-requestedAt>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement.requestedAt.<get-requestedAt>|<get-requestedAt>(){}[0]
+    final val resetId // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement.resetId|{}resetId[0]
+        final fun <get-resetId>(): dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetId // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement.resetId.<get-resetId>|<get-resetId>(){}[0]
+    final val userId // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement.userId|{}userId[0]
+        final fun <get-userId>(): dev.kreienbuehl.ksecuremessage.model/UserId // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement.userId.<get-userId>|<get-userId>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQuery { // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQuery|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQueryStatement, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQuery.<init>|<init>(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetStatusQueryStatement;kotlin.ByteArray){}[0]
+
+    final val signature // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQuery.signature|{}signature[0]
+        final fun <get-signature>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQuery.signature.<get-signature>|<get-signature>(){}[0]
+    final val statement // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQuery.statement|{}statement[0]
+        final fun <get-statement>(): dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQueryStatement // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQuery.statement.<get-statement>|<get-statement>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQuery.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQueryStatement { // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQueryStatement|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/UserId, kotlin/ByteArray, kotlin.time/Instant) // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQueryStatement.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.UserId;kotlin.ByteArray;kotlin.time.Instant){}[0]
+
+    final val currentPublicKey // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQueryStatement.currentPublicKey|{}currentPublicKey[0]
+        final fun <get-currentPublicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQueryStatement.currentPublicKey.<get-currentPublicKey>|<get-currentPublicKey>(){}[0]
+    final val timestamp // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQueryStatement.timestamp|{}timestamp[0]
+        final fun <get-timestamp>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQueryStatement.timestamp.<get-timestamp>|<get-timestamp>(){}[0]
+    final val userId // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQueryStatement.userId|{}userId[0]
+        final fun <get-userId>(): dev.kreienbuehl.ksecuremessage.model/UserId // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQueryStatement.userId.<get-userId>|<get-userId>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQueryStatement.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationAuthorization { // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationAuthorization|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationAuthorization.<init>|<init>(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationStatement;kotlin.ByteArray){}[0]
+
+    final val signature // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationAuthorization.signature|{}signature[0]
+        final fun <get-signature>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationAuthorization.signature.<get-signature>|<get-signature>(){}[0]
+    final val statement // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationAuthorization.statement|{}statement[0]
+        final fun <get-statement>(): dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationAuthorization.statement.<get-statement>|<get-statement>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationAuthorization.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationId { // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationId|null[0]
+    constructor <init>(kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationId.<init>|<init>(kotlin.ByteArray){}[0]
+
+    final val bytes // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationId.bytes|{}bytes[0]
+        final fun <get-bytes>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationId.bytes.<get-bytes>|<get-bytes>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationId.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationId.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationId.toString|toString(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationId.Companion|null[0]
+        final const val SIZE // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationId.Companion.SIZE|{}SIZE[0]
+            final fun <get-SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationId.Companion.SIZE.<get-SIZE>|<get-SIZE>(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement { // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/UserId, dev.kreienbuehl.ksecuremessage.model/DeviceAddress, kotlin/ByteArray, kotlin/Long, kotlin.time/Instant, dev.kreienbuehl.ksecuremessage.protocol/RequestNonce) // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.UserId;dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.ByteArray;kotlin.Long;kotlin.time.Instant;dev.kreienbuehl.ksecuremessage.protocol.RequestNonce){}[0]
+
+    final val authorizer // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement.authorizer|{}authorizer[0]
+        final fun <get-authorizer>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement.authorizer.<get-authorizer>|<get-authorizer>(){}[0]
+    final val currentPublicKey // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement.currentPublicKey|{}currentPublicKey[0]
+        final fun <get-currentPublicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement.currentPublicKey.<get-currentPublicKey>|<get-currentPublicKey>(){}[0]
+    final val expectedEpoch // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement.expectedEpoch|{}expectedEpoch[0]
+        final fun <get-expectedEpoch>(): kotlin/Long // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement.expectedEpoch.<get-expectedEpoch>|<get-expectedEpoch>(){}[0]
+    final val nonce // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement.nonce|{}nonce[0]
+        final fun <get-nonce>(): dev.kreienbuehl.ksecuremessage.protocol/RequestNonce // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement.nonce.<get-nonce>|<get-nonce>(){}[0]
+    final val timestamp // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement.timestamp|{}timestamp[0]
+        final fun <get-timestamp>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement.timestamp.<get-timestamp>|<get-timestamp>(){}[0]
+    final val userId // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement.userId|{}userId[0]
+        final fun <get-userId>(): dev.kreienbuehl.ksecuremessage.model/UserId // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement.userId.<get-userId>|<get-userId>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationAuthorization { // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationAuthorization|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement, kotlin/ByteArray, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationAuthorization.<init>|<init>(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationStatement;kotlin.ByteArray;kotlin.ByteArray){}[0]
+
+    final val currentKeySignature // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationAuthorization.currentKeySignature|{}currentKeySignature[0]
+        final fun <get-currentKeySignature>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationAuthorization.currentKeySignature.<get-currentKeySignature>|<get-currentKeySignature>(){}[0]
+    final val newKeyProofOfPossession // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationAuthorization.newKeyProofOfPossession|{}newKeyProofOfPossession[0]
+        final fun <get-newKeyProofOfPossession>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationAuthorization.newKeyProofOfPossession.<get-newKeyProofOfPossession>|<get-newKeyProofOfPossession>(){}[0]
+    final val statement // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationAuthorization.statement|{}statement[0]
+        final fun <get-statement>(): dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationAuthorization.statement.<get-statement>|<get-statement>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationAuthorization.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationId { // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationId|null[0]
+    constructor <init>(kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationId.<init>|<init>(kotlin.ByteArray){}[0]
+
+    final val bytes // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationId.bytes|{}bytes[0]
+        final fun <get-bytes>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationId.bytes.<get-bytes>|<get-bytes>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationId.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationId.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationId.toString|toString(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationId.Companion|null[0]
+        final const val SIZE // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationId.Companion.SIZE|{}SIZE[0]
+            final fun <get-SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationId.Companion.SIZE.<get-SIZE>|<get-SIZE>(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement { // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/UserId, dev.kreienbuehl.ksecuremessage.model/DeviceAddress, kotlin/ByteArray, kotlin/ByteArray, kotlin/Long, kotlin.time/Instant, dev.kreienbuehl.ksecuremessage.protocol/RequestNonce) // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.UserId;dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.ByteArray;kotlin.ByteArray;kotlin.Long;kotlin.time.Instant;dev.kreienbuehl.ksecuremessage.protocol.RequestNonce){}[0]
+
+    final val authorizer // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement.authorizer|{}authorizer[0]
+        final fun <get-authorizer>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement.authorizer.<get-authorizer>|<get-authorizer>(){}[0]
+    final val currentPublicKey // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement.currentPublicKey|{}currentPublicKey[0]
+        final fun <get-currentPublicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement.currentPublicKey.<get-currentPublicKey>|<get-currentPublicKey>(){}[0]
+    final val expectedEpoch // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement.expectedEpoch|{}expectedEpoch[0]
+        final fun <get-expectedEpoch>(): kotlin/Long // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement.expectedEpoch.<get-expectedEpoch>|<get-expectedEpoch>(){}[0]
+    final val newPublicKey // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement.newPublicKey|{}newPublicKey[0]
+        final fun <get-newPublicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement.newPublicKey.<get-newPublicKey>|<get-newPublicKey>(){}[0]
+    final val nonce // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement.nonce|{}nonce[0]
+        final fun <get-nonce>(): dev.kreienbuehl.ksecuremessage.protocol/RequestNonce // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement.nonce.<get-nonce>|<get-nonce>(){}[0]
+    final val timestamp // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement.timestamp|{}timestamp[0]
+        final fun <get-timestamp>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement.timestamp.<get-timestamp>|<get-timestamp>(){}[0]
+    final val userId // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement.userId|{}userId[0]
+        final fun <get-userId>(): dev.kreienbuehl.ksecuremessage.model/UserId // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement.userId.<get-userId>|<get-userId>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/RequestAuthentication { // dev.kreienbuehl.ksecuremessage.protocol/RequestAuthentication|null[0]
+    constructor <init>(kotlin.time/Instant, dev.kreienbuehl.ksecuremessage.protocol/RequestNonce, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/RequestAuthentication.<init>|<init>(kotlin.time.Instant;dev.kreienbuehl.ksecuremessage.protocol.RequestNonce;kotlin.ByteArray){}[0]
+
+    final val nonce // dev.kreienbuehl.ksecuremessage.protocol/RequestAuthentication.nonce|{}nonce[0]
+        final fun <get-nonce>(): dev.kreienbuehl.ksecuremessage.protocol/RequestNonce // dev.kreienbuehl.ksecuremessage.protocol/RequestAuthentication.nonce.<get-nonce>|<get-nonce>(){}[0]
+    final val signature // dev.kreienbuehl.ksecuremessage.protocol/RequestAuthentication.signature|{}signature[0]
+        final fun <get-signature>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RequestAuthentication.signature.<get-signature>|<get-signature>(){}[0]
+    final val timestamp // dev.kreienbuehl.ksecuremessage.protocol/RequestAuthentication.timestamp|{}timestamp[0]
+        final fun <get-timestamp>(): kotlin.time/Instant // dev.kreienbuehl.ksecuremessage.protocol/RequestAuthentication.timestamp.<get-timestamp>|<get-timestamp>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/RequestAuthentication.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/RequestNonce { // dev.kreienbuehl.ksecuremessage.protocol/RequestNonce|null[0]
+    constructor <init>(kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/RequestNonce.<init>|<init>(kotlin.ByteArray){}[0]
+
+    final val bytes // dev.kreienbuehl.ksecuremessage.protocol/RequestNonce.bytes|{}bytes[0]
+        final fun <get-bytes>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RequestNonce.bytes.<get-bytes>|<get-bytes>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/RequestNonce.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/RequestNonce.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/RequestNonce.toString|toString(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.protocol/RequestNonce.Companion|null[0]
+        final const val SIZE // dev.kreienbuehl.ksecuremessage.protocol/RequestNonce.Companion.SIZE|{}SIZE[0]
+            final fun <get-SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/RequestNonce.Companion.SIZE.<get-SIZE>|<get-SIZE>(){}[0]
+
+        final fun random(): dev.kreienbuehl.ksecuremessage.protocol/RequestNonce // dev.kreienbuehl.ksecuremessage.protocol/RequestNonce.Companion.random|random(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/SafetyFingerprint { // dev.kreienbuehl.ksecuremessage.protocol/SafetyFingerprint|null[0]
+    constructor <init>(kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/SafetyFingerprint.<init>|<init>(kotlin.ByteArray){}[0]
+
+    final val bytes // dev.kreienbuehl.ksecuremessage.protocol/SafetyFingerprint.bytes|{}bytes[0]
+        final fun <get-bytes>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/SafetyFingerprint.bytes.<get-bytes>|<get-bytes>(){}[0]
+
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/SafetyFingerprint.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/SafetyFingerprint.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/SafetyFingerprint.toString|toString(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.protocol/SafetyFingerprint.Companion|null[0]
+        final const val SIZE // dev.kreienbuehl.ksecuremessage.protocol/SafetyFingerprint.Companion.SIZE|{}SIZE[0]
+            final fun <get-SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/SafetyFingerprint.Companion.SIZE.<get-SIZE>|<get-SIZE>(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber { // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber|null[0]
+    final val displayString // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.displayString|{}displayString[0]
+        final fun <get-displayString>(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.displayString.<get-displayString>|<get-displayString>(){}[0]
+    final val fingerprint // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.fingerprint|{}fingerprint[0]
+        final fun <get-fingerprint>(): dev.kreienbuehl.ksecuremessage.protocol/SafetyFingerprint // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.fingerprint.<get-fingerprint>|<get-fingerprint>(){}[0]
+    final val first // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.first|{}first[0]
+        final fun <get-first>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.first.<get-first>|<get-first>(){}[0]
+    final val groups // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.groups|{}groups[0]
+        final fun <get-groups>(): kotlin.collections/List<kotlin/String> // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.groups.<get-groups>|<get-groups>(){}[0]
+    final val second // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.second|{}second[0]
+        final fun <get-second>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.second.<get-second>|<get-second>(){}[0]
+
+    final fun compare(dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberPayload): dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberComparison // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.compare|compare(dev.kreienbuehl.ksecuremessage.protocol.SafetyNumberPayload){}[0]
+    final fun encode(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.encode|encode(){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.toString|toString(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.Companion|null[0]
+        final const val GROUP_COUNT // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.Companion.GROUP_COUNT|{}GROUP_COUNT[0]
+            final fun <get-GROUP_COUNT>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.Companion.GROUP_COUNT.<get-GROUP_COUNT>|<get-GROUP_COUNT>(){}[0]
+        final const val GROUP_DIGITS // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.Companion.GROUP_DIGITS|{}GROUP_DIGITS[0]
+            final fun <get-GROUP_DIGITS>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.Companion.GROUP_DIGITS.<get-GROUP_DIGITS>|<get-GROUP_DIGITS>(){}[0]
+
+        final fun derive(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey, dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.protocol/PublicIdentityKey): dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumber.Companion.derive|derive(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.protocol.PublicIdentityKey;dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.protocol.PublicIdentityKey){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberPayload { // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberPayload|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.protocol/SafetyFingerprint) // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberPayload.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.protocol.SafetyFingerprint){}[0]
+
+    final val fingerprint // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberPayload.fingerprint|{}fingerprint[0]
+        final fun <get-fingerprint>(): dev.kreienbuehl.ksecuremessage.protocol/SafetyFingerprint // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberPayload.fingerprint.<get-fingerprint>|<get-fingerprint>(){}[0]
+    final val first // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberPayload.first|{}first[0]
+        final fun <get-first>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberPayload.first.<get-first>|<get-first>(){}[0]
+    final val second // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberPayload.second|{}second[0]
+        final fun <get-second>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberPayload.second.<get-second>|<get-second>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberPayload.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/SecureSession { // dev.kreienbuehl.ksecuremessage.protocol/SecureSession|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/SecureSession.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.ByteArray){}[0]
+
+    final val remote // dev.kreienbuehl.ksecuremessage.protocol/SecureSession.remote|{}remote[0]
+        final fun <get-remote>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.protocol/SecureSession.remote.<get-remote>|<get-remote>(){}[0]
+    final val state // dev.kreienbuehl.ksecuremessage.protocol/SecureSession.state|{}state[0]
+        final fun <get-state>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/SecureSession.state.<get-state>|<get-state>(){}[0]
+
+    final fun component1(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.protocol/SecureSession.component1|component1(){}[0]
+    final fun component2(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/SecureSession.component2|component2(){}[0]
+    final fun copy(dev.kreienbuehl.ksecuremessage.model/DeviceAddress = ..., kotlin/ByteArray = ...): dev.kreienbuehl.ksecuremessage.protocol/SecureSession // dev.kreienbuehl.ksecuremessage.protocol/SecureSession.copy|copy(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.ByteArray){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/SecureSession.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/SecureSession.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/SecureSession.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/ServerRequest { // dev.kreienbuehl.ksecuremessage.protocol/ServerRequest|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, kotlin/String, kotlin/String, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/ServerRequest.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.String;kotlin.String;kotlin.ByteArray){}[0]
+
+    final val address // dev.kreienbuehl.ksecuremessage.protocol/ServerRequest.address|{}address[0]
+        final fun <get-address>(): dev.kreienbuehl.ksecuremessage.model/DeviceAddress // dev.kreienbuehl.ksecuremessage.protocol/ServerRequest.address.<get-address>|<get-address>(){}[0]
+    final val body // dev.kreienbuehl.ksecuremessage.protocol/ServerRequest.body|{}body[0]
+        final fun <get-body>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/ServerRequest.body.<get-body>|<get-body>(){}[0]
+    final val method // dev.kreienbuehl.ksecuremessage.protocol/ServerRequest.method|{}method[0]
+        final fun <get-method>(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerRequest.method.<get-method>|<get-method>(){}[0]
+    final val path // dev.kreienbuehl.ksecuremessage.protocol/ServerRequest.path|{}path[0]
+        final fun <get-path>(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerRequest.path.<get-path>|<get-path>(){}[0]
+
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerRequest.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/SessionAcceptanceResult { // dev.kreienbuehl.ksecuremessage.protocol/SessionAcceptanceResult|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.protocol/SecureSession, kotlin/ByteArray, dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId?) // dev.kreienbuehl.ksecuremessage.protocol/SessionAcceptanceResult.<init>|<init>(dev.kreienbuehl.ksecuremessage.protocol.SecureSession;kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId?){}[0]
+
+    final val consumedOneTimePreKeyId // dev.kreienbuehl.ksecuremessage.protocol/SessionAcceptanceResult.consumedOneTimePreKeyId|{}consumedOneTimePreKeyId[0]
+        final fun <get-consumedOneTimePreKeyId>(): dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId? // dev.kreienbuehl.ksecuremessage.protocol/SessionAcceptanceResult.consumedOneTimePreKeyId.<get-consumedOneTimePreKeyId>|<get-consumedOneTimePreKeyId>(){}[0]
+    final val plaintext // dev.kreienbuehl.ksecuremessage.protocol/SessionAcceptanceResult.plaintext|{}plaintext[0]
+        final fun <get-plaintext>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/SessionAcceptanceResult.plaintext.<get-plaintext>|<get-plaintext>(){}[0]
+    final val session // dev.kreienbuehl.ksecuremessage.protocol/SessionAcceptanceResult.session|{}session[0]
+        final fun <get-session>(): dev.kreienbuehl.ksecuremessage.protocol/SecureSession // dev.kreienbuehl.ksecuremessage.protocol/SessionAcceptanceResult.session.<get-session>|<get-session>(){}[0]
+
+    final fun component1(): dev.kreienbuehl.ksecuremessage.protocol/SecureSession // dev.kreienbuehl.ksecuremessage.protocol/SessionAcceptanceResult.component1|component1(){}[0]
+    final fun component2(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/SessionAcceptanceResult.component2|component2(){}[0]
+    final fun component3(): dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId? // dev.kreienbuehl.ksecuremessage.protocol/SessionAcceptanceResult.component3|component3(){}[0]
+    final fun copy(dev.kreienbuehl.ksecuremessage.protocol/SecureSession = ..., kotlin/ByteArray = ..., dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId? = ...): dev.kreienbuehl.ksecuremessage.protocol/SessionAcceptanceResult // dev.kreienbuehl.ksecuremessage.protocol/SessionAcceptanceResult.copy|copy(dev.kreienbuehl.ksecuremessage.protocol.SecureSession;kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId?){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/SessionAcceptanceResult.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/SessionAcceptanceResult.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/SessionAcceptanceResult.toString|toString(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/SessionInfo { // dev.kreienbuehl.ksecuremessage.protocol/SessionInfo|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.protocol/SessionInitiationId?, kotlin/Boolean, dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId? = ...) // dev.kreienbuehl.ksecuremessage.protocol/SessionInfo.<init>|<init>(dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId?;kotlin.Boolean;dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId?){}[0]
+
+    final val acceptedSignedPreKeyId // dev.kreienbuehl.ksecuremessage.protocol/SessionInfo.acceptedSignedPreKeyId|{}acceptedSignedPreKeyId[0]
+        final fun <get-acceptedSignedPreKeyId>(): dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId? // dev.kreienbuehl.ksecuremessage.protocol/SessionInfo.acceptedSignedPreKeyId.<get-acceptedSignedPreKeyId>|<get-acceptedSignedPreKeyId>(){}[0]
+    final val awaitingReply // dev.kreienbuehl.ksecuremessage.protocol/SessionInfo.awaitingReply|{}awaitingReply[0]
+        final fun <get-awaitingReply>(): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/SessionInfo.awaitingReply.<get-awaitingReply>|<get-awaitingReply>(){}[0]
+    final val initiationId // dev.kreienbuehl.ksecuremessage.protocol/SessionInfo.initiationId|{}initiationId[0]
+        final fun <get-initiationId>(): dev.kreienbuehl.ksecuremessage.protocol/SessionInitiationId? // dev.kreienbuehl.ksecuremessage.protocol/SessionInfo.initiationId.<get-initiationId>|<get-initiationId>(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/SessionInitiationId : kotlin/Comparable<dev.kreienbuehl.ksecuremessage.protocol/SessionInitiationId> { // dev.kreienbuehl.ksecuremessage.protocol/SessionInitiationId|null[0]
+    constructor <init>(kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/SessionInitiationId.<init>|<init>(kotlin.ByteArray){}[0]
+
+    final val bytes // dev.kreienbuehl.ksecuremessage.protocol/SessionInitiationId.bytes|{}bytes[0]
+        final fun <get-bytes>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/SessionInitiationId.bytes.<get-bytes>|<get-bytes>(){}[0]
+
+    final fun compareTo(dev.kreienbuehl.ksecuremessage.protocol/SessionInitiationId): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/SessionInitiationId.compareTo|compareTo(dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/SessionInitiationId.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/SessionInitiationId.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/SessionInitiationId.toString|toString(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.protocol/SessionInitiationId.Companion|null[0]
+        final const val SIZE // dev.kreienbuehl.ksecuremessage.protocol/SessionInitiationId.Companion.SIZE|{}SIZE[0]
+            final fun <get-SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/SessionInitiationId.Companion.SIZE.<get-SIZE>|<get-SIZE>(){}[0]
+
+        final fun of(dev.kreienbuehl.ksecuremessage.model/PreKeyMessage, kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.protocol/SessionInitiationId // dev.kreienbuehl.ksecuremessage.protocol/SessionInitiationId.Companion.of|of(dev.kreienbuehl.ksecuremessage.model.PreKeyMessage;kotlin.ByteArray){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.protocol/SignedPreKeyPair { // dev.kreienbuehl.ksecuremessage.protocol/SignedPreKeyPair|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId, kotlin/ByteArray, kotlin/ByteArray, kotlin/ByteArray) // dev.kreienbuehl.ksecuremessage.protocol/SignedPreKeyPair.<init>|<init>(dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId;kotlin.ByteArray;kotlin.ByteArray;kotlin.ByteArray){}[0]
+
+    final val id // dev.kreienbuehl.ksecuremessage.protocol/SignedPreKeyPair.id|{}id[0]
+        final fun <get-id>(): dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId // dev.kreienbuehl.ksecuremessage.protocol/SignedPreKeyPair.id.<get-id>|<get-id>(){}[0]
+    final val privateKey // dev.kreienbuehl.ksecuremessage.protocol/SignedPreKeyPair.privateKey|{}privateKey[0]
+        final fun <get-privateKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/SignedPreKeyPair.privateKey.<get-privateKey>|<get-privateKey>(){}[0]
+    final val publicKey // dev.kreienbuehl.ksecuremessage.protocol/SignedPreKeyPair.publicKey|{}publicKey[0]
+        final fun <get-publicKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/SignedPreKeyPair.publicKey.<get-publicKey>|<get-publicKey>(){}[0]
+    final val signature // dev.kreienbuehl.ksecuremessage.protocol/SignedPreKeyPair.signature|{}signature[0]
+        final fun <get-signature>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/SignedPreKeyPair.signature.<get-signature>|<get-signature>(){}[0]
+
+    final fun toPublic(): dev.kreienbuehl.ksecuremessage.model/PublicSignedPreKey // dev.kreienbuehl.ksecuremessage.protocol/SignedPreKeyPair.toPublic|toPublic(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/SignedPreKeyPair.toString|toString(){}[0]
+}
+
+sealed class dev.kreienbuehl.ksecuremessage.protocol/ProtocolException : kotlin/Exception { // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException|null[0]
+    final class DecryptionFailed : dev.kreienbuehl.ksecuremessage.protocol/ProtocolException { // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.DecryptionFailed|null[0]
+        constructor <init>(kotlin/String, kotlin/Throwable? = ...) // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.DecryptionFailed.<init>|<init>(kotlin.String;kotlin.Throwable?){}[0]
+    }
+
+    final class InvalidMessage : dev.kreienbuehl.ksecuremessage.protocol/ProtocolException { // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.InvalidMessage|null[0]
+        constructor <init>(kotlin/String, kotlin/Throwable? = ...) // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.InvalidMessage.<init>|<init>(kotlin.String;kotlin.Throwable?){}[0]
+    }
+
+    final class InvalidPreKeyBundle : dev.kreienbuehl.ksecuremessage.protocol/ProtocolException { // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.InvalidPreKeyBundle|null[0]
+        constructor <init>(kotlin/String, kotlin/Throwable? = ...) // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.InvalidPreKeyBundle.<init>|<init>(kotlin.String;kotlin.Throwable?){}[0]
+    }
+
+    final class InvalidSessionState : dev.kreienbuehl.ksecuremessage.protocol/ProtocolException { // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.InvalidSessionState|null[0]
+        constructor <init>(kotlin/String, kotlin/Throwable? = ...) // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.InvalidSessionState.<init>|<init>(kotlin.String;kotlin.Throwable?){}[0]
+    }
+
+    final class InvalidSignature : dev.kreienbuehl.ksecuremessage.protocol/ProtocolException { // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.InvalidSignature|null[0]
+        constructor <init>(kotlin/String) // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.InvalidSignature.<init>|<init>(kotlin.String){}[0]
+    }
+
+    final class MalformedMessage : dev.kreienbuehl.ksecuremessage.protocol/ProtocolException { // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.MalformedMessage|null[0]
+        constructor <init>(kotlin/String, kotlin/Throwable? = ...) // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.MalformedMessage.<init>|<init>(kotlin.String;kotlin.Throwable?){}[0]
+    }
+
+    final class MalformedSecurePayload : dev.kreienbuehl.ksecuremessage.protocol/ProtocolException { // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.MalformedSecurePayload|null[0]
+        constructor <init>(kotlin/String, kotlin/Throwable? = ...) // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.MalformedSecurePayload.<init>|<init>(kotlin.String;kotlin.Throwable?){}[0]
+    }
+
+    final class MessageTooLarge : dev.kreienbuehl.ksecuremessage.protocol/ProtocolException { // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.MessageTooLarge|null[0]
+        constructor <init>(kotlin/String) // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.MessageTooLarge.<init>|<init>(kotlin.String){}[0]
+    }
+
+    final class UnknownMessageType : dev.kreienbuehl.ksecuremessage.protocol/ProtocolException { // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.UnknownMessageType|null[0]
+        constructor <init>(kotlin/Int) // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.UnknownMessageType.<init>|<init>(kotlin.Int){}[0]
+
+        final val type // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.UnknownMessageType.type|{}type[0]
+            final fun <get-type>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.UnknownMessageType.type.<get-type>|<get-type>(){}[0]
+    }
+
+    final class UnsupportedSecurePayloadVersion : dev.kreienbuehl.ksecuremessage.protocol/ProtocolException { // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.UnsupportedSecurePayloadVersion|null[0]
+        constructor <init>(kotlin/Int) // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.UnsupportedSecurePayloadVersion.<init>|<init>(kotlin.Int){}[0]
+
+        final val version // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.UnsupportedSecurePayloadVersion.version|{}version[0]
+            final fun <get-version>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.UnsupportedSecurePayloadVersion.version.<get-version>|<get-version>(){}[0]
+    }
+
+    final class UnsupportedWireVersion : dev.kreienbuehl.ksecuremessage.protocol/ProtocolException { // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.UnsupportedWireVersion|null[0]
+        constructor <init>(kotlin/Int) // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.UnsupportedWireVersion.<init>|<init>(kotlin.Int){}[0]
+
+        final val version // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.UnsupportedWireVersion.version|{}version[0]
+            final fun <get-version>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/ProtocolException.UnsupportedWireVersion.version.<get-version>|<get-version>(){}[0]
+    }
+}
+
+final object dev.kreienbuehl.ksecuremessage.protocol/ApplicationMessageDigest { // dev.kreienbuehl.ksecuremessage.protocol/ApplicationMessageDigest|null[0]
+    final const val SIZE // dev.kreienbuehl.ksecuremessage.protocol/ApplicationMessageDigest.SIZE|{}SIZE[0]
+        final fun <get-SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/ApplicationMessageDigest.SIZE.<get-SIZE>|<get-SIZE>(){}[0]
+
+    final fun of(kotlin/ByteArray): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/ApplicationMessageDigest.of|of(kotlin.ByteArray){}[0]
+}
+
+final object dev.kreienbuehl.ksecuremessage.protocol/CiphertextMessageCodec { // dev.kreienbuehl.ksecuremessage.protocol/CiphertextMessageCodec|null[0]
+    final const val MAX_ENCODED_SIZE // dev.kreienbuehl.ksecuremessage.protocol/CiphertextMessageCodec.MAX_ENCODED_SIZE|{}MAX_ENCODED_SIZE[0]
+        final fun <get-MAX_ENCODED_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/CiphertextMessageCodec.MAX_ENCODED_SIZE.<get-MAX_ENCODED_SIZE>|<get-MAX_ENCODED_SIZE>(){}[0]
+    final const val MAX_RATCHET_PAYLOAD_SIZE // dev.kreienbuehl.ksecuremessage.protocol/CiphertextMessageCodec.MAX_RATCHET_PAYLOAD_SIZE|{}MAX_RATCHET_PAYLOAD_SIZE[0]
+        final fun <get-MAX_RATCHET_PAYLOAD_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/CiphertextMessageCodec.MAX_RATCHET_PAYLOAD_SIZE.<get-MAX_RATCHET_PAYLOAD_SIZE>|<get-MAX_RATCHET_PAYLOAD_SIZE>(){}[0]
+    final const val TYPE_PREKEY_MESSAGE // dev.kreienbuehl.ksecuremessage.protocol/CiphertextMessageCodec.TYPE_PREKEY_MESSAGE|{}TYPE_PREKEY_MESSAGE[0]
+        final fun <get-TYPE_PREKEY_MESSAGE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/CiphertextMessageCodec.TYPE_PREKEY_MESSAGE.<get-TYPE_PREKEY_MESSAGE>|<get-TYPE_PREKEY_MESSAGE>(){}[0]
+    final const val TYPE_RATCHET_MESSAGE // dev.kreienbuehl.ksecuremessage.protocol/CiphertextMessageCodec.TYPE_RATCHET_MESSAGE|{}TYPE_RATCHET_MESSAGE[0]
+        final fun <get-TYPE_RATCHET_MESSAGE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/CiphertextMessageCodec.TYPE_RATCHET_MESSAGE.<get-TYPE_RATCHET_MESSAGE>|<get-TYPE_RATCHET_MESSAGE>(){}[0]
+    final const val WIRE_VERSION // dev.kreienbuehl.ksecuremessage.protocol/CiphertextMessageCodec.WIRE_VERSION|{}WIRE_VERSION[0]
+        final fun <get-WIRE_VERSION>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/CiphertextMessageCodec.WIRE_VERSION.<get-WIRE_VERSION>|<get-WIRE_VERSION>(){}[0]
+
+    final fun decode(kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.model/CiphertextMessage // dev.kreienbuehl.ksecuremessage.protocol/CiphertextMessageCodec.decode|decode(kotlin.ByteArray){}[0]
+    final fun encode(dev.kreienbuehl.ksecuremessage.model/CiphertextMessage): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/CiphertextMessageCodec.encode|encode(dev.kreienbuehl.ksecuremessage.model.CiphertextMessage){}[0]
+}
+
+final object dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotation { // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotation|null[0]
+    final const val PUBLIC_KEY_SIZE // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotation.PUBLIC_KEY_SIZE|{}PUBLIC_KEY_SIZE[0]
+        final fun <get-PUBLIC_KEY_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotation.PUBLIC_KEY_SIZE.<get-PUBLIC_KEY_SIZE>|<get-PUBLIC_KEY_SIZE>(){}[0]
+    final const val SIGNATURE_SIZE // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotation.SIGNATURE_SIZE|{}SIGNATURE_SIZE[0]
+        final fun <get-SIGNATURE_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotation.SIGNATURE_SIZE.<get-SIGNATURE_SIZE>|<get-SIGNATURE_SIZE>(){}[0]
+
+    final val VALIDITY_WINDOW // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotation.VALIDITY_WINDOW|{}VALIDITY_WINDOW[0]
+        final fun <get-VALIDITY_WINDOW>(): kotlin.time/Duration // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotation.VALIDITY_WINDOW.<get-VALIDITY_WINDOW>|<get-VALIDITY_WINDOW>(){}[0]
+
+    final fun authorizationInput(dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotation.authorizationInput|authorizationInput(dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationStatement){}[0]
+    final fun create(dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair, dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair, dev.kreienbuehl.ksecuremessage.model/DeviceAddress, kotlin/Long, kotlin.time/Instant, dev.kreienbuehl.ksecuremessage.protocol/RequestNonce = ...): dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationAuthorization // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotation.create|create(dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair;dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair;dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.Long;kotlin.time.Instant;dev.kreienbuehl.ksecuremessage.protocol.RequestNonce){}[0]
+    final fun proofOfPossessionInput(dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotation.proofOfPossessionInput|proofOfPossessionInput(dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationStatement){}[0]
+    final fun rotationId(dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationStatement): dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationId // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotation.rotationId|rotationId(dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationStatement){}[0]
+    final fun verifyAuthorization(kotlin/ByteArray, dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationAuthorization): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotation.verifyAuthorization|verifyAuthorization(kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization){}[0]
+    final fun verifyProofOfPossession(dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotationAuthorization): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationRotation.verifyProofOfPossession|verifyProofOfPossession(dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationRotationAuthorization){}[0]
+}
+
+final object dev.kreienbuehl.ksecuremessage.protocol/DeviceRecovery { // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecovery|null[0]
+    final const val PUBLIC_KEY_SIZE // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecovery.PUBLIC_KEY_SIZE|{}PUBLIC_KEY_SIZE[0]
+        final fun <get-PUBLIC_KEY_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecovery.PUBLIC_KEY_SIZE.<get-PUBLIC_KEY_SIZE>|<get-PUBLIC_KEY_SIZE>(){}[0]
+    final const val SIGNATURE_SIZE // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecovery.SIGNATURE_SIZE|{}SIGNATURE_SIZE[0]
+        final fun <get-SIGNATURE_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecovery.SIGNATURE_SIZE.<get-SIGNATURE_SIZE>|<get-SIGNATURE_SIZE>(){}[0]
+
+    final val VALIDITY_WINDOW // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecovery.VALIDITY_WINDOW|{}VALIDITY_WINDOW[0]
+        final fun <get-VALIDITY_WINDOW>(): kotlin.time/Duration // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecovery.VALIDITY_WINDOW.<get-VALIDITY_WINDOW>|<get-VALIDITY_WINDOW>(){}[0]
+
+    final fun authorizationInput(dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecovery.authorizationInput|authorizationInput(dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryRequest){}[0]
+    final fun authorize(dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair, dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest): dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryAuthorization // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecovery.authorize|authorize(dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair;dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryRequest){}[0]
+    final fun prepare(dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair, dev.kreienbuehl.ksecuremessage.model/DeviceAddress, dev.kreienbuehl.ksecuremessage.model/DeviceAddress, kotlin.time/Instant, dev.kreienbuehl.ksecuremessage.protocol/RequestNonce = ...): dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecovery.prepare|prepare(dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair;dev.kreienbuehl.ksecuremessage.model.DeviceAddress;dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.time.Instant;dev.kreienbuehl.ksecuremessage.protocol.RequestNonce){}[0]
+    final fun proofOfPossessionInput(dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecovery.proofOfPossessionInput|proofOfPossessionInput(dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryRequest){}[0]
+    final fun recoveryId(dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest): dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryId // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecovery.recoveryId|recoveryId(dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryRequest){}[0]
+    final fun verifyAuthorization(kotlin/ByteArray, dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryAuthorization): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecovery.verifyAuthorization|verifyAuthorization(kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization){}[0]
+    final fun verifyProofOfPossession(dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecovery.verifyProofOfPossession|verifyProofOfPossession(dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryRequest){}[0]
+}
+
+final object dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryCodec { // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryCodec|null[0]
+    final fun decodeAuthorization(kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryAuthorization // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryCodec.decodeAuthorization|decodeAuthorization(kotlin.ByteArray){}[0]
+    final fun decodeRequest(kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryCodec.decodeRequest|decodeRequest(kotlin.ByteArray){}[0]
+    final fun encodeAuthorization(dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryAuthorization): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryCodec.encodeAuthorization|encodeAuthorization(dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryAuthorization){}[0]
+    final fun encodeRequest(dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryRequest): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/DeviceRecoveryCodec.encodeRequest|encodeRequest(dev.kreienbuehl.ksecuremessage.protocol.DeviceRecoveryRequest){}[0]
+}
+
+final object dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecovery { // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecovery|null[0]
+    final const val PUBLIC_KEY_SIZE // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecovery.PUBLIC_KEY_SIZE|{}PUBLIC_KEY_SIZE[0]
+        final fun <get-PUBLIC_KEY_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecovery.PUBLIC_KEY_SIZE.<get-PUBLIC_KEY_SIZE>|<get-PUBLIC_KEY_SIZE>(){}[0]
+    final const val SIGNATURE_SIZE // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecovery.SIGNATURE_SIZE|{}SIGNATURE_SIZE[0]
+        final fun <get-SIGNATURE_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecovery.SIGNATURE_SIZE.<get-SIGNATURE_SIZE>|<get-SIGNATURE_SIZE>(){}[0]
+
+    final val CHALLENGE_LIFETIME // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecovery.CHALLENGE_LIFETIME|{}CHALLENGE_LIFETIME[0]
+        final fun <get-CHALLENGE_LIFETIME>(): kotlin.time/Duration // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecovery.CHALLENGE_LIFETIME.<get-CHALLENGE_LIFETIME>|<get-CHALLENGE_LIFETIME>(){}[0]
+
+    final fun authorizationInput(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryStatement): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecovery.authorizationInput|authorizationInput(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryStatement){}[0]
+    final fun authorize(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey, dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair, dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryChallenge): dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryAuthorization // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecovery.authorize|authorize(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey;dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair;dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallenge){}[0]
+    final fun keyRegistrationInput(dev.kreienbuehl.ksecuremessage.model/UserId, kotlin/ByteArray): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecovery.keyRegistrationInput|keyRegistrationInput(dev.kreienbuehl.ksecuremessage.model.UserId;kotlin.ByteArray){}[0]
+    final fun proofOfPossessionInput(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryStatement): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecovery.proofOfPossessionInput|proofOfPossessionInput(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryStatement){}[0]
+    final fun recoveryId(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryStatement): dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryId // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecovery.recoveryId|recoveryId(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryStatement){}[0]
+    final fun registerKey(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey, dev.kreienbuehl.ksecuremessage.model/UserId): dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKeyRegistration // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecovery.registerKey|registerKey(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey;dev.kreienbuehl.ksecuremessage.model.UserId){}[0]
+    final fun verifyKeyRegistration(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKeyRegistration): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecovery.verifyKeyRegistration|verifyKeyRegistration(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration){}[0]
+    final fun verifyProofOfPossession(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryAuthorization): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecovery.verifyProofOfPossession|verifyProofOfPossession(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization){}[0]
+    final fun verifyRecoverySignature(kotlin/ByteArray, dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryAuthorization): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecovery.verifyRecoverySignature|verifyRecoverySignature(kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryAuthorization){}[0]
+}
+
+final object dev.kreienbuehl.ksecuremessage.protocol/PreKeyFormat { // dev.kreienbuehl.ksecuremessage.protocol/PreKeyFormat|null[0]
+    final const val MAX_ONE_TIME_PRE_KEYS_PER_PUBLICATION // dev.kreienbuehl.ksecuremessage.protocol/PreKeyFormat.MAX_ONE_TIME_PRE_KEYS_PER_PUBLICATION|{}MAX_ONE_TIME_PRE_KEYS_PER_PUBLICATION[0]
+        final fun <get-MAX_ONE_TIME_PRE_KEYS_PER_PUBLICATION>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/PreKeyFormat.MAX_ONE_TIME_PRE_KEYS_PER_PUBLICATION.<get-MAX_ONE_TIME_PRE_KEYS_PER_PUBLICATION>|<get-MAX_ONE_TIME_PRE_KEYS_PER_PUBLICATION>(){}[0]
+    final const val PUBLIC_KEY_SIZE // dev.kreienbuehl.ksecuremessage.protocol/PreKeyFormat.PUBLIC_KEY_SIZE|{}PUBLIC_KEY_SIZE[0]
+        final fun <get-PUBLIC_KEY_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/PreKeyFormat.PUBLIC_KEY_SIZE.<get-PUBLIC_KEY_SIZE>|<get-PUBLIC_KEY_SIZE>(){}[0]
+    final const val SIGNATURE_SIZE // dev.kreienbuehl.ksecuremessage.protocol/PreKeyFormat.SIGNATURE_SIZE|{}SIGNATURE_SIZE[0]
+        final fun <get-SIGNATURE_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/PreKeyFormat.SIGNATURE_SIZE.<get-SIGNATURE_SIZE>|<get-SIGNATURE_SIZE>(){}[0]
+
+    final fun validate(dev.kreienbuehl.ksecuremessage.model/PreKeyPublication) // dev.kreienbuehl.ksecuremessage.protocol/PreKeyFormat.validate|validate(dev.kreienbuehl.ksecuremessage.model.PreKeyPublication){}[0]
+}
+
+final object dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyReset { // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyReset|null[0]
+    final const val PUBLIC_KEY_SIZE // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyReset.PUBLIC_KEY_SIZE|{}PUBLIC_KEY_SIZE[0]
+        final fun <get-PUBLIC_KEY_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyReset.PUBLIC_KEY_SIZE.<get-PUBLIC_KEY_SIZE>|<get-PUBLIC_KEY_SIZE>(){}[0]
+    final const val SIGNATURE_SIZE // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyReset.SIGNATURE_SIZE|{}SIGNATURE_SIZE[0]
+        final fun <get-SIGNATURE_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyReset.SIGNATURE_SIZE.<get-SIGNATURE_SIZE>|<get-SIGNATURE_SIZE>(){}[0]
+
+    final val VALIDITY_WINDOW // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyReset.VALIDITY_WINDOW|{}VALIDITY_WINDOW[0]
+        final fun <get-VALIDITY_WINDOW>(): kotlin.time/Duration // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyReset.VALIDITY_WINDOW.<get-VALIDITY_WINDOW>|<get-VALIDITY_WINDOW>(){}[0]
+
+    final fun cancel(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey, dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending): dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationAuthorization // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyReset.cancel|cancel(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey;dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus.Pending){}[0]
+    final fun cancellationInput(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationStatement): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyReset.cancellationInput|cancellationInput(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCancellationStatement){}[0]
+    final fun complete(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey, dev.kreienbuehl.ksecuremessage.model/RecoveryKeyResetStatus.Pending, dev.kreienbuehl.ksecuremessage.model/DeviceAddress): dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionAuthorization // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyReset.complete|complete(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey;dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus.Pending;dev.kreienbuehl.ksecuremessage.model.DeviceAddress){}[0]
+    final fun completionId(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement): dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionId // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyReset.completionId|completionId(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCompletionStatement){}[0]
+    final fun proofOfPossessionInput(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionStatement): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyReset.proofOfPossessionInput|proofOfPossessionInput(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCompletionStatement){}[0]
+    final fun statusQuery(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey, dev.kreienbuehl.ksecuremessage.model/UserId, kotlin.time/Instant): dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQuery // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyReset.statusQuery|statusQuery(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey;dev.kreienbuehl.ksecuremessage.model.UserId;kotlin.time.Instant){}[0]
+    final fun statusQueryInput(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQueryStatement): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyReset.statusQueryInput|statusQueryInput(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetStatusQueryStatement){}[0]
+    final fun verifyCancellation(kotlin/ByteArray, dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCancellationAuthorization): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyReset.verifyCancellation|verifyCancellation(kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCancellationAuthorization){}[0]
+    final fun verifyNewKeyProofOfPossession(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetCompletionAuthorization): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyReset.verifyNewKeyProofOfPossession|verifyNewKeyProofOfPossession(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetCompletionAuthorization){}[0]
+    final fun verifyStatusQuery(kotlin/ByteArray, dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyResetStatusQuery): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyReset.verifyStatusQuery|verifyStatusQuery(kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetStatusQuery){}[0]
+}
+
+final object dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocation { // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocation|null[0]
+    final const val PUBLIC_KEY_SIZE // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocation.PUBLIC_KEY_SIZE|{}PUBLIC_KEY_SIZE[0]
+        final fun <get-PUBLIC_KEY_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocation.PUBLIC_KEY_SIZE.<get-PUBLIC_KEY_SIZE>|<get-PUBLIC_KEY_SIZE>(){}[0]
+    final const val SIGNATURE_SIZE // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocation.SIGNATURE_SIZE|{}SIGNATURE_SIZE[0]
+        final fun <get-SIGNATURE_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocation.SIGNATURE_SIZE.<get-SIGNATURE_SIZE>|<get-SIGNATURE_SIZE>(){}[0]
+
+    final fun authorizationInput(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocation.authorizationInput|authorizationInput(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationStatement){}[0]
+    final fun authorize(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey, dev.kreienbuehl.ksecuremessage.model/DeviceAddress, kotlin/Long, kotlin.time/Instant, dev.kreienbuehl.ksecuremessage.protocol/RequestNonce = ...): dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationAuthorization // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocation.authorize|authorize(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey;dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.Long;kotlin.time.Instant;dev.kreienbuehl.ksecuremessage.protocol.RequestNonce){}[0]
+    final fun revocationId(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationStatement): dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationId // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocation.revocationId|revocationId(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationStatement){}[0]
+    final fun verifySignature(kotlin/ByteArray, dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocationAuthorization): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRevocation.verifySignature|verifySignature(kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization){}[0]
+}
+
+final object dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotation { // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotation|null[0]
+    final const val PUBLIC_KEY_SIZE // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotation.PUBLIC_KEY_SIZE|{}PUBLIC_KEY_SIZE[0]
+        final fun <get-PUBLIC_KEY_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotation.PUBLIC_KEY_SIZE.<get-PUBLIC_KEY_SIZE>|<get-PUBLIC_KEY_SIZE>(){}[0]
+    final const val SIGNATURE_SIZE // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotation.SIGNATURE_SIZE|{}SIGNATURE_SIZE[0]
+        final fun <get-SIGNATURE_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotation.SIGNATURE_SIZE.<get-SIGNATURE_SIZE>|<get-SIGNATURE_SIZE>(){}[0]
+
+    final val VALIDITY_WINDOW // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotation.VALIDITY_WINDOW|{}VALIDITY_WINDOW[0]
+        final fun <get-VALIDITY_WINDOW>(): kotlin.time/Duration // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotation.VALIDITY_WINDOW.<get-VALIDITY_WINDOW>|<get-VALIDITY_WINDOW>(){}[0]
+
+    final fun authorizationInput(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotation.authorizationInput|authorizationInput(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationStatement){}[0]
+    final fun authorize(dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey, dev.kreienbuehl.ksecuremessage.protocol/LastDeviceRecoveryKey, dev.kreienbuehl.ksecuremessage.model/DeviceAddress, kotlin/Long, kotlin.time/Instant, dev.kreienbuehl.ksecuremessage.protocol/RequestNonce = ...): dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationAuthorization // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotation.authorize|authorize(dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey;dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey;dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.Long;kotlin.time.Instant;dev.kreienbuehl.ksecuremessage.protocol.RequestNonce){}[0]
+    final fun proofOfPossessionInput(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotation.proofOfPossessionInput|proofOfPossessionInput(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationStatement){}[0]
+    final fun rotationId(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationStatement): dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationId // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotation.rotationId|rotationId(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationStatement){}[0]
+    final fun verifyCurrentKeySignature(kotlin/ByteArray, dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationAuthorization): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotation.verifyCurrentKeySignature|verifyCurrentKeySignature(kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization){}[0]
+    final fun verifyNewKeyProofOfPossession(dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotationAuthorization): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/RecoveryKeyRotation.verifyNewKeyProofOfPossession|verifyNewKeyProofOfPossession(dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization){}[0]
+}
+
+final object dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberCodec { // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberCodec|null[0]
+    final fun decode(kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberPayload // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberCodec.decode|decode(kotlin.ByteArray){}[0]
+    final fun encode(dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberPayload): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/SafetyNumberCodec.encode|encode(dev.kreienbuehl.ksecuremessage.protocol.SafetyNumberPayload){}[0]
+}
+
+final object dev.kreienbuehl.ksecuremessage.protocol/SecurePayloadCodec { // dev.kreienbuehl.ksecuremessage.protocol/SecurePayloadCodec|null[0]
+    final const val APPLICATION_HEADER_SIZE // dev.kreienbuehl.ksecuremessage.protocol/SecurePayloadCodec.APPLICATION_HEADER_SIZE|{}APPLICATION_HEADER_SIZE[0]
+        final fun <get-APPLICATION_HEADER_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/SecurePayloadCodec.APPLICATION_HEADER_SIZE.<get-APPLICATION_HEADER_SIZE>|<get-APPLICATION_HEADER_SIZE>(){}[0]
+    final const val MAX_BODY_SIZE // dev.kreienbuehl.ksecuremessage.protocol/SecurePayloadCodec.MAX_BODY_SIZE|{}MAX_BODY_SIZE[0]
+        final fun <get-MAX_BODY_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/SecurePayloadCodec.MAX_BODY_SIZE.<get-MAX_BODY_SIZE>|<get-MAX_BODY_SIZE>(){}[0]
+    final const val MAX_ENCODED_SIZE // dev.kreienbuehl.ksecuremessage.protocol/SecurePayloadCodec.MAX_ENCODED_SIZE|{}MAX_ENCODED_SIZE[0]
+        final fun <get-MAX_ENCODED_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/SecurePayloadCodec.MAX_ENCODED_SIZE.<get-MAX_ENCODED_SIZE>|<get-MAX_ENCODED_SIZE>(){}[0]
+    final const val TYPE_ACKNOWLEDGEMENT // dev.kreienbuehl.ksecuremessage.protocol/SecurePayloadCodec.TYPE_ACKNOWLEDGEMENT|{}TYPE_ACKNOWLEDGEMENT[0]
+        final fun <get-TYPE_ACKNOWLEDGEMENT>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/SecurePayloadCodec.TYPE_ACKNOWLEDGEMENT.<get-TYPE_ACKNOWLEDGEMENT>|<get-TYPE_ACKNOWLEDGEMENT>(){}[0]
+    final const val TYPE_APPLICATION_MESSAGE // dev.kreienbuehl.ksecuremessage.protocol/SecurePayloadCodec.TYPE_APPLICATION_MESSAGE|{}TYPE_APPLICATION_MESSAGE[0]
+        final fun <get-TYPE_APPLICATION_MESSAGE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/SecurePayloadCodec.TYPE_APPLICATION_MESSAGE.<get-TYPE_APPLICATION_MESSAGE>|<get-TYPE_APPLICATION_MESSAGE>(){}[0]
+    final const val VERSION // dev.kreienbuehl.ksecuremessage.protocol/SecurePayloadCodec.VERSION|{}VERSION[0]
+        final fun <get-VERSION>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/SecurePayloadCodec.VERSION.<get-VERSION>|<get-VERSION>(){}[0]
+
+    final fun decode(kotlin/ByteArray): dev.kreienbuehl.ksecuremessage.protocol/SecurePayload // dev.kreienbuehl.ksecuremessage.protocol/SecurePayloadCodec.decode|decode(kotlin.ByteArray){}[0]
+    final fun encode(dev.kreienbuehl.ksecuremessage.protocol/SecurePayload): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/SecurePayloadCodec.encode|encode(dev.kreienbuehl.ksecuremessage.protocol.SecurePayload){}[0]
+}
+
+final object dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths { // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths|null[0]
+    final const val LAST_DEVICE_RECOVERY // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.LAST_DEVICE_RECOVERY|{}LAST_DEVICE_RECOVERY[0]
+        final fun <get-LAST_DEVICE_RECOVERY>(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.LAST_DEVICE_RECOVERY.<get-LAST_DEVICE_RECOVERY>|<get-LAST_DEVICE_RECOVERY>(){}[0]
+    final const val LAST_DEVICE_RECOVERY_CHALLENGE // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.LAST_DEVICE_RECOVERY_CHALLENGE|{}LAST_DEVICE_RECOVERY_CHALLENGE[0]
+        final fun <get-LAST_DEVICE_RECOVERY_CHALLENGE>(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.LAST_DEVICE_RECOVERY_CHALLENGE.<get-LAST_DEVICE_RECOVERY_CHALLENGE>|<get-LAST_DEVICE_RECOVERY_CHALLENGE>(){}[0]
+    final const val LAST_DEVICE_RECOVERY_KEY // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.LAST_DEVICE_RECOVERY_KEY|{}LAST_DEVICE_RECOVERY_KEY[0]
+        final fun <get-LAST_DEVICE_RECOVERY_KEY>(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.LAST_DEVICE_RECOVERY_KEY.<get-LAST_DEVICE_RECOVERY_KEY>|<get-LAST_DEVICE_RECOVERY_KEY>(){}[0]
+    final const val LAST_DEVICE_RECOVERY_KEY_RESET // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET|{}LAST_DEVICE_RECOVERY_KEY_RESET[0]
+        final fun <get-LAST_DEVICE_RECOVERY_KEY_RESET>(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET.<get-LAST_DEVICE_RECOVERY_KEY_RESET>|<get-LAST_DEVICE_RECOVERY_KEY_RESET>(){}[0]
+    final const val LAST_DEVICE_RECOVERY_KEY_RESET_CANCELLATION // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET_CANCELLATION|{}LAST_DEVICE_RECOVERY_KEY_RESET_CANCELLATION[0]
+        final fun <get-LAST_DEVICE_RECOVERY_KEY_RESET_CANCELLATION>(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET_CANCELLATION.<get-LAST_DEVICE_RECOVERY_KEY_RESET_CANCELLATION>|<get-LAST_DEVICE_RECOVERY_KEY_RESET_CANCELLATION>(){}[0]
+    final const val LAST_DEVICE_RECOVERY_KEY_RESET_COMPLETION // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET_COMPLETION|{}LAST_DEVICE_RECOVERY_KEY_RESET_COMPLETION[0]
+        final fun <get-LAST_DEVICE_RECOVERY_KEY_RESET_COMPLETION>(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET_COMPLETION.<get-LAST_DEVICE_RECOVERY_KEY_RESET_COMPLETION>|<get-LAST_DEVICE_RECOVERY_KEY_RESET_COMPLETION>(){}[0]
+    final const val LAST_DEVICE_RECOVERY_KEY_RESET_STATUS // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET_STATUS|{}LAST_DEVICE_RECOVERY_KEY_RESET_STATUS[0]
+        final fun <get-LAST_DEVICE_RECOVERY_KEY_RESET_STATUS>(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET_STATUS.<get-LAST_DEVICE_RECOVERY_KEY_RESET_STATUS>|<get-LAST_DEVICE_RECOVERY_KEY_RESET_STATUS>(){}[0]
+    final const val LAST_DEVICE_RECOVERY_KEY_REVOCATION // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_REVOCATION|{}LAST_DEVICE_RECOVERY_KEY_REVOCATION[0]
+        final fun <get-LAST_DEVICE_RECOVERY_KEY_REVOCATION>(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_REVOCATION.<get-LAST_DEVICE_RECOVERY_KEY_REVOCATION>|<get-LAST_DEVICE_RECOVERY_KEY_REVOCATION>(){}[0]
+    final const val LAST_DEVICE_RECOVERY_KEY_ROTATION // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_ROTATION|{}LAST_DEVICE_RECOVERY_KEY_ROTATION[0]
+        final fun <get-LAST_DEVICE_RECOVERY_KEY_ROTATION>(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_ROTATION.<get-LAST_DEVICE_RECOVERY_KEY_ROTATION>|<get-LAST_DEVICE_RECOVERY_KEY_ROTATION>(){}[0]
+    final const val MESSAGES // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.MESSAGES|{}MESSAGES[0]
+        final fun <get-MESSAGES>(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.MESSAGES.<get-MESSAGES>|<get-MESSAGES>(){}[0]
+    final const val PRE_KEYS // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.PRE_KEYS|{}PRE_KEYS[0]
+        final fun <get-PRE_KEYS>(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.PRE_KEYS.<get-PRE_KEYS>|<get-PRE_KEYS>(){}[0]
+    final const val PRE_KEY_BUNDLE // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.PRE_KEY_BUNDLE|{}PRE_KEY_BUNDLE[0]
+        final fun <get-PRE_KEY_BUNDLE>(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.PRE_KEY_BUNDLE.<get-PRE_KEY_BUNDLE>|<get-PRE_KEY_BUNDLE>(){}[0]
+    final const val REGISTRATION // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.REGISTRATION|{}REGISTRATION[0]
+        final fun <get-REGISTRATION>(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.REGISTRATION.<get-REGISTRATION>|<get-REGISTRATION>(){}[0]
+    final const val REGISTRATION_RECOVERY // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.REGISTRATION_RECOVERY|{}REGISTRATION_RECOVERY[0]
+        final fun <get-REGISTRATION_RECOVERY>(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.REGISTRATION_RECOVERY.<get-REGISTRATION_RECOVERY>|<get-REGISTRATION_RECOVERY>(){}[0]
+    final const val REGISTRATION_ROTATION // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.REGISTRATION_ROTATION|{}REGISTRATION_ROTATION[0]
+        final fun <get-REGISTRATION_ROTATION>(): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.REGISTRATION_ROTATION.<get-REGISTRATION_ROTATION>|<get-REGISTRATION_ROTATION>(){}[0]
+
+    final fun device(dev.kreienbuehl.ksecuremessage.model/DeviceAddress, kotlin/String): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.device|device(dev.kreienbuehl.ksecuremessage.model.DeviceAddress;kotlin.String){}[0]
+    final fun encodeSegment(kotlin/String): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.encodeSegment|encodeSegment(kotlin.String){}[0]
+    final fun user(dev.kreienbuehl.ksecuremessage.model/UserId, kotlin/String): kotlin/String // dev.kreienbuehl.ksecuremessage.protocol/ServerApiPaths.user|user(dev.kreienbuehl.ksecuremessage.model.UserId;kotlin.String){}[0]
+}
+
+final object dev.kreienbuehl.ksecuremessage.protocol/ServerRequestAuthentication { // dev.kreienbuehl.ksecuremessage.protocol/ServerRequestAuthentication|null[0]
+    final const val PUBLIC_KEY_SIZE // dev.kreienbuehl.ksecuremessage.protocol/ServerRequestAuthentication.PUBLIC_KEY_SIZE|{}PUBLIC_KEY_SIZE[0]
+        final fun <get-PUBLIC_KEY_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/ServerRequestAuthentication.PUBLIC_KEY_SIZE.<get-PUBLIC_KEY_SIZE>|<get-PUBLIC_KEY_SIZE>(){}[0]
+    final const val SIGNATURE_SIZE // dev.kreienbuehl.ksecuremessage.protocol/ServerRequestAuthentication.SIGNATURE_SIZE|{}SIGNATURE_SIZE[0]
+        final fun <get-SIGNATURE_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.protocol/ServerRequestAuthentication.SIGNATURE_SIZE.<get-SIGNATURE_SIZE>|<get-SIGNATURE_SIZE>(){}[0]
+
+    final fun canonicalInput(dev.kreienbuehl.ksecuremessage.protocol/ServerRequest, kotlin.time/Instant, dev.kreienbuehl.ksecuremessage.protocol/RequestNonce): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.protocol/ServerRequestAuthentication.canonicalInput|canonicalInput(dev.kreienbuehl.ksecuremessage.protocol.ServerRequest;kotlin.time.Instant;dev.kreienbuehl.ksecuremessage.protocol.RequestNonce){}[0]
+    final fun sign(dev.kreienbuehl.ksecuremessage.protocol/DeviceAuthenticationKeyPair, dev.kreienbuehl.ksecuremessage.protocol/ServerRequest, kotlin.time/Instant, dev.kreienbuehl.ksecuremessage.protocol/RequestNonce = ...): dev.kreienbuehl.ksecuremessage.protocol/RequestAuthentication // dev.kreienbuehl.ksecuremessage.protocol/ServerRequestAuthentication.sign|sign(dev.kreienbuehl.ksecuremessage.protocol.DeviceAuthenticationKeyPair;dev.kreienbuehl.ksecuremessage.protocol.ServerRequest;kotlin.time.Instant;dev.kreienbuehl.ksecuremessage.protocol.RequestNonce){}[0]
+    final fun verify(kotlin/ByteArray, dev.kreienbuehl.ksecuremessage.protocol/ServerRequest, dev.kreienbuehl.ksecuremessage.protocol/RequestAuthentication): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.protocol/ServerRequestAuthentication.verify|verify(kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.protocol.ServerRequest;dev.kreienbuehl.ksecuremessage.protocol.RequestAuthentication){}[0]
+}

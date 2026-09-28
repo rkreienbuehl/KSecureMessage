@@ -6,6 +6,8 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+description = "KSecureMessage client HTTP transport on Ktor (HTTP API v1)."
+
 kotlin {
     jvm()
 

@@ -1,0 +1,25 @@
+// Klib ABI Dump
+// Targets: [iosArm64, iosSimulatorArm64, iosX64, macosArm64, macosX64]
+// Alias: macos => [macosArm64, macosX64]
+// Rendering settings:
+// - Signature version: 2
+// - Show manifest properties: true
+// - Show declarations: true
+
+// Library unique name: <dev.kreienbuehl.ksecuremessage.storage.keyprovider:apple>
+final class dev.kreienbuehl.ksecuremessage.storage.keyprovider.apple/AppleStorageKeyProvider : dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyProvider { // dev.kreienbuehl.ksecuremessage.storage.keyprovider.apple/AppleStorageKeyProvider|null[0]
+    constructor <init>(kotlin/String = ..., kotlin/String? = ...) // dev.kreienbuehl.ksecuremessage.storage.keyprovider.apple/AppleStorageKeyProvider.<init>|<init>(kotlin.String;kotlin.String?){}[0]
+
+    final suspend fun createKey(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey // dev.kreienbuehl.ksecuremessage.storage.keyprovider.apple/AppleStorageKeyProvider.createKey|createKey(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+    final suspend fun key(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey? // dev.kreienbuehl.ksecuremessage.storage.keyprovider.apple/AppleStorageKeyProvider.key|key(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+    final suspend fun loadOrCreateKey(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey // dev.kreienbuehl.ksecuremessage.storage.keyprovider.apple/AppleStorageKeyProvider.loadOrCreateKey|loadOrCreateKey(){}[0]
+    final suspend fun removeKey(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.storage.keyprovider.apple/AppleStorageKeyProvider.removeKey|removeKey(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.storage.keyprovider.apple/AppleStorageKeyProvider.Companion|null[0]
+        final const val DEFAULT_NAMESPACE // dev.kreienbuehl.ksecuremessage.storage.keyprovider.apple/AppleStorageKeyProvider.Companion.DEFAULT_NAMESPACE|{}DEFAULT_NAMESPACE[0]
+            final fun <get-DEFAULT_NAMESPACE>(): kotlin/String // dev.kreienbuehl.ksecuremessage.storage.keyprovider.apple/AppleStorageKeyProvider.Companion.DEFAULT_NAMESPACE.<get-DEFAULT_NAMESPACE>|<get-DEFAULT_NAMESPACE>(){}[0]
+    }
+}
+
+// Targets: [macos]
+final fun (dev.kreienbuehl.ksecuremessage.storage.keyprovider.apple/AppleStorageKeyProvider.Companion).dev.kreienbuehl.ksecuremessage.storage.keyprovider.apple/legacyFileKeychain(kotlin/String = ...): dev.kreienbuehl.ksecuremessage.storage.keyprovider.apple/AppleStorageKeyProvider // dev.kreienbuehl.ksecuremessage.storage.keyprovider.apple/legacyFileKeychain|legacyFileKeychain@dev.kreienbuehl.ksecuremessage.storage.keyprovider.apple.AppleStorageKeyProvider.Companion(kotlin.String){}[0]

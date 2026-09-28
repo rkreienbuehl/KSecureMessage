@@ -1,5 +1,6 @@
 package dev.kreienbuehl.ksecuremessage.storage.rotation
 
+import dev.kreienbuehl.ksecuremessage.InternalKSecureMessageApi
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionException
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionKey
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId
@@ -21,6 +22,7 @@ import kotlin.coroutines.cancellation.CancellationException
  * interrupted and resumed. Provider keys the storage does not name as retiring
  * (for example one created by an abandoned start) are never removed.
  */
+@InternalKSecureMessageApi
 class StorageKeyRotationManager(
     private val backend: StorageKeyRotationBackend,
     private val keyProvider: StorageKeyProvider,

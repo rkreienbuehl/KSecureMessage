@@ -1,5 +1,6 @@
 package dev.kreienbuehl.ksecuremessage.storage.rotation
 
+import dev.kreienbuehl.ksecuremessage.InternalKSecureMessageApi
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionKey
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId
 
@@ -16,6 +17,7 @@ import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId
  * changes nothing. A failure rolls back the whole call. Transition methods
  * never call the key provider; the manager does that between them.
  */
+@InternalKSecureMessageApi
 interface StorageKeyRotationBackend {
     /**
      * Runs [block] exclusively of every other operation on this storage

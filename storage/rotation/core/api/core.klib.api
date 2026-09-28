@@ -1,0 +1,176 @@
+// Klib ABI Dump
+// Targets: [iosArm64, iosSimulatorArm64, iosX64, js, linuxX64, macosArm64, macosX64, mingwX64, wasmJs]
+// Rendering settings:
+// - Signature version: 2
+// - Show manifest properties: true
+// - Show declarations: true
+
+// Library unique name: <dev.kreienbuehl.ksecuremessage.storage.rotation:core>
+final enum class dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase : kotlin/Enum<dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase> { // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase|null[0]
+    enum entry MIGRATING // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase.MIGRATING|null[0]
+    enum entry PREPARING // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase.PREPARING|null[0]
+    enum entry RETIRING // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase.RETIRING|null[0]
+    enum entry STABLE // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase.STABLE|null[0]
+
+    final val entries // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase> // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase> // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase.values|values#static(){}[0]
+}
+
+abstract interface dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationBackend { // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationBackend|null[0]
+    abstract suspend fun <#A1: kotlin/Any?> exclusive(kotlin.coroutines/SuspendFunction0<#A1>): #A1 // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationBackend.exclusive|exclusive(kotlin.coroutines.SuspendFunction0<0:0>){0§<kotlin.Any?>}[0]
+    abstract suspend fun activate(dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Preparing, dev.kreienbuehl.ksecuremessage.storage.encryption/StorageEncryptionKey) // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationBackend.activate|activate(dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationState.Preparing;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionKey){}[0]
+    abstract suspend fun complete(dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Retiring) // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationBackend.complete|complete(dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationState.Retiring){}[0]
+    abstract suspend fun keyReferences(): kotlin.collections/Map<dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId, kotlin/Long> // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationBackend.keyReferences|keyReferences(){}[0]
+    abstract suspend fun markRetiring(dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating, kotlin/Function1<kotlin.collections/Map<dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId, kotlin/Long>, kotlin/Unit>) // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationBackend.markRetiring|markRetiring(dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationState.Migrating;kotlin.Function1<kotlin.collections.Map<dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId,kotlin.Long>,kotlin.Unit>){}[0]
+    abstract suspend fun migrateBatch(dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating, kotlin/Int): kotlin/Long // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationBackend.migrateBatch|migrateBatch(dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationState.Migrating;kotlin.Int){}[0]
+    abstract suspend fun prepare(dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Stable, dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId) // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationBackend.prepare|prepare(dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationState.Stable;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+    abstract suspend fun remainingRecords(): kotlin/Long // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationBackend.remainingRecords|remainingRecords(){}[0]
+    abstract suspend fun state(): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationBackend.state|state(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationInProgressException : kotlin/IllegalStateException { // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationInProgressException|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus) // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationInProgressException.<init>|<init>(dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationStatus){}[0]
+
+    final val status // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationInProgressException.status|{}status[0]
+        final fun <get-status>(): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationInProgressException.status.<get-status>|<get-status>(){}[0]
+}
+
+final class dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationManager { // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationManager|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationBackend, dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyProvider) // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationManager.<init>|<init>(dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationBackend;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyProvider){}[0]
+
+    final suspend fun resume(kotlin/Int = ...): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationManager.resume|resume(kotlin.Int){}[0]
+    final suspend fun rotate(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationManager.rotate|rotate(){}[0]
+    final suspend fun status(): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationManager.status|status(){}[0]
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationManager.Companion|null[0]
+        final const val DEFAULT_BATCH_SIZE // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationManager.Companion.DEFAULT_BATCH_SIZE|{}DEFAULT_BATCH_SIZE[0]
+            final fun <get-DEFAULT_BATCH_SIZE>(): kotlin/Int // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationManager.Companion.DEFAULT_BATCH_SIZE.<get-DEFAULT_BATCH_SIZE>|<get-DEFAULT_BATCH_SIZE>(){}[0]
+    }
+}
+
+final class dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus { // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus|null[0]
+    constructor <init>(dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase, dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId, dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId?, dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId?, kotlin/Long) // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.<init>|<init>(dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationPhase;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId?;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId?;kotlin.Long){}[0]
+
+    final val currentKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.currentKeyId|{}currentKeyId[0]
+        final fun <get-currentKeyId>(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.currentKeyId.<get-currentKeyId>|<get-currentKeyId>(){}[0]
+    final val nextKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.nextKeyId|{}nextKeyId[0]
+        final fun <get-nextKeyId>(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId? // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.nextKeyId.<get-nextKeyId>|<get-nextKeyId>(){}[0]
+    final val phase // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.phase|{}phase[0]
+        final fun <get-phase>(): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.phase.<get-phase>|<get-phase>(){}[0]
+    final val remainingRecords // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.remainingRecords|{}remainingRecords[0]
+        final fun <get-remainingRecords>(): kotlin/Long // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.remainingRecords.<get-remainingRecords>|<get-remainingRecords>(){}[0]
+    final val retiringKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.retiringKeyId|{}retiringKeyId[0]
+        final fun <get-retiringKeyId>(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId? // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.retiringKeyId.<get-retiringKeyId>|<get-retiringKeyId>(){}[0]
+
+    final fun component1(): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.component1|component1(){}[0]
+    final fun component2(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.component2|component2(){}[0]
+    final fun component3(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId? // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.component3|component3(){}[0]
+    final fun component4(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId? // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.component4|component4(){}[0]
+    final fun component5(): kotlin/Long // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.component5|component5(){}[0]
+    final fun copy(dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase = ..., dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId = ..., dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId? = ..., dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId? = ..., kotlin/Long = ...): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.copy|copy(dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationPhase;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId?;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId?;kotlin.Long){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationStatus.toString|toString(){}[0]
+}
+
+sealed class dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState { // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState|null[0]
+    abstract val currentKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.currentKeyId|{}currentKeyId[0]
+        abstract fun <get-currentKeyId>(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.currentKeyId.<get-currentKeyId>|<get-currentKeyId>(){}[0]
+    abstract val highestKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.highestKeyId|{}highestKeyId[0]
+        abstract fun <get-highestKeyId>(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.highestKeyId.<get-highestKeyId>|<get-highestKeyId>(){}[0]
+    abstract val phase // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.phase|{}phase[0]
+        abstract fun <get-phase>(): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.phase.<get-phase>|<get-phase>(){}[0]
+    open val requiredKeyIds // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.requiredKeyIds|{}requiredKeyIds[0]
+        open fun <get-requiredKeyIds>(): kotlin.collections/Set<dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId> // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.requiredKeyIds.<get-requiredKeyIds>|<get-requiredKeyIds>(){}[0]
+
+    final class Migrating : dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState { // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId, dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId, dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId) // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating.<init>|<init>(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+
+        final val currentKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating.currentKeyId|{}currentKeyId[0]
+            final fun <get-currentKeyId>(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating.currentKeyId.<get-currentKeyId>|<get-currentKeyId>(){}[0]
+        final val highestKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating.highestKeyId|{}highestKeyId[0]
+            final fun <get-highestKeyId>(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating.highestKeyId.<get-highestKeyId>|<get-highestKeyId>(){}[0]
+        final val phase // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating.phase|{}phase[0]
+            final fun <get-phase>(): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating.phase.<get-phase>|<get-phase>(){}[0]
+        final val requiredKeyIds // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating.requiredKeyIds|{}requiredKeyIds[0]
+            final fun <get-requiredKeyIds>(): kotlin.collections/Set<dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId> // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating.requiredKeyIds.<get-requiredKeyIds>|<get-requiredKeyIds>(){}[0]
+        final val retiringKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating.retiringKeyId|{}retiringKeyId[0]
+            final fun <get-retiringKeyId>(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating.retiringKeyId.<get-retiringKeyId>|<get-retiringKeyId>(){}[0]
+
+        final fun component1(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating.component1|component1(){}[0]
+        final fun component2(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating.component2|component2(){}[0]
+        final fun component3(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating.component3|component3(){}[0]
+        final fun copy(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId = ..., dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId = ..., dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId = ...): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating.copy|copy(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Migrating.toString|toString(){}[0]
+    }
+
+    final class Preparing : dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState { // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Preparing|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId, dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId, dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId) // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Preparing.<init>|<init>(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+
+        final val currentKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Preparing.currentKeyId|{}currentKeyId[0]
+            final fun <get-currentKeyId>(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Preparing.currentKeyId.<get-currentKeyId>|<get-currentKeyId>(){}[0]
+        final val highestKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Preparing.highestKeyId|{}highestKeyId[0]
+            final fun <get-highestKeyId>(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Preparing.highestKeyId.<get-highestKeyId>|<get-highestKeyId>(){}[0]
+        final val nextKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Preparing.nextKeyId|{}nextKeyId[0]
+            final fun <get-nextKeyId>(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Preparing.nextKeyId.<get-nextKeyId>|<get-nextKeyId>(){}[0]
+        final val phase // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Preparing.phase|{}phase[0]
+            final fun <get-phase>(): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Preparing.phase.<get-phase>|<get-phase>(){}[0]
+
+        final fun component1(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Preparing.component1|component1(){}[0]
+        final fun component2(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Preparing.component2|component2(){}[0]
+        final fun component3(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Preparing.component3|component3(){}[0]
+        final fun copy(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId = ..., dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId = ..., dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId = ...): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Preparing // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Preparing.copy|copy(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Preparing.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Preparing.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Preparing.toString|toString(){}[0]
+    }
+
+    final class Retiring : dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState { // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Retiring|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId, dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId, dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId) // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Retiring.<init>|<init>(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+
+        final val currentKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Retiring.currentKeyId|{}currentKeyId[0]
+            final fun <get-currentKeyId>(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Retiring.currentKeyId.<get-currentKeyId>|<get-currentKeyId>(){}[0]
+        final val highestKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Retiring.highestKeyId|{}highestKeyId[0]
+            final fun <get-highestKeyId>(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Retiring.highestKeyId.<get-highestKeyId>|<get-highestKeyId>(){}[0]
+        final val phase // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Retiring.phase|{}phase[0]
+            final fun <get-phase>(): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Retiring.phase.<get-phase>|<get-phase>(){}[0]
+        final val retiringKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Retiring.retiringKeyId|{}retiringKeyId[0]
+            final fun <get-retiringKeyId>(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Retiring.retiringKeyId.<get-retiringKeyId>|<get-retiringKeyId>(){}[0]
+
+        final fun component1(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Retiring.component1|component1(){}[0]
+        final fun component2(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Retiring.component2|component2(){}[0]
+        final fun component3(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Retiring.component3|component3(){}[0]
+        final fun copy(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId = ..., dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId = ..., dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId = ...): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Retiring // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Retiring.copy|copy(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Retiring.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Retiring.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Retiring.toString|toString(){}[0]
+    }
+
+    final class Stable : dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState { // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Stable|null[0]
+        constructor <init>(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId, dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId) // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Stable.<init>|<init>(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+
+        final val currentKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Stable.currentKeyId|{}currentKeyId[0]
+            final fun <get-currentKeyId>(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Stable.currentKeyId.<get-currentKeyId>|<get-currentKeyId>(){}[0]
+        final val highestKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Stable.highestKeyId|{}highestKeyId[0]
+            final fun <get-highestKeyId>(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Stable.highestKeyId.<get-highestKeyId>|<get-highestKeyId>(){}[0]
+        final val phase // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Stable.phase|{}phase[0]
+            final fun <get-phase>(): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Stable.phase.<get-phase>|<get-phase>(){}[0]
+
+        final fun component1(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Stable.component1|component1(){}[0]
+        final fun component2(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Stable.component2|component2(){}[0]
+        final fun copy(dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId = ..., dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId = ...): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Stable // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Stable.copy|copy(dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Stable.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Stable.hashCode|hashCode(){}[0]
+        final fun nextKeyId(): dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Stable.nextKeyId|nextKeyId(){}[0]
+        final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Stable.toString|toString(){}[0]
+    }
+
+    final object Companion { // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Companion|null[0]
+        final fun of(dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationPhase, dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId, dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId?, dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId?, dev.kreienbuehl.ksecuremessage.storage.encryption/StorageKeyId?): dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState // dev.kreienbuehl.ksecuremessage.storage.rotation/StorageKeyRotationState.Companion.of|of(dev.kreienbuehl.ksecuremessage.storage.rotation.StorageKeyRotationPhase;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId?;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId?;dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId?){}[0]
+    }
+}

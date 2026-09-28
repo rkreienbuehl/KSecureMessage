@@ -433,8 +433,8 @@ when (val s = client.lastDeviceRecoveryKeyResetStatus()) { … }
 
 // Veto by a device, or by the holder of R1 without any device:
 client.cancelLastDeviceRecoveryKeyReset(reset)
-client.lastDeviceRecoveryKeyResetStatus(r1)                  // works before initialize() / without a device key
-client.cancelLastDeviceRecoveryKeyReset(r1, reset)
+client.lastDeviceRecoveryKeyResetStatusByRecoveryKey(r1)                  // works before initialize() / without a device key
+client.cancelLastDeviceRecoveryKeyResetByRecoveryKey(r1, reset)
 
 // After reset.eligibleAt (server time):
 val r2 = client.createLastDeviceRecoveryKey()

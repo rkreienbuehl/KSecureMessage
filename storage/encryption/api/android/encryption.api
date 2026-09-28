@@ -1,0 +1,107 @@
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/encryption/ClientRecordCipher {
+	public abstract fun getKeyId-F_II55g ()I
+	public abstract fun getOpenableKeyIds ()Ljava/util/Set;
+	public abstract fun openDeviceAuthenticationKey ([BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun openDeviceAuthenticationLastDeviceRecoveryKey ([BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun openDeviceAuthenticationRecoveryKey ([BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun openDeviceAuthenticationRotationKey ([BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun openIdentity ([BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun openOneTimePreKey-ddS9unE (I[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun openPendingFrame-tFwzz2k (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun openPendingInboundFrame-tFwzz2k (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun openProcessedDigest-tFwzz2k (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun openSession (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun openSignedPreKey-tn3CzqU (I[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sealDeviceAuthenticationKey (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sealDeviceAuthenticationLastDeviceRecoveryKey (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sealDeviceAuthenticationRecoveryKey (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sealDeviceAuthenticationRotationKey (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sealIdentity (Ldev/kreienbuehl/ksecuremessage/protocol/LocalIdentity;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sealKeyCheck (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sealOneTimePreKey (Ldev/kreienbuehl/ksecuremessage/protocol/OneTimePreKeyPair;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sealPendingFrame-tFwzz2k (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sealPendingInboundFrame-tFwzz2k (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sealProcessedDigest-tFwzz2k (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sealSession (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sealSignedPreKey (Ldev/kreienbuehl/ksecuremessage/protocol/SignedPreKeyPair;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun verifyKeyCheck ([BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/encryption/ClientRecordCipherKt {
+	public static final fun ClientRecordCipher (Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionKey;[Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionKey;)Ldev/kreienbuehl/ksecuremessage/storage/encryption/ClientRecordCipher;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/encryption/SealedRecords {
+	public static final field HEADER_SIZE I
+	public static final field INSTANCE Ldev/kreienbuehl/ksecuremessage/storage/encryption/SealedRecords;
+	public final fun header-Vp0G0iE (I)[B
+	public final fun keyId-wjI02yA ([B)I
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/encryption/StaticStorageKeyProvider : dev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyProvider {
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionKey;[Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionKey;)V
+	public fun createKey-vFH2tSs (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun key-vFH2tSs (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun loadOrCreateKey (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun removeKey-vFH2tSs (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract class dev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionException : java/lang/Exception {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionException$AuthenticationFailed : dev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionException$KeyIdsExhausted : dev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionException$KeyUnavailable : dev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionException {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionException$MalformedRecord : dev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionException$UnsupportedFormat : dev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionKey {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionKey$Companion;
+	public static final field SIZE I
+	public synthetic fun <init> (I[BLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun copyBytes ()[B
+	public final fun getId-F_II55g ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionKey$Companion {
+	public final fun generate-Vp0G0iE (I)Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionKey;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyId {
+	public static final synthetic fun box-impl (I)Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyId;
+	public static fun constructor-impl (I)I
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (ILjava/lang/Object;)Z
+	public static final fun equals-impl0 (II)Z
+	public final fun getValue ()I
+	public fun hashCode ()I
+	public static fun hashCode-impl (I)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (I)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()I
+}
+
+public abstract interface class dev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyProvider {
+	public abstract fun createKey-vFH2tSs (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun key-vFH2tSs (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun loadOrCreateKey (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun removeKey-vFH2tSs (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+

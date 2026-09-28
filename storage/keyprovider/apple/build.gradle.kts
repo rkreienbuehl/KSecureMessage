@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
 }
 
+description = "KSecureMessage storage key provider backed by the Apple Keychain."
+
 kotlin {
     val iosTargets = listOf(iosX64(), iosArm64(), iosSimulatorArm64())
     val macosTargets = listOf(macosX64(), macosArm64())

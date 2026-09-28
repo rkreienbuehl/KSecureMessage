@@ -7,6 +7,8 @@ plugins {
     alias(libs.plugins.sqldelight)
 }
 
+description = "KSecureMessage persistent server storage on SQLite through SQLDelight (JVM)."
+
 kotlin {
     jvmToolchain(17)
 }

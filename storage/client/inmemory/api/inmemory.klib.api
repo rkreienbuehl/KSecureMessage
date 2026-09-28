@@ -1,0 +1,32 @@
+// Klib ABI Dump
+// Targets: [iosArm64, iosSimulatorArm64, iosX64, js, linuxX64, macosArm64, macosX64, mingwX64, wasmJs]
+// Rendering settings:
+// - Signature version: 2
+// - Show manifest properties: true
+// - Show declarations: true
+
+// Library unique name: <dev.kreienbuehl.ksecuremessage.storage.client:inmemory>
+final class dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage : dev.kreienbuehl.ksecuremessage.storage/ClientStorage { // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage|null[0]
+    constructor <init>() // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.<init>|<init>(){}[0]
+
+    final val deviceAuthentication // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.deviceAuthentication|{}deviceAuthentication[0]
+        final fun <get-deviceAuthentication>(): dev.kreienbuehl.ksecuremessage.storage/DeviceAuthenticationKeyStore // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.deviceAuthentication.<get-deviceAuthentication>|<get-deviceAuthentication>(){}[0]
+    final val identity // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.identity|{}identity[0]
+        final fun <get-identity>(): dev.kreienbuehl.ksecuremessage.storage/IdentityStore // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.identity.<get-identity>|<get-identity>(){}[0]
+    final val pendingInbound // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.pendingInbound|{}pendingInbound[0]
+        final fun <get-pendingInbound>(): dev.kreienbuehl.ksecuremessage.storage/PendingInboundStore // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.pendingInbound.<get-pendingInbound>|<get-pendingInbound>(){}[0]
+    final val pendingOutbound // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.pendingOutbound|{}pendingOutbound[0]
+        final fun <get-pendingOutbound>(): dev.kreienbuehl.ksecuremessage.storage/PendingOutboundStore // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.pendingOutbound.<get-pendingOutbound>|<get-pendingOutbound>(){}[0]
+    final val preKeys // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.preKeys|{}preKeys[0]
+        final fun <get-preKeys>(): dev.kreienbuehl.ksecuremessage.storage/PreKeyStore // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.preKeys.<get-preKeys>|<get-preKeys>(){}[0]
+    final val processedInbound // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.processedInbound|{}processedInbound[0]
+        final fun <get-processedInbound>(): dev.kreienbuehl.ksecuremessage.storage/ProcessedInboundStore // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.processedInbound.<get-processedInbound>|<get-processedInbound>(){}[0]
+    final val remoteIdentities // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.remoteIdentities|{}remoteIdentities[0]
+        final fun <get-remoteIdentities>(): dev.kreienbuehl.ksecuremessage.storage/RemoteIdentityStore // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.remoteIdentities.<get-remoteIdentities>|<get-remoteIdentities>(){}[0]
+    final val sessionInitiations // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.sessionInitiations|{}sessionInitiations[0]
+        final fun <get-sessionInitiations>(): dev.kreienbuehl.ksecuremessage.storage/SessionInitiationStore // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.sessionInitiations.<get-sessionInitiations>|<get-sessionInitiations>(){}[0]
+    final val sessions // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.sessions|{}sessions[0]
+        final fun <get-sessions>(): dev.kreienbuehl.ksecuremessage.storage/SessionStore // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.sessions.<get-sessions>|<get-sessions>(){}[0]
+
+    final suspend fun <#A1: kotlin/Any?> transaction(kotlin.coroutines/SuspendFunction1<dev.kreienbuehl.ksecuremessage.storage/ClientStorage, #A1>): #A1 // dev.kreienbuehl.ksecuremessage.storage.client.inmemory/InMemoryClientStorage.transaction|transaction(kotlin.coroutines.SuspendFunction1<dev.kreienbuehl.ksecuremessage.storage.ClientStorage,0:0>){0§<kotlin.Any?>}[0]
+}

@@ -31,9 +31,10 @@ class RemoteIdentityTrust(
  * [SecureMessageClientException.IdentityChanged]. Accepting it
  * ([SecureMessageClient.acceptRemoteIdentityChange]) installs exactly
  * [presentedIdentityKey], and only while [previousIdentityKey] is still
- * pinned.
+ * pinned. Only the client creates changes, so an application can accept
+ * only a key that a peer actually presented.
  */
-class RemoteIdentityChange(
+class RemoteIdentityChange internal constructor(
     val remote: DeviceAddress,
     val previousIdentityKey: PublicIdentityKey,
     val presentedIdentityKey: PublicIdentityKey,

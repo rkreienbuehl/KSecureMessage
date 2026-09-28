@@ -1,5 +1,6 @@
 package dev.kreienbuehl.ksecuremessage.storage.rotation
 
+import dev.kreienbuehl.ksecuremessage.InternalKSecureMessageApi
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionException
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId
 
@@ -9,6 +10,7 @@ import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageKeyId
  * combination cannot be represented. [highestKeyId] is the key ID high-water
  * mark: IDs are allocated above it, never reused and never wrapped around.
  */
+@InternalKSecureMessageApi
 sealed class StorageKeyRotationState {
     abstract val phase: StorageKeyRotationPhase
 

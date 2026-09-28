@@ -97,7 +97,7 @@ class ReceivedMessage(
  * later have higher sequence numbers, so to see them, continue after the
  * last sequence you received.
  */
-class PendingReceivedPage(val messages: List<ReceivedMessage>, val nextAfterSequence: Long?) {
+class PendingReceivedMessagePage(val messages: List<ReceivedMessage>, val nextAfterSequence: Long?) {
     companion object {
         /** The largest page [SecureMessageClient.pendingReceivedMessages] returns. */
         const val MAX_SIZE: Int = 100

@@ -32,8 +32,12 @@ internal object AesGcm {
             gcmKey.cipher().decryptWithIv(nonce, ciphertextAndTag, associatedData)
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Exception) {
+        } catch (e: Error) {
+            throw e
+        } catch (_: Throwable) {
             // Providers signal a tag mismatch with their own exception types.
+            // WebCrypto (JS, Wasm) rejects with a DOM OperationError, which is
+            // a Throwable but not a Kotlin Exception there.
             null
         }
     }

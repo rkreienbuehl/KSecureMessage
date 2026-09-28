@@ -322,13 +322,13 @@ class RecoveryKeyResetRoutesTest {
         assertEquals(reset, laptopClient.requestLastDeviceRecoveryKeyReset())
         // The holder of R1 sees it through the user-scoped route, without a device.
         val offline = client(phone)
-        assertEquals(reset, offline.lastDeviceRecoveryKeyResetStatus(r1))
+        assertEquals(reset, offline.lastDeviceRecoveryKeyResetStatusByRecoveryKey(r1))
 
         val early = assertFailsWith<SecureMessageTransportException.RecoveryKeyResetRejected> { laptopClient.completeLastDeviceRecoveryKeyReset(r2) }
         assertEquals(RecoveryKeyResetFailure.NOT_YET_ELIGIBLE, early.reason)
         assertEquals(
             LastDeviceRecoveryKeyResetCancellationResult.Cancelled,
-            offline.cancelLastDeviceRecoveryKeyReset(r1, reset),
+            offline.cancelLastDeviceRecoveryKeyResetByRecoveryKey(r1, reset),
         )
         val late = assertIs<LastDeviceRecoveryKeyResetCancellationResult.NotPending>(laptopClient.cancelLastDeviceRecoveryKeyReset(reset))
         assertEquals(1, assertIs<LastDeviceRecoveryKeyStatus.Active>(late.recoveryKeyStatus).epoch)

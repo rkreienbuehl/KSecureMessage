@@ -1,5 +1,6 @@
 package dev.kreienbuehl.ksecuremessage.protocol
 
+import dev.kreienbuehl.ksecuremessage.InternalKSecureMessageApi
 import org.kotlincrypto.hash.sha2.SHA256
 
 /**
@@ -17,6 +18,7 @@ import org.kotlincrypto.hash.sha2.SHA256
  * Integers are unsigned 32-bit big-endian. Frozen: the vectors in
  * `ApplicationMessageDigestTest` must never change.
  */
+@InternalKSecureMessageApi
 object ApplicationMessageDigest {
     const val SIZE: Int = 32
 
