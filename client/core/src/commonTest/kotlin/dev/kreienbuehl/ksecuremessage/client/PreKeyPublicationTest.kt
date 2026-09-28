@@ -19,6 +19,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.minutes
 
 private const val TARGET = 3
 
@@ -177,8 +178,10 @@ class PreKeyPublicationTest {
         }
     }
 
+    // Creates more than MAX_ONE_TIME_PRE_KEYS_PER_PUBLICATION key pairs: past
+    // runTest's 60 s default on slow hosted Apple runners (3 cores).
     @Test
-    fun largeInventoriesArePublishedInBatches() = runTest {
+    fun largeInventoriesArePublishedInBatches() = runTest(timeout = 10.minutes) {
         val recording = FakeNetwork()
         val max = PreKeyFormat.MAX_ONE_TIME_PRE_KEYS_PER_PUBLICATION
         val bob = SecureMessageClient(BOB, InMemoryClientStorage(), engine, recording, PreKeyConfiguration(oneTimePreKeyTarget = max + 1))
