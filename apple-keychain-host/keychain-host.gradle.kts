@@ -9,8 +9,10 @@
 // - <target>KeychainHostTest wraps the target's test.kexe in a signed,
 //   entitled .app and runs the DataProtection tests in it. Not part of build/check.
 //
-// Signing comes from Gradle properties, the environment or the git-ignored
-// root local.properties (in that order), never from the repository:
+// Signing comes from Gradle properties (-P, ~/.gradle/gradle.properties), the
+// environment or the git-ignored root local.properties (in that order), never
+// from the repository. Two sources with different values for one setting fail
+// the task (docs/releasing.md, "Apple signing"):
 // ksm.apple.teamId (KSM_APPLE_TEAM_ID), ksm.apple.macosProfile
 // (KSM_APPLE_MACOS_PROFILE), optional ksm.apple.signingIdentity,
 // ksm.apple.bundleId, ksm.apple.simulator, ksm.apple.keychainHost.required.
@@ -28,6 +30,27 @@ fun setting(property: String, variable: String): Provider<String> =
     providers.gradleProperty(property)
         .orElse(providers.environmentVariable(variable))
         .orElse(localProperties.map { it.getProperty(property) ?: "" })
+
+// A description of every setting that two sources set to different values;
+// values are never included in the message.
+fun conflict(property: String, variable: String): Provider<List<String>> {
+    val gradle = providers.gradleProperty(property).orElse("")
+    val environment = providers.environmentVariable(variable).orElse("")
+    val local = localProperties.map { it.getProperty(property) ?: "" }
+    return gradle.zip(environment) { a, b -> listOf(a, b) }.zip(local) { ab, c -> ab + c }.map { values ->
+        val set = listOf("Gradle property $property", "environment variable $variable", "local.properties $property")
+            .zip(values.map(String::trim)).filter { it.second.isNotEmpty() }
+        if (set.map { it.second }.distinct().size > 1) listOf("$property is set differently in: " + set.joinToString { it.first }) else emptyList()
+    }
+}
+
+val settingConflicts: Provider<List<String>> = listOf(
+    "ksm.apple.teamId" to "KSM_APPLE_TEAM_ID",
+    "ksm.apple.macosProfile" to "KSM_APPLE_MACOS_PROFILE",
+    "ksm.apple.signingIdentity" to "KSM_APPLE_SIGNING_IDENTITY",
+    "ksm.apple.bundleId" to "KSM_APPLE_BUNDLE_ID",
+).map { (property, variable) -> conflict(property, variable) }
+    .reduce { a, b -> a.zip(b) { x, y -> x + y } }
 
 val teamId = setting("ksm.apple.teamId", "KSM_APPLE_TEAM_ID")
 val macosProfile = setting("ksm.apple.macosProfile", "KSM_APPLE_MACOS_PROFILE")
@@ -72,6 +95,13 @@ hostTargets.forEach { (target, platform) ->
         val bundleId = bundleId
         val simulator = simulator
         val required = required
+        val conflicts = settingConflicts
+        doFirst {
+            val found = conflicts.get()
+            if (found.isNotEmpty()) {
+                throw GradleException("KEYCHAIN HOST $label: FAILED — inconsistent signing settings (keep one source, see docs/releasing.md \"Apple signing\"):\n  " + found.joinToString("\n  "))
+            }
+        }
         executable = "bash"
         argumentProviders.add(CommandLineArgumentProvider {
             listOf(

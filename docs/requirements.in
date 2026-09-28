@@ -1,0 +1,4 @@
+# Documentation site toolchain. Compile docs/requirements.txt with:
+#   uv pip compile docs/requirements.in --python-version 3.12 --generate-hashes -o docs/requirements.txt
+mkdocs==1.6.1
+mkdocs-material==9.7.7

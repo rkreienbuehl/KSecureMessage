@@ -53,8 +53,9 @@ internal object SecretPatterns {
 
 /**
  * Static release conventions: project version, README wrapper version, the
- * release checklist, CI workflows, the public API dumps (dependency leaks) and
- * a secret scan of every file git does not ignore.
+ * release checklist, CI and documentation workflows, the vulnerability
+ * reporting path, platform claims in the documentation, the public API dumps
+ * (dependency leaks) and a secret scan of every file git does not ignore.
  */
 @UntrackedTask(because = "Scans the working tree; cheap and must always run")
 abstract class CheckReleaseConventions : DefaultTask() {
@@ -64,6 +65,11 @@ abstract class CheckReleaseConventions : DefaultTask() {
     @get:InputFile @get:PathSensitive(PathSensitivity.RELATIVE) abstract val releasingDoc: RegularFileProperty
     @get:InputFile @get:PathSensitive(PathSensitivity.RELATIVE) abstract val ciWorkflow: RegularFileProperty
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) abstract val workflows: ConfigurableFileCollection
+    @get:InputFile @get:PathSensitive(PathSensitivity.RELATIVE) abstract val docsWorkflow: RegularFileProperty
+    @get:InputFile @get:PathSensitive(PathSensitivity.RELATIVE) abstract val securityPolicy: RegularFileProperty
+
+    /** README and the documentation pages, checked for platform claims. */
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) abstract val markdownFiles: ConfigurableFileCollection
 
     /** The API dumps of the published modules (the .api files in each module's api directory). */
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) abstract val apiDumps: ConfigurableFileCollection
@@ -79,6 +85,9 @@ abstract class CheckReleaseConventions : DefaultTask() {
         checkReadme(problems)
         checkReleasingDoc(problems)
         checkWorkflows(problems)
+        checkDocsWorkflow(problems)
+        checkSecurityPolicy(problems)
+        checkPlatformClaims(problems)
         checkApiDumps(problems)
         checkSecrets(problems)
         failIfAny(problems, "Release convention check failed")
@@ -116,6 +125,15 @@ abstract class CheckReleaseConventions : DefaultTask() {
             "KeychainHostTest" to "the Apple keychain host",
             "StorageKeyProviderContractTest" to "platform key provider verification",
             "docs/security-review.md" to "the security checklist",
+            "hosted" to "the hosted CI runs",
+            "linuxX64Test" to "the hosted Linux native tests",
+            "verifyReleaseSignatures" to "artifact signature verification",
+            "publishToMavenCentral" to "the Maven Central upload",
+            "inspectRemoteArtifacts" to "remote artifact inspection",
+            "remoteConsumerSmokeTest" to "the consumer resolving from the remote repository",
+            "mkdocs build --strict" to "the strict documentation build",
+            "Pages" to "the documentation deployment",
+            "SECURITY.md" to "the vulnerability reporting path",
         )
         required.forEach { (token, what) ->
             if (!text.contains(token)) problems += "docs/releasing.md does not cover $what ($token)"
@@ -126,10 +144,82 @@ abstract class CheckReleaseConventions : DefaultTask() {
         val ci = ciWorkflow.get().asFile.readText()
         if (!Regex("""\./gradlew\s+build(\s|$)""").containsMatchIn(ci)) problems += "ci.yml does not run ./gradlew build"
         if (!ci.contains("verifyPublication")) problems += "ci.yml does not run verifyPublication"
+        listOf("-Pksm.testMatrix=non-js", "-Pksm.testMatrix=js").forEach { matrix ->
+            if (!Regex("""verifyTestExecution\s+${Regex.escape(matrix)}""").containsMatchIn(ci)) {
+                problems += "ci.yml does not run verifyTestExecution $matrix"
+            }
+        }
+        if (!ci.contains("verifyCompileOnlyTargets")) problems += "ci.yml does not run verifyCompileOnlyTargets"
         workflows.files.forEach { file ->
             val text = file.readText()
             listOf("updateKotlinAbi", "updateLegacyAbi", "apiDump").forEach { task ->
                 if (text.contains(task)) problems += "${file.name} runs $task; CI must check API dumps, never update them"
+            }
+            val workflow = WorkflowFile.parse(file) ?: return@forEach run { problems += "${file.name} is not a YAML mapping" }
+            if (workflow.permissions("") != mapOf("contents" to "read")) {
+                problems += "${file.name}: top-level permissions must be exactly contents: read"
+            }
+            workflow.jobs.forEach { (job, _) ->
+                val permissions = workflow.permissions(job)
+                if (permissions == WorkflowFile.WRITE_ALL) problems += "${file.name}: job $job has permissions write-all"
+                permissions?.forEach { (scope, level) ->
+                    if (level == "write" && !(file.name == "docs.yml" && job == "deploy" && scope in setOf("pages", "id-token"))) {
+                        problems += "${file.name}: job $job has $scope: write"
+                    }
+                }
+            }
+        }
+    }
+
+    private fun checkDocsWorkflow(problems: MutableList<String>) {
+        val file = docsWorkflow.get().asFile
+        val text = file.readText()
+        if (!Regex("""mkdocs\s+build\s+--strict""").containsMatchIn(text)) problems += "docs.yml does not run mkdocs build --strict"
+        if (!text.contains("stageApiReference")) problems += "docs.yml does not stage the API reference"
+        if (!text.contains("checkDocsSite")) problems += "docs.yml does not run checkDocsSite"
+        val workflow = WorkflowFile.parse(file) ?: return
+        val deploy = workflow.jobs["deploy"] ?: return run { problems += "docs.yml has no deploy job" }
+        val condition = deploy["if"]?.toString().orEmpty()
+        if (!(condition.contains("github.event_name == 'push'") && condition.contains("github.ref == 'refs/heads/main'"))) {
+            problems += "docs.yml deploy job must run only for a push to main (if: github.event_name == 'push' && github.ref == 'refs/heads/main')"
+        }
+        if (!deploy.toString().contains("actions/deploy-pages")) problems += "docs.yml deploy job does not use actions/deploy-pages"
+        if (workflow.permissions("deploy") != mapOf("pages" to "write", "id-token" to "write")) {
+            problems += "docs.yml deploy job permissions must be exactly pages: write, id-token: write"
+        }
+        workflow.jobs.keys.filter { it != "deploy" }.forEach { job ->
+            if (workflow.jobs[job].toString().contains("actions/deploy-pages")) problems += "docs.yml job $job deploys Pages"
+        }
+    }
+
+    private fun checkSecurityPolicy(problems: MutableList<String>) {
+        val text = securityPolicy.get().asFile.readText()
+        if (!text.contains(KsmRelease.VULNERABILITY_REPORTING_URL)) {
+            problems += "SECURITY.md does not name the private reporting path ${KsmRelease.VULNERABILITY_REPORTING_URL}"
+        }
+        Regex("""https://github\.com/[^\s)>]*/security/[^\s)>]*""").findAll(text).map { it.value }
+            .filter { it != KsmRelease.VULNERABILITY_REPORTING_URL }
+            .forEach { problems += "SECURITY.md names an unexpected security URL $it" }
+        if (!text.contains("public issue")) problems += "SECURITY.md does not tell reporters to avoid public issues"
+    }
+
+    // Wasm runtimes are blocked upstream (docs/supported-platforms.md): no
+    // row of a platform status table (a table with a "Status" column) may
+    // claim more than compile-only for Wasm.
+    private fun checkPlatformClaims(problems: MutableList<String>) {
+        markdownFiles.files.forEach { file ->
+            var header: String? = null
+            file.readLines().forEachIndexed { index, raw ->
+                val line = raw.trim()
+                if (!line.startsWith("|")) return@forEachIndexed run { header = null }
+                if (header == null) return@forEachIndexed run { header = line }
+                val firstCell = line.removePrefix("|").substringBefore('|').trim()
+                val statusTable = header!!.contains("Status")
+                if (statusTable && firstCell.contains("Wasm", ignoreCase = true) &&
+                    (!line.contains("compile-only") || Regex("""(?<!un)tested|tests executed""").containsMatchIn(line))
+                ) {
+                    problems += "${file.name}:${index + 1} claims more than compile-only for Wasm"
+                }
             }
         }
     }
@@ -179,6 +269,13 @@ abstract class CheckReleaseConventions : DefaultTask() {
 @UntrackedTask(because = "Reads the results of other tasks")
 abstract class VerifyTestExecution : DefaultTask() {
     @get:Input abstract val expectations: ListProperty<String>
+
+    /**
+     * Which part of the matrix to check: `all`, `js` (the jsNodeTest tasks) or
+     * `non-js` (everything else). CI runs the JS tests in their own job and
+     * checks both parts; together they are the whole matrix.
+     */
+    @get:Input abstract val matrix: Property<String>
     @get:Internal abstract val rootDirectory: DirectoryProperty
 
     @TaskAction
@@ -191,9 +288,16 @@ abstract class VerifyTestExecution : DefaultTask() {
         }
         val problems = mutableListOf<String>()
         val summary = mutableListOf<String>()
+        val selected: (String) -> Boolean = when (val part = matrix.get()) {
+            "all" -> { _ -> true }
+            "js" -> { task -> task == "jsNodeTest" }
+            "non-js" -> { task -> task != "jsNodeTest" }
+            else -> throw GradleException("unknown test matrix '$part' (all, js, non-js)")
+        }
         expectations.get().forEach { encoded ->
             val (module, task, required) = encoded.split('|')
             if (required != "ANY" && required != host?.name) return@forEach
+            if (!selected(task)) return@forEach
             val dir = rootDirectory.get().asFile.resolve(module.removePrefix(":").replace(':', '/') + "/build/test-results/$task")
             val results = dir.listFiles { f -> f.name.endsWith(".xml") }.orEmpty()
             var tests = 0
@@ -225,6 +329,12 @@ abstract class InspectReleaseArtifacts : DefaultTask() {
     @get:Input abstract val version: Property<String>
     @get:Input abstract val expectedArtifacts: ListProperty<String>
     @get:Input abstract val forbiddenArtifacts: ListProperty<String>
+
+    /** Every artifact file needs a `.asc` signature (signing configured, or a remote repository). */
+    @get:Input abstract val requireSignatures: Property<Boolean>
+
+    /** Checksum files every artifact file needs, each matching its content (`md5`, `sha1`, `sha256`, `sha512`). */
+    @get:Input abstract val checksumAlgorithms: ListProperty<String>
 
     @get:OutputFile abstract val report: RegularFileProperty
 
@@ -266,6 +376,24 @@ abstract class InspectReleaseArtifacts : DefaultTask() {
                 }
             }
             if (snapshotAware("-javadoc.jar").isEmpty()) problems += "$artifact: no documentation (javadoc) jar"
+            files.filter { isArtifactFile(it.name) }.forEach { file ->
+                if (requireSignatures.get() && files.none { it.name == file.name + ".asc" }) problems += "$artifact: ${file.name} has no signature (.asc)"
+                checksumAlgorithms.get().forEach { algorithm ->
+                    val checksum = files.firstOrNull { it.name == "${file.name}.$algorithm" }
+                    when {
+                        checksum == null -> problems += "$artifact: ${file.name} has no .$algorithm checksum"
+                        checksum.readText().trim().substringBefore(' ').lowercase() != digest(file, algorithm) ->
+                            problems += "$artifact: ${file.name}.$algorithm does not match"
+                    }
+                }
+            }
+            snapshotAware(".module").forEach { module ->
+                // Variants of a multiplatform root point to their target artifacts.
+                Regex(""""available-at"\s*:\s*\{[^}]*"module"\s*:\s*"([^"]+)"""").findAll(module.readText())
+                    .map { it.groupValues[1] }.distinct()
+                    .filter { it !in present }
+                    .forEach { problems += "$artifact: Gradle module metadata points to $it, which is missing" }
+            }
             files.forEach { file ->
                 if (listOf(".jar", ".aar", ".klib").any(file.name::endsWith)) {
                     fileNames.put(file.name, artifact)?.let { other -> problems += "file name ${file.name} in both $other and $artifact" }
@@ -278,6 +406,14 @@ abstract class InspectReleaseArtifacts : DefaultTask() {
         report.get().asFile.writeText(lines.joinToString("\n", postfix = "\n"))
         logger.lifecycle("Inspected ${present.size} artifacts (${lines.size} files), report: ${report.get().asFile}")
         failIfAny(problems, "Release artifact inspection failed")
+    }
+
+    private fun isArtifactFile(name: String): Boolean =
+        !name.startsWith("maven-metadata") && listOf(".asc", ".md5", ".sha1", ".sha256", ".sha512").none(name::endsWith)
+
+    private fun digest(file: File, algorithm: String): String {
+        val name = mapOf("md5" to "MD5", "sha1" to "SHA-1", "sha256" to "SHA-256", "sha512" to "SHA-512").getValue(algorithm)
+        return java.security.MessageDigest.getInstance(name).digest(file.readBytes()).joinToString("") { "%02x".format(it) }
     }
 
     private fun isMultiplatformRoot(artifact: String, present: Set<String>): Boolean =
@@ -348,7 +484,7 @@ abstract class CheckConsumerIsolation : DefaultTask() {
         val problems = mutableListOf<String>()
         buildFiles.files.forEach { file ->
             val text = file.readText()
-            listOf("project(\":", "includeBuild", "dependencySubstitution", "substitute(").forEach { token ->
+            listOf("project(\":", "includeBuild", "dependencySubstitution", "substitute(", "mavenLocal").forEach { token ->
                 if (text.contains(token)) problems += "${file.path} uses $token; the consumer must use published artifacts only"
             }
         }

@@ -11,13 +11,16 @@ pluginManagement {
 }
 
 val ksmRepo: String = providers.gradleProperty("ksmRepo").orNull
-    ?: error("Pass the KSecureMessage release repository: -PksmRepo=<path>, e.g. ../../build/release-repo")
+    ?: error("Pass the KSecureMessage release repository: -PksmRepo=<path>, e.g. ../../build/release-repo, or an https URL")
+// A local directory (verifyPublication) or a remote https repository
+// (remoteConsumerSmokeTest, the Central snapshot repository). Never Maven Local.
+val ksmRepoUri: java.net.URI = if (ksmRepo.startsWith("https://")) uri(ksmRepo) else file(ksmRepo).toURI()
 
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         exclusiveContent {
-            forRepository { maven { name = "ksmRelease"; url = uri(file(ksmRepo)) } }
+            forRepository { maven { name = "ksmRelease"; url = ksmRepoUri } }
             filter { includeGroup("dev.kreienbuehl.ksecuremessage") }
         }
         google()

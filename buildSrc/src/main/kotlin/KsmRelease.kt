@@ -11,6 +11,26 @@ object KsmRelease {
 
     const val PROJECT_URL: String = "https://github.com/rkreienbuehl/KSecureMessage"
 
+    /** The private vulnerability reporting path SECURITY.md must name (GitHub private vulnerability reporting). */
+    const val VULNERABILITY_REPORTING_URL: String = "$PROJECT_URL/security/advisories/new"
+
+    /** Maven Central snapshot repository (Central Portal) that `publishToMavenCentral` uploads SNAPSHOT versions to. */
+    const val CENTRAL_SNAPSHOT_REPOSITORY: String = "https://central.sonatype.com/repository/maven-snapshots/"
+
+    /**
+     * How publications are signed, from keys supplied outside the repository
+     * (docs/releasing.md, "Signing"): [IN_MEMORY] from `signingInMemoryKey`
+     * (CI secrets), [GPG_AGENT] from `signing.gnupg.keyName` (the maintainer's
+     * gpg agent). `null`: unsigned (local release checks only).
+     */
+    enum class SigningMode { IN_MEMORY, GPG_AGENT }
+
+    fun signingMode(providers: org.gradle.api.provider.ProviderFactory): SigningMode? = when {
+        providers.gradleProperty("signingInMemoryKey").isPresent -> SigningMode.IN_MEMORY
+        providers.gradleProperty("signing.gnupg.keyName").isPresent -> SigningMode.GPG_AGENT
+        else -> null
+    }
+
     /** Gradle modules published to Maven. Everything else is never published. */
     val publishedModules: List<String> = listOf(
         ":core:model",

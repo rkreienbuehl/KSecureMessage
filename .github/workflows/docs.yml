@@ -1,0 +1,73 @@
+# Documentation site (docs/releasing.md, "Documentation site"): MkDocs pages
+# from docs/ plus the Dokka API reference, built strictly on every pull request
+# and push; deployed to GitHub Pages only for a push to main.
+name: Docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build documentation site
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Pinned, hash-checked toolchain (docs/requirements.txt).
+      - name: Install MkDocs
+        run: python -m pip install --require-hashes --no-deps -r docs/requirements.txt
+
+      - name: Generate API reference (Dokka)
+        run: ./gradlew stageApiReference
+
+      # Strict: broken links, anchors, nav entries and pages missing from the nav fail.
+      - name: Build site
+        run: mkdocs build --strict -d build/site
+
+      - name: Check site (pages, search index, API reference of every published module)
+        run: ./gradlew checkDocsSite
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: build/site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

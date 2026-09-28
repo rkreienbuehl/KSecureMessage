@@ -41,7 +41,7 @@ embeddedServer(CIO, port = 8080) {
 ```
 
 The complete, compiled version is
-[`samples/jvm-e2e`](../samples/jvm-e2e/app/src/main/kotlin/dev/kreienbuehl/ksecuremessage/sample/Main.kt).
+[`samples/jvm-e2e`](https://github.com/rkreienbuehl/KSecureMessage/blob/main/samples/jvm-e2e/app/src/main/kotlin/dev/kreienbuehl/ksecuremessage/sample/Main.kt).
 
 - The **host owns the driver**: it chooses the file location, creates the
   driver, and closes it. `SqlDelightServerStorage` never creates, configures
