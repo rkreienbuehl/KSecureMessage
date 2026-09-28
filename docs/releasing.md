@@ -65,6 +65,13 @@ plus the root artifact with Gradle module metadata.
 | `samples/jvm-e2e` | — | sample, **not published** | consumer fixture and E2E example | this repository |
 | `buildSrc` | — | build logic, **not published** | release checks | this repository |
 
+The JVM runtime jar of every artifact is named after its artifact ID
+(`ksecuremessage-client-core-jvm-<version>.jar`, not the Gradle project name
+`core-jvm-…`): consumers store and package jars under the file name the Gradle
+module metadata records, and several modules are named `core`.
+`inspectReleaseArtifacts` checks that and that every file a `.module` lists
+is published. Klib names are unchanged (their base name is ABI identity).
+
 Every publication carries a POM (name, description, URL, Apache-2.0 license,
 developer, SCM), Gradle module metadata, a sources jar and a Dokka HTML
 documentation jar (as `-javadoc.jar`, which Maven Central requires).
@@ -79,7 +86,7 @@ private key or passphrase. Signing is on as soon as one of these is present
 
 | Where | Setting | Content |
 |---|---|---|
-| Maintainer machine | `signing.gnupg.keyName` in `~/.gradle/gradle.properties` | ID of the KSecureMessage signing key in the local gpg keyring (not secret); the passphrase stays in gpg-agent / pinentry |
+| Maintainer machine | `signing.gnupg.keyName` (and `signing.gnupg.executable=/opt/homebrew/bin/gpg`, since the Gradle daemon may not see Homebrew's `PATH`) in `~/.gradle/gradle.properties` | ID of the KSecureMessage signing key in the local gpg keyring (not secret); the passphrase stays in gpg-agent. Gradle runs gpg without a terminal, so the agent needs a graphical pinentry (`pinentry-program /opt/homebrew/bin/pinentry-mac` in `~/.gnupg/gpg-agent.conf`) |
 | CI (repository secrets) | `ORG_GRADLE_PROJECT_signingInMemoryKey`, `ORG_GRADLE_PROJECT_signingInMemoryKeyId`, `ORG_GRADLE_PROJECT_signingInMemoryKeyPassword` | ASCII-armored private key, key ID, passphrase |
 
 The public key is published on `keys.openpgp.org` and `keyserver.ubuntu.com`
@@ -124,8 +131,10 @@ publishing enabled.
   `./gradlew verifyRemotePublication` works for it too: the mirror, the
   inspection, the signature check and the consumer fixture (which gets the
   token only through its environment) all read that endpoint. To only
-  exercise the path, drop the validated deployment in the Portal afterwards
-  instead of publishing it. The version change for such a run is a working
+  exercise the path, drop the validated deployment afterwards instead of
+  publishing it. `scripts/central-deployment.sh status|wait|drop <id>` reads
+  and drops deployments through the Portal API (the ID is printed by
+  `publishToMavenCentral`); it has no publish command on purpose. The version change for such a run is a working
   tree edit that is not committed.
 
 ## Documentation site

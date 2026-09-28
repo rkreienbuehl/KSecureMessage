@@ -393,6 +393,27 @@ abstract class InspectReleaseArtifacts : DefaultTask() {
                     .map { it.groupValues[1] }.distinct()
                     .filter { it !in present }
                     .forEach { problems += "$artifact: Gradle module metadata points to $it, which is missing" }
+                // Every file a variant lists must be published next to it (a
+                // SNAPSHOT is stored under its timestamped name).
+                val published = version.get()
+                val versionPattern = if (published.endsWith("-SNAPSHOT")) {
+                    Regex.escape(published.removeSuffix("-SNAPSHOT")) + """-(SNAPSHOT|\d{8}\.\d{6}-\d+)"""
+                } else {
+                    Regex.escape(published)
+                }
+                // Consumers store the JVM runtime jar under its "name" and JVM
+                // distributions copy runtime jars side by side: it must be the
+                // published, unique file name, never the internal project name.
+                val jvmArtifact = artifact.endsWith("-jvm") ||
+                    (KsmRelease.targetSuffixes.none { artifact.endsWith("-$it") } && !isMultiplatformRoot(artifact, present))
+                val runtimeJar = Regex(Regex.escape(artifact) + "-" + Regex.escape(version.get()) + "\\.jar")
+                Regex(""""name"\s*:\s*"([^"]+)"\s*,\s*"url"\s*:\s*"([^"/]+)"""").findAll(module.readText())
+                    .filter { jvmArtifact && runtimeJar.matches(it.groupValues[2]) && it.groupValues[1] != it.groupValues[2] }
+                    .forEach { problems += "$artifact: Gradle module metadata file name ${it.groupValues[1]} differs from its published name ${it.groupValues[2]}" }
+                moduleFileUrls(module.readText()).forEach { url ->
+                    val pattern = Regex(url.split(published).joinToString(versionPattern) { Regex.escape(it) })
+                    if (files.none { pattern.matches(it.name) }) problems += "$artifact: Gradle module metadata lists $url, which is missing"
+                }
             }
             files.forEach { file ->
                 if (listOf(".jar", ".aar", ".klib").any(file.name::endsWith)) {
@@ -406,6 +427,12 @@ abstract class InspectReleaseArtifacts : DefaultTask() {
         report.get().asFile.writeText(lines.joinToString("\n", postfix = "\n"))
         logger.lifecycle("Inspected ${present.size} artifacts (${lines.size} files), report: ${report.get().asFile}")
         failIfAny(problems, "Release artifact inspection failed")
+    }
+
+    companion object {
+        /** Published file names a Gradle module metadata file lists (`url`s in the same directory). */
+        fun moduleFileUrls(module: String): List<String> =
+            Regex(""""url"\s*:\s*"([^"/]+)"""").findAll(module).map { it.groupValues[1] }.distinct().toList()
     }
 
     private fun isArtifactFile(name: String): Boolean =

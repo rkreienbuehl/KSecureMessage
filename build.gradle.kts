@@ -66,6 +66,18 @@ subprojects {
     apply(plugin = "com.vanniktech.maven.publish.base")
     apply(plugin = "org.jetbrains.dokka")
 
+    // The runtime jar's file name is the name consumers see (Gradle module
+    // metadata "name"), and JVM distributions copy runtime jars side by side.
+    // Several modules are named "core": without this a consumer's distribution
+    // gets duplicate core-jvm-<version>.jar entries. Only the JVM runtime jar:
+    // klib base names are part of their ABI identity and stay unchanged.
+    val runtimeJarName = KsmRelease.artifactId(path)
+    val runtimeJarVersion = version.toString()
+    tasks.withType<Jar>().matching { it.name == "jvmJar" }.configureEach { archiveFileName.set("$runtimeJarName-jvm-$runtimeJarVersion.jar") }
+    plugins.withId("org.jetbrains.kotlin.jvm") {
+        tasks.named<Jar>("jar") { archiveFileName.set("$runtimeJarName-$runtimeJarVersion.jar") }
+    }
+
     extensions.configure<MavenPublishBaseExtension> {
         coordinates(KsmRelease.GROUP, KsmRelease.artifactId(path), version.toString())
         pom {

@@ -110,10 +110,8 @@ abstract class MirrorRemoteRepository : DefaultTask() {
 
     /** File names of a release version: POM, module metadata, the files the module lists, sources and documentation jars. */
     private fun releaseFiles(artifact: String, version: String, module: ByteArray?): List<String> {
-        val listed = module?.let { bytes ->
-            Regex(""""name"\s*:\s*"([^"]+)"""").findAll(String(bytes)).map { it.groupValues[1] }
-                .filter { it.startsWith("$artifact-$version") }.toList()
-        }.orEmpty()
+        // A file's "name" is the project's internal name; "url" is the published file name.
+        val listed = module?.let { bytes -> InspectReleaseArtifacts.moduleFileUrls(String(bytes)) }.orEmpty()
         val known = listOf(".pom", ".module", "-sources.jar", "-javadoc.jar", "-kotlin-tooling-metadata.json").map { "$artifact-$version$it" }
         return (known + listed).distinct()
     }
