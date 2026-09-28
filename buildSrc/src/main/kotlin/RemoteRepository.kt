@@ -44,10 +44,14 @@ abstract class MirrorRemoteRepository : DefaultTask() {
     /** Authorization for the Central Portal deployment endpoint (never logged). */
     @get:Internal abstract val bearerToken: Property<String>
 
-    private val client: HttpClient = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(30))
-        .followRedirects(HttpClient.Redirect.NORMAL)
-        .build()
+    // Created at execution time: the configuration cache cannot store an HttpClient.
+    @Transient private var httpClient: HttpClient? = null
+    private val client: HttpClient
+        get() = httpClient ?: HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(30))
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .build()
+            .also { httpClient = it }
 
     @TaskAction
     fun download() {
@@ -57,29 +61,35 @@ abstract class MirrorRemoteRepository : DefaultTask() {
         val base = repositoryUrl.get().trimEnd('/')
         val root = mirror.get().asFile.apply { deleteRecursively(); mkdirs() }
         val groupPath = KsmRelease.GROUP.replace('.', '/')
-        var fileCount = 0
         val candidates = artifacts.get().flatMap { artifact -> listOf(artifact) + KsmRelease.targetSuffixes.map { "$artifact-$it" } }
-        candidates.forEach { artifact ->
-            val versionPath = "$groupPath/$artifact/$version"
-            val names = if (snapshot) {
-                val metadata = get("$base/$versionPath/maven-metadata.xml") ?: return@forEach
-                root.resolve(versionPath).apply { mkdirs() }.resolve("maven-metadata.xml").writeBytes(metadata)
-                snapshotFiles(artifact, metadata)
-            } else {
-                val module = get("$base/$versionPath/$artifact-$version.module")
-                val pom = get("$base/$versionPath/$artifact-$version.pom")
-                if (module == null && pom == null) return@forEach
-                releaseFiles(artifact, version, module)
-            }
-            val dir = root.resolve(versionPath).apply { mkdirs() }
-            names.forEach { name ->
-                listOf("", ".asc", ".md5", ".sha1", ".sha256", ".sha512").forEach { suffix ->
-                    get("$base/$versionPath/$name$suffix")?.let { bytes ->
-                        dir.resolve(name + suffix).writeBytes(bytes)
-                        fileCount++
+        // Thousands of small files: fetch them in parallel, one file per request.
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(16)
+        val fileCount = try {
+            val files = candidates.map { artifact ->
+                pool.submit<List<Pair<String, String>>> {
+                    val versionPath = "$groupPath/$artifact/$version"
+                    val names = if (snapshot) {
+                        val metadata = get("$base/$versionPath/maven-metadata.xml") ?: return@submit emptyList()
+                        root.resolve(versionPath).apply { mkdirs() }.resolve("maven-metadata.xml").writeBytes(metadata)
+                        snapshotFiles(artifact, metadata)
+                    } else {
+                        val module = get("$base/$versionPath/$artifact-$version.module")
+                        val pom = get("$base/$versionPath/$artifact-$version.pom")
+                        if (module == null && pom == null) return@submit emptyList()
+                        releaseFiles(artifact, version, module)
                     }
+                    names.flatMap { name -> listOf("", ".asc", ".md5", ".sha1", ".sha256", ".sha512").map { versionPath to name + it } }
                 }
-            }
+            }.flatMap { it.get() }
+            files.map { (versionPath, name) ->
+                pool.submit<Int> {
+                    val bytes = get("$base/$versionPath/$name") ?: return@submit 0
+                    root.resolve(versionPath).apply { mkdirs() }.resolve(name).writeBytes(bytes)
+                    1
+                }
+            }.sumOf { it.get() }
+        } finally {
+            pool.shutdownNow()
         }
         if (fileCount == 0) throw GradleException("no KSecureMessage $version artifacts found in $base")
         logger.lifecycle("Mirrored $fileCount files of $version from $base to $root")
