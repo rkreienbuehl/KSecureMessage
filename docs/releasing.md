@@ -117,8 +117,16 @@ publishing enabled.
 - **Release versions** (for example `0.1.0-internal.1`) create a Central
   Portal *deployment*. `automaticRelease = false`: the upload stops at
   `VALIDATED`, and nothing is public until someone presses *Publish* in the
-  Portal. To only exercise the path, drop the validated deployment in the
-  Portal instead of publishing it.
+  Portal. While it is validated and unpublished, the Portal serves it as a
+  Maven repository at
+  `https://central.sonatype.com/api/v1/publisher/deployments/download/`
+  (bearer: the Base64 of `mavenCentralUsername:mavenCentralPassword`), so
+  `./gradlew verifyRemotePublication` works for it too: the mirror, the
+  inspection, the signature check and the consumer fixture (which gets the
+  token only through its environment) all read that endpoint. To only
+  exercise the path, drop the validated deployment in the Portal afterwards
+  instead of publishing it. The version change for such a run is a working
+  tree edit that is not committed.
 
 ## Documentation site
 
@@ -181,7 +189,9 @@ PASSED, FAILED or NOT EXECUTED (configured but not run is not passed).
    and `./gradlew macosArm64KeychainHostTest -Pksm.apple.keychainHost.required=true`
    (data protection keychain provider contract, `StorageKeyProviderContractTest`,
    and relaunch). Both must report PASSED; signing settings come from one
-   source (see "Apple signing"), never from ad-hoc overrides.
+   source (see "Apple signing"), never from ad-hoc overrides. The macOS host
+   runs on the maintainer's Mac (listed in the development profile); hosted
+   CI reports it NOT EXECUTED (see "Apple signing").
 9. **Documentation**: `./gradlew docsSite` (`mkdocs build --strict` and
    `checkDocsSite`); after the release commit reaches `main`, the `docs.yml`
    deployment to GitHub Pages must succeed.
@@ -216,7 +226,7 @@ order and prints PASSED / FAILED / NOT EXECUTED per gate.
 | Workflow | Trigger | Jobs |
 |---|---|---|
 | `.github/workflows/ci.yml` (Tier A) | push to `main`, pull requests, manual | Linux `build`: `./gradlew build -x jsNodeTest` (JVM, linuxX64 with `libsqlite3-dev`, server, Android host tests, `checkKotlinAbi`, `checkReleaseConventions`), `verifyTestExecution -Pksm.testMatrix=non-js`, `verifyPublication`; Linux `js`: `jsNodeTest`, `verifyTestExecution -Pksm.testMatrix=js`; `compile-only`: `verifyCompileOnlyTargets` (Wasm, JS browser, mingwX64 main and test code); `ci-passed` requires all three |
-| `.github/workflows/platform.yml` (Tier B) | push to `main`, manual, weekly | macOS: Apple tests + full `checkKotlinAbi` + iOS simulator keychain host; signed macOS keychain host (only with secrets); Android emulator instrumentation (API 35) |
+| `.github/workflows/platform.yml` (Tier B) | push to `main`, manual, weekly | macOS: Apple tests + full `checkKotlinAbi` + iOS simulator keychain host; signed macOS keychain host (only with secrets and a profile for all devices, see "Apple signing"); Android emulator instrumentation (API 35) |
 | `.github/workflows/docs.yml` | push to `main`, pull requests, manual | `build`: Dokka, `mkdocs build --strict`, `checkDocsSite`, Pages artifact; `deploy` (push to `main` only): GitHub Pages |
 
 The two Tier A test jobs together run exactly the test tasks of plain
@@ -248,3 +258,14 @@ setting, the host task fails and names the setting and the sources, so a
 stale lower-priority value can never be used silently. `run.sh` then checks
 that the profile belongs to the team, matches the bundle ID, has not expired,
 and picks the signing identity whose certificate is embedded in the profile.
+
+**Known limitation (hosted CI).** The current profile is a development
+profile: it lists the Macs it may run on, and macOS kills the signed host at
+launch on any other machine (`Killed: 9`). A GitHub-hosted runner is never
+listed, so `platform.yml` detects a profile without `ProvisionsAllDevices`
+and reports the signed macOS host as **NOT EXECUTED** (a workflow warning),
+without failing Tier B. That is not hosted coverage: the signed macOS host
+stays a **maintainer-machine gate** (checklist step 8) until the CI secrets
+hold a Developer ID certificate and provisioning profile for all devices;
+then the hosted job runs and every failure fails it. `run.sh` reports the
+same NOT EXECUTED reason on any Mac the profile does not list.

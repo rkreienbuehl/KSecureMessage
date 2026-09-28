@@ -18,16 +18,21 @@ import java.time.Duration
 import javax.xml.parsers.DocumentBuilderFactory
 
 /**
- * Downloads one published snapshot of every KSecureMessage artifact from a
- * remote Maven repository (the Central snapshot repository) into a local
- * directory with the same layout, so [InspectReleaseArtifacts] can inspect
- * exactly what was uploaded (docs/releasing.md, "Remote publication").
+ * Downloads one published version of every KSecureMessage artifact from a
+ * remote Maven repository into a local directory with the same layout, so
+ * [InspectReleaseArtifacts] can inspect exactly what was uploaded
+ * (docs/releasing.md, "Remote publication").
  *
- * Only public, unauthenticated reads. For each artifact (and each
- * multiplatform target variant that exists remotely) it reads the version's
- * `maven-metadata.xml`, takes the latest timestamp and fetches every file of
- * it with its signature and checksums. Missing optional files are simply not
- * mirrored: the inspection then reports them.
+ * - SNAPSHOT: the Central snapshot repository (public reads). The version's
+ *   `maven-metadata.xml` names the files of the latest timestamp.
+ * - Release version: a validated, unpublished Central Portal deployment via
+ *   the Portal's deployment download endpoint, which needs [bearerToken]. The
+ *   files are the POM, the Gradle module metadata, the files it lists, and
+ *   the sources and documentation jars.
+ *
+ * For each artifact and each multiplatform target variant that exists
+ * remotely it fetches every file with its signature and checksums. Missing
+ * files are simply not mirrored: the inspection then reports them.
  */
 @UntrackedTask(because = "Reads a remote repository that changes independently of the build")
 abstract class MirrorRemoteRepository : DefaultTask() {
@@ -35,6 +40,9 @@ abstract class MirrorRemoteRepository : DefaultTask() {
     @get:Input abstract val version: Property<String>
     @get:Input abstract val artifacts: ListProperty<String>
     @get:OutputDirectory abstract val mirror: DirectoryProperty
+
+    /** Authorization for the Central Portal deployment endpoint (never logged). */
+    @get:Internal abstract val bearerToken: Property<String>
 
     private val client: HttpClient = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(30))
@@ -44,7 +52,8 @@ abstract class MirrorRemoteRepository : DefaultTask() {
     @TaskAction
     fun download() {
         val version = version.get()
-        if (!version.endsWith("-SNAPSHOT")) throw GradleException("mirrorRemoteRepository reads snapshots only; $version is not a SNAPSHOT")
+        val snapshot = version.endsWith("-SNAPSHOT")
+        if (!snapshot && !bearerToken.isPresent) throw GradleException("a release version is read from a Central Portal deployment, which needs credentials")
         val base = repositoryUrl.get().trimEnd('/')
         val root = mirror.get().asFile.apply { deleteRecursively(); mkdirs() }
         val groupPath = KsmRelease.GROUP.replace('.', '/')
@@ -52,10 +61,18 @@ abstract class MirrorRemoteRepository : DefaultTask() {
         val candidates = artifacts.get().flatMap { artifact -> listOf(artifact) + KsmRelease.targetSuffixes.map { "$artifact-$it" } }
         candidates.forEach { artifact ->
             val versionPath = "$groupPath/$artifact/$version"
-            val metadata = get("$base/$versionPath/maven-metadata.xml") ?: return@forEach
+            val names = if (snapshot) {
+                val metadata = get("$base/$versionPath/maven-metadata.xml") ?: return@forEach
+                root.resolve(versionPath).apply { mkdirs() }.resolve("maven-metadata.xml").writeBytes(metadata)
+                snapshotFiles(artifact, metadata)
+            } else {
+                val module = get("$base/$versionPath/$artifact-$version.module")
+                val pom = get("$base/$versionPath/$artifact-$version.pom")
+                if (module == null && pom == null) return@forEach
+                releaseFiles(artifact, version, module)
+            }
             val dir = root.resolve(versionPath).apply { mkdirs() }
-            dir.resolve("maven-metadata.xml").writeBytes(metadata)
-            snapshotFiles(artifact, metadata).forEach { name ->
+            names.forEach { name ->
                 listOf("", ".asc", ".md5", ".sha1", ".sha256", ".sha512").forEach { suffix ->
                     get("$base/$versionPath/$name$suffix")?.let { bytes ->
                         dir.resolve(name + suffix).writeBytes(bytes)
@@ -81,8 +98,20 @@ abstract class MirrorRemoteRepository : DefaultTask() {
         return files.filter { name -> listOf(".asc", ".md5", ".sha1", ".sha256", ".sha512").none(name::endsWith) }.distinct()
     }
 
+    /** File names of a release version: POM, module metadata, the files the module lists, sources and documentation jars. */
+    private fun releaseFiles(artifact: String, version: String, module: ByteArray?): List<String> {
+        val listed = module?.let { bytes ->
+            Regex(""""name"\s*:\s*"([^"]+)"""").findAll(String(bytes)).map { it.groupValues[1] }
+                .filter { it.startsWith("$artifact-$version") }.toList()
+        }.orEmpty()
+        val known = listOf(".pom", ".module", "-sources.jar", "-javadoc.jar", "-kotlin-tooling-metadata.json").map { "$artifact-$version$it" }
+        return (known + listed).distinct()
+    }
+
     private fun get(url: String): ByteArray? {
-        val response = client.send(HttpRequest.newBuilder(URI(url)).timeout(Duration.ofMinutes(2)).GET().build(), HttpResponse.BodyHandlers.ofByteArray())
+        val request = HttpRequest.newBuilder(URI(url)).timeout(Duration.ofMinutes(2)).GET()
+        if (bearerToken.isPresent) request.header("Authorization", "Bearer ${bearerToken.get()}")
+        val response = client.send(request.build(), HttpResponse.BodyHandlers.ofByteArray())
         return when (response.statusCode()) {
             200 -> response.body()
             404 -> null

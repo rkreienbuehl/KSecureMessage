@@ -313,15 +313,24 @@ val consumerSmokeTest by tasks.registering(Exec::class) {
     )
 }
 // Remote publication (docs/releasing.md, "Remote publication"): what
-// publishToMavenCentral uploaded to the Central snapshot repository, mirrored
-// and inspected like the local release repository, then consumed by the
-// fixture from the remote repository only.
-val remoteRepositoryUrl: Provider<String> = providers.gradleProperty("ksm.remoteRepository").orElse(KsmRelease.CENTRAL_SNAPSHOT_REPOSITORY)
+// publishToMavenCentral uploaded (a SNAPSHOT to the Central snapshot
+// repository, a release version to a validated, unpublished Central Portal
+// deployment), mirrored and inspected like the local release repository, then
+// consumed by the fixture from the remote repository only.
+val snapshotVersion = version.toString().endsWith("-SNAPSHOT")
+val remoteRepositoryUrl: Provider<String> = providers.gradleProperty("ksm.remoteRepository")
+    .orElse(if (snapshotVersion) KsmRelease.CENTRAL_SNAPSHOT_REPOSITORY else KsmRelease.CENTRAL_DEPLOYMENT_REPOSITORY)
+// The Central Portal deployment endpoint needs the user token (never logged).
+val centralBearerToken: Provider<String> = providers.gradleProperty("mavenCentralUsername")
+    .zip(providers.gradleProperty("mavenCentralPassword")) { user, password ->
+        java.util.Base64.getEncoder().encodeToString("$user:$password".toByteArray())
+    }
 val remoteMirror = layout.buildDirectory.dir("remote-mirror")
 val mirrorRemoteRepository by tasks.registering(MirrorRemoteRepository::class) {
     group = "verification"
-    description = "Downloads the published snapshot of every artifact from the remote repository into build/remote-mirror."
+    description = "Downloads the uploaded version of every artifact from the remote repository into build/remote-mirror."
     repositoryUrl.set(remoteRepositoryUrl)
+    if (!snapshotVersion) bearerToken.set(centralBearerToken)
     this.version.set(project.version.toString())
     artifacts.set(KsmRelease.publishedModules.map(KsmRelease::artifactId))
     mirror.set(remoteMirror)
@@ -354,10 +363,15 @@ val remoteConsumerSmokeTest by tasks.registering(Exec::class) {
     val wrapperDists = File(providers.systemProperty("user.home").get(), ".gradle/wrapper/dists")
     val fixtureVersion = version.toString()
     val repositoryUrl = remoteRepositoryUrl
+    val token = centralBearerToken
+    val needsToken = !snapshotVersion
     doFirst {
         userHome.deleteRecursively()
         userHome.resolve("wrapper").mkdirs()
         if (wrapperDists.isDirectory) java.nio.file.Files.createSymbolicLink(userHome.resolve("wrapper/dists").toPath(), wrapperDists.toPath())
+        // A Central Portal deployment needs the token: passed in the
+        // environment of the fixture build only, never on its command line.
+        if (needsToken) environment("ORG_GRADLE_PROJECT_ksmRepoBearer", token.get())
     }
     environment("GRADLE_USER_HOME", userHome.absolutePath)
     workingDir = layout.projectDirectory.dir("samples/jvm-e2e").asFile
@@ -368,7 +382,7 @@ val remoteConsumerSmokeTest by tasks.registering(Exec::class) {
 }
 tasks.register("verifyRemotePublication") {
     group = "verification"
-    description = "Mirrors and inspects the remote snapshot, verifies its signatures and runs the consumer fixture against it."
+    description = "Mirrors and inspects the uploaded version, verifies its signatures and runs the consumer fixture against it."
     dependsOn(verifyRemoteSignatures, remoteConsumerSmokeTest)
 }
 

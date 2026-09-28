@@ -18,6 +18,12 @@ object KsmRelease {
     const val CENTRAL_SNAPSHOT_REPOSITORY: String = "https://central.sonatype.com/repository/maven-snapshots/"
 
     /**
+     * Central Portal endpoint serving validated but unpublished deployments of
+     * the namespace as a Maven repository (needs the user token as a bearer).
+     */
+    const val CENTRAL_DEPLOYMENT_REPOSITORY: String = "https://central.sonatype.com/api/v1/publisher/deployments/download/"
+
+    /**
      * How publications are signed, from keys supplied outside the repository
      * (docs/releasing.md, "Signing"): [IN_MEMORY] from `signingInMemoryKey`
      * (CI secrets), [GPG_AGENT] from `signing.gnupg.keyName` (the maintainer's

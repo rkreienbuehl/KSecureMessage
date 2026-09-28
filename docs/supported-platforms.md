@@ -22,7 +22,7 @@ compile-only targets (main and test code) so they cannot rot silently.
 |---|---|---|---|---|
 | JVM | yes | `jvmTest` (KMP modules), `test` (server modules) — default build | supported + tested | Java 17 bytecode |
 | Android | yes | `:storage:keyprovider:android:testAndroidHostTest` (default build); `connectedAndroidDeviceTest` of `storage:keyprovider:android` and `storage:client:sqldelight` (emulator, not in the default build) | supported + tested | minSdk 26, compileSdk 37. Other modules' common tests run on the JVM, not on Android. |
-| macOS arm64 | yes | `macosArm64Test` — default build on a macOS host; `macosArm64KeychainHostTest` (signed host, needs signing material) | supported + tested | |
+| macOS arm64 | yes | `macosArm64Test` — default build on a macOS host; `macosArm64KeychainHostTest` (signed host, needs signing material; maintainer machine only, hosted CI reports it NOT EXECUTED with the current device-bound profile) | supported + tested | |
 | iOS simulator arm64 | yes | `iosSimulatorArm64Test` — default build on a macOS host; `iosSimulatorArm64KeychainHostTest` (booted simulator) | supported + tested | |
 | iOS arm64 (device) | yes | none | compile-only | same Kotlin/Native code as the simulator; no device test runner |
 | iOS x64 simulator, macOS x64 | yes | none on Apple silicon hosts | compile-only | tests would need an Intel host |
