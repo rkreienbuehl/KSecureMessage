@@ -118,7 +118,7 @@ class RecoveryKeyLifecycleRoutesTest {
     }
 
     @Test
-    fun statusIsSignedAndMinimal() = testServer(clock) { _, http ->
+    fun statusIsSignedAndMinimal() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { _, http ->
         val (phoneDevice, laptopDevice, bobDevice) = registered(http, withRecoveryKey = false)
         http.status(null).assertError(HttpStatusCode.Unauthorized, "missing_authentication")
         val unconfigured = """{"state":"unconfigured","recoveryKeyEpoch":null,"installedAt":null,"revokedAt":null,"activePublicKey":null}"""
@@ -137,9 +137,14 @@ class RecoveryKeyLifecycleRoutesTest {
     }
 
     @Test
-    fun rotationIsSignedAndCarriesBothProofs() = testServer(clock) { storage, http ->
+    fun rotationIsSignedAndCarriesBothProofs() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val (phoneDevice, laptopDevice, bobDevice) = registered(http)
         val authorization = rotation()
+        // The server clock only moves forward (nonce prune watermark, S1): a
+        // statement 1 ms older than the authorization shows the expiry bound.
+        clock.now -= 1.milliseconds
+        val stale = rotation()
+        clock.now += 1.milliseconds
         http.rotate(null, json(authorization), phone).assertError(HttpStatusCode.Unauthorized, "missing_authentication")
         // The authorizing device is the route's: the phone's statement submitted by the laptop names the laptop, so R1's signature fails.
         http.rotate(laptopDevice, json(authorization)).assertError(HttpStatusCode.Unauthorized, "recovery_key_rotation_invalid_proof")
@@ -149,9 +154,8 @@ class RecoveryKeyLifecycleRoutesTest {
         http.rotate(phoneDevice, json(forged)).assertError(HttpStatusCode.Unauthorized, "recovery_key_rotation_invalid_proof")
         http.rotate(phoneDevice, json(rotation(current = r3))).assertError(HttpStatusCode.Conflict, "recovery_key_rotation_conflict")
         http.rotate(phoneDevice, json(rotation(epoch = 2))).assertError(HttpStatusCode.Conflict, "recovery_key_rotation_conflict")
-        clock.now += 5.minutes + 1.milliseconds
-        http.rotate(phoneDevice, json(authorization)).assertError(HttpStatusCode.Unauthorized, "recovery_key_rotation_expired")
-        clock.now -= 5.minutes + 1.milliseconds
+        clock.now += 5.minutes
+        http.rotate(phoneDevice, json(stale)).assertError(HttpStatusCode.Unauthorized, "recovery_key_rotation_expired")
         assertContentEquals(r1.publicKey, storage.lastDeviceRecovery.recoveryKey(phone.userId))
 
         assertEquals(HttpStatusCode.NoContent, http.rotate(phoneDevice, json(authorization)).status)
@@ -165,13 +169,13 @@ class RecoveryKeyLifecycleRoutesTest {
         val nonce = RequestNonce.random()
         assertEquals(HttpStatusCode.NoContent, http.rotate(phoneDevice, json(rotation(r2, r3, epoch = 2, nonce = nonce))).status)
         http.rotate(phoneDevice, json(rotation(r3, r1, epoch = 3, nonce = nonce))).assertError(HttpStatusCode.Unauthorized, "recovery_key_rotation_replay")
-        clock.now -= 1.days
-        http.rotate(phoneDevice, json(authorization)).assertError(HttpStatusCode.Conflict, "recovery_key_rotation_conflict")
+        // The superseded R1 -> R2 statement is no exact retry any more.
+        http.rotate(phoneDevice, json(authorization)).assertError(HttpStatusCode.Unauthorized, "recovery_key_rotation_expired")
         assertContentEquals(r3.publicKey, storage.lastDeviceRecovery.recoveryKey(phone.userId))
     }
 
     @Test
-    fun malformedRotationAndRevocationBodiesAreBadRequests() = testServer(clock) { storage, http ->
+    fun malformedRotationAndRevocationBodiesAreBadRequests() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val (phoneDevice, _, _) = registered(http)
         val good = json(rotation())
         for (body in listOf(
@@ -191,7 +195,7 @@ class RecoveryKeyLifecycleRoutesTest {
     }
 
     @Test
-    fun revocationEndsRecoveryUntilANewKeyIsRegistered() = testServer(clock) { storage, http ->
+    fun revocationEndsRecoveryUntilANewKeyIsRegistered() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val (phoneDevice, laptopDevice, _) = registered(http)
         val authorization = revocation()
         http.revoke(null, json(authorization), phone).assertError(HttpStatusCode.Unauthorized, "missing_authentication")
@@ -215,7 +219,7 @@ class RecoveryKeyLifecycleRoutesTest {
         http.raw(method, ServerApiPaths.device(phone, endpoint), null, null)
 
     @Test
-    fun clientUsesTheRoutesThroughTheKtorAdapter() = testServer(clock) { storage, http ->
+    fun clientUsesTheRoutesThroughTheKtorAdapter() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val transport = KtorSecureMessageTransport("", http)
         // Applies the phone's rotation on the server, then loses the response once.
         var loseNextResponse = false
@@ -268,7 +272,7 @@ class RecoveryKeyLifecycleRoutesTest {
 
     @Test
     fun lifecyclePersistsAcrossServerRestarts() = ReopenableServerStorage().use { persistent ->
-        testServer(persistent, clock) { server, http ->
+        testServer(TestDeviceRegistrationAuthorizer.allowAll(), persistent, clock) { server, http ->
             val (phoneDevice, laptopDevice, _) = registered(http)
             val oldChallenge = raw(http, HttpMethod.Post, ServerApiPaths.LAST_DEVICE_RECOVERY_CHALLENGE).bodyAsText()
             val first = rotation()
@@ -297,7 +301,7 @@ class RecoveryKeyLifecycleRoutesTest {
 
     @Test
     fun epochExhaustionIsReported() = ReopenableServerStorage().use { persistent ->
-        testServer(persistent, clock) { server, http ->
+        testServer(TestDeviceRegistrationAuthorizer.allowAll(), persistent, clock) { server, http ->
             val (phoneDevice, _, _) = registered(http)
             server.driver.execute(null, "UPDATE last_device_recovery_key_state SET epoch = ${Long.MAX_VALUE - 1}", 0)
             assertEquals(HttpStatusCode.NoContent, http.revoke(phoneDevice, json(revocation(epoch = Long.MAX_VALUE - 1))).status)
@@ -314,7 +318,7 @@ class RecoveryKeyLifecycleRoutesTest {
 
     @Test
     fun storageFailureIsAGenericServerError() = ReopenableServerStorage().use { persistent ->
-        testServer(persistent, clock) { server, http ->
+        testServer(TestDeviceRegistrationAuthorizer.allowAll(), persistent, clock) { server, http ->
             val (phoneDevice, _, _) = registered(http)
             server.driver.execute(null, "DROP TABLE last_device_recovery_key_state", 0)
             http.status(phoneDevice).assertError(HttpStatusCode.InternalServerError, "internal_error")

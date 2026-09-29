@@ -1,4 +1,4 @@
--- Server state, schema version 7 (docs/server-storage.md). Independent of the
+-- Server state, schema version 8 (docs/server-storage.md). Independent of the
 -- client schema. Holds only public keys, opaque encrypted envelopes, routing
 -- metadata and replay metadata: never client private keys, session secrets
 -- or application plaintext. Timestamps are epoch milliseconds.
@@ -7,15 +7,15 @@
 -- Rows are never written with INSERT OR REPLACE: a conflict must never
 -- overwrite what is stored.
 
--- Single row that marks a database created with this schema. format 7 is
--- schema version 7 (migration 6.sqm); open() refuses a database without it
--- and a database still at format 1, 2, 3, 4, 5 or 6 (not migrated).
+-- Single row that marks a database created with this schema. format 8 is
+-- schema version 8 (migration 7.sqm); open() refuses a database without it
+-- and a database still at format 1, 2, 3, 4, 5, 6 or 7 (not migrated).
 CREATE TABLE server_storage (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
     format INTEGER NOT NULL
 );
 
-INSERT INTO server_storage (id, format) VALUES (0, 7);
+INSERT INTO server_storage (id, format) VALUES (0, 8);
 
 -- Device authentication public key per device. Added by registration,
 -- replaced only by a device recovery (docs/device-recovery.md), a routine
@@ -52,6 +52,16 @@ CREATE TABLE authentication_nonce (
 );
 
 CREATE INDEX authentication_nonce_timestamp ON authentication_nonce (request_timestamp);
+
+-- Single row: the largest prune bound (epoch milliseconds) any nonce claim
+-- has applied; it never decreases. A claim whose request timestamp is before
+-- it is refused, because that nonce may already have been pruned (S1, F8).
+CREATE TABLE authentication_nonce_watermark (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    prune_before INTEGER NOT NULL
+);
+
+INSERT INTO authentication_nonce_watermark (id, prune_before) VALUES (0, -9223372036854775808);
 
 -- Last-device recovery key state per user (docs/recovery-key-lifecycle.md).
 -- state 1 = ACTIVE (public_key and installed_at set), 2 = REVOKED (both
@@ -192,6 +202,15 @@ WHERE user_id = :user_id AND device_id = :device_id AND auth_public_key = :expec
 
 pruneNonces:
 DELETE FROM authentication_nonce WHERE request_timestamp < ?;
+
+raiseNonceWatermark:
+UPDATE authentication_nonce_watermark SET prune_before = max(prune_before, ?) WHERE id = 0;
+
+selectNonceWatermark:
+SELECT prune_before FROM authentication_nonce_watermark WHERE id = 0;
+
+countRegisteredDevicesOfUser:
+SELECT count(*) FROM device_registration WHERE user_id = ?;
 
 insertNonce:
 INSERT OR IGNORE INTO authentication_nonce (user_id, device_id, nonce, request_timestamp) VALUES (?, ?, ?, ?);

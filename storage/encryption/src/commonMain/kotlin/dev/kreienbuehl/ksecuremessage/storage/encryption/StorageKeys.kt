@@ -77,6 +77,18 @@ interface StorageKeyProvider {
     suspend fun loadOrCreateKey(): StorageEncryptionKey
 
     /**
+     * Whether the provider holds any key. Never creates, rotates, repairs or
+     * replaces a key, and changes nothing. Throws
+     * [StorageEncryptionException.KeyUnavailable] if the provider's state
+     * exists but cannot be read (it never reports such state as empty).
+     *
+     * Storage uses it to tell a genuine database from before record
+     * encryption (no key yet) from one whose encryption marker was turned
+     * back (S1, finding F7; docs/storage-encryption.md).
+     */
+    suspend fun hasKeys(): Boolean
+
+    /**
      * The existing key [id], or `null` if the provider does not have it.
      * Never creates a key: this is called for storage that is already
      * encrypted with [id].
@@ -123,6 +135,9 @@ class StaticStorageKeyProvider(
     }
 
     override suspend fun loadOrCreateKey(): StorageEncryptionKey = current
+
+    /** Always `true`: the application passed at least [current]. */
+    override suspend fun hasKeys(): Boolean = true
 
     override suspend fun key(id: StorageKeyId): StorageEncryptionKey? = keys.firstOrNull { it.id == id }
 

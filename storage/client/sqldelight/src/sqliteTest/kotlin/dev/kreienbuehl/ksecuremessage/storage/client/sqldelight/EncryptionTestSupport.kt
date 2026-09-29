@@ -112,7 +112,7 @@ class TestRelay : SecureMessageTransport {
 
     override suspend fun fetchPreKeyBundle(address: DeviceAddress) = bundles.getValue(address)
 
-    override suspend fun send(envelope: EncryptedEnvelope) {
+    override suspend fun send(envelope: EncryptedEnvelope, signer: ServerRequestSigner) {
         mailboxes.getOrPut(envelope.recipient) { mutableListOf() }.add(envelope)
     }
 

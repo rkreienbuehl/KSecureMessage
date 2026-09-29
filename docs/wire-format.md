@@ -49,7 +49,7 @@ metadata (routing fields). The wire version below versions the payload bytes.
 | Offset | Size | Field        | Value                                   |
 |-------:|-----:|--------------|-----------------------------------------|
 | 0      | 1    | wire version | `0x01`                                  |
-| 1      | 1    | message type | `0x01` RatchetMessage, `0x02` PreKeyMessage |
+| 1      | 1    | message type | `0x01` RatchetMessage, `0x02` PreKeyMessage (initiation v1), `0x03` PreKeyMessage (initiation v2, S1) |
 
 All other version and type values are reserved and rejected.
 
@@ -64,15 +64,25 @@ A message on an established session.
 | 2      | 4    | ratchet length `L` (`u32`, `1 ..= 262144`) |
 | 6      | L    | ratchet bytes |
 
-## PreKeyMessage (type `0x02`)
+## PreKeyMessage (types `0x02` and `0x03`)
 
 A ratchet message plus the X3DH data the recipient needs to create its side
 of the session. The initiator sends these until it has decrypted a reply.
 
+Both types have exactly the same layout. The type selects the session
+initiation version (S1, [session-lifecycle.md](session-lifecycle.md#session-initiation-version-2-s1)):
+`0x03` = version 2, whose associated data is the canonical transcript that
+binds both device addresses and every header field; `0x02` = version 1,
+from before S1, which is decoded but only continues an existing version 1
+session. Every new initiation is sent as `0x03`. The type byte itself is not
+covered by the AEAD, but rewriting it changes the associated data the
+receiver uses, so a relabeled message fails to decrypt, and a `0x02`
+message never creates anything.
+
 | Field                | Size | Notes |
 |----------------------|-----:|-------|
 | version              | 1    | `0x01` |
-| type                 | 1    | `0x02` |
+| type                 | 1    | `0x02` (initiation v1) or `0x03` (initiation v2) |
 | signed prekey ID     | 4    | `u32`, high bit clear |
 | one-time prekey flag | 1    | `0x00` absent, `0x01` present; other values invalid |
 | one-time prekey ID   | 4    | `u32`, high bit clear; **only if flag is `0x01`** |
@@ -101,7 +111,7 @@ Treat input as untrusted. A decoder must reject, and never partially accept:
 1. input longer than the max encoded size (`MessageTooLarge`);
 2. input shorter than 2 bytes (`MalformedMessage`);
 3. a version other than `0x01` (`UnsupportedWireVersion`);
-4. a type other than `0x01` / `0x02` (`UnknownMessageType`);
+4. a type other than `0x01` / `0x02` / `0x03` (`UnknownMessageType`);
 5. a ratchet length above 262144, including any value with the high bit set
    (`MessageTooLarge`), checked before reading the bytes;
 6. truncated fields, a length larger than the remaining input, `L = 0`, a
@@ -145,12 +155,16 @@ ratchet bytes `AB CD EF`:
 00 00 00 03 AB CD EF  ratchet length, ratchet bytes
 ```
 
-These vectors are pinned in `CiphertextMessageCodecTest`.
+These vectors are pinned in `CiphertextMessageCodecTest`, together with the
+same two messages as type `0x03` (only byte 1 differs:
+`01 03 00 00 00 07 01 …` and `01 03 01 02 03 04 00 …`).
 
 ## Compatibility
 
 - Version 1 is frozen. The test vectors must keep decoding and encoding to the
-  same bytes.
+  same bytes. S1 added message type `0x03` without changing any layout; a
+  decoder from before S1 rejects it as `UnknownMessageType`, so peers must be
+  upgraded together.
 - Any change to the layout, field set or limits that old decoders would
   misread needs a new wire version. Decoders reject versions they do not know.
 - The X3DH and ratchet info strings (`KSecureMessage-X3DH-v1`,

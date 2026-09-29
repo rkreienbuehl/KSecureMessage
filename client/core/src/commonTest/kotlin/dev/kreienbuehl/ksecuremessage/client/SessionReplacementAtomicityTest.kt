@@ -35,8 +35,10 @@ class SessionReplacementAtomicityTest {
 
         suspend fun receiveOne(): EncryptedEnvelope = network.receive(address).single()
 
-        suspend fun initiationOf(envelope: EncryptedEnvelope) = SessionInitiationId.of(
+        suspend fun initiationOf(envelope: EncryptedEnvelope) = SessionInitiationId.v2Of(
             assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(envelope.payload)),
+            envelope.sender,
+            envelope.recipient,
             assertNotNull(storage.identity.identity()).publicKey,
         )
 

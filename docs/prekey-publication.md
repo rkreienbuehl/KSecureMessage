@@ -193,9 +193,10 @@ stays inside `EncryptedEnvelope.payload`.
 
 ## Known limitations
 
-- **Trust on first registration.** Since milestone 12 only the registered
-  device can publish for its address, but whoever registers a free address
-  first owns it ([server-authentication.md](server-authentication.md)).
+- **Host-authorized registration.** Since milestone 12 only the registered
+  device can publish for its address, and since S1 an address is registered
+  only with the host application's authorization
+  ([server-authentication.md](server-authentication.md)).
   Bundle fetches stay public, so anyone can still drain a device's one-time
   prekeys by fetching bundles.
 - **No device reset or re-registration.** A device that lost its identity

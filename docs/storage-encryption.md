@@ -149,6 +149,7 @@ the associated data, so version, algorithm and key ID are authenticated.
 | pending last-device recovery key | 10 | none (there is at most one; milestone 18) |
 | pending inbound | 11 | sender user ID, sender device ID, 16-byte logical message ID (milestone 20) |
 | processed inbound digest | 12 | sender user ID, sender device ID, 16-byte logical message ID (milestone 20) |
+| legacy migration intent | 13 | the constant `legacy-plaintext-migration`; content the fixed marker `KSecureMessage-LegacyPlaintextMigration-v1` (S1, see [Downgrade protection](#downgrade-protection)) |
 
 The IDs and the domain string must never change. Because the record type is
 authenticated, a record moved to another type fails even when the plaintext
@@ -241,7 +242,8 @@ whether bytes are plaintext by trying to decrypt them.
 |---|---|---|
 | 1 | set | `keyProvider.key(key_id)`; `null` or a throw → `KeyUnavailable`. Opens the key check record; the wrong key fails here with `AuthenticationFailed`, before anything is read. Never creates a key. During a storage key rotation the retiring key is required too ([storage-key-rotation.md](storage-key-rotation.md)). |
 | 1 | NULL | A new database (created with format 1). `loadOrCreateKey()`, then binds the key ID and a key check in one transaction. If sensitive rows exist without a bound key, the database was tampered with → `KeyUnavailable`, nothing is bound. |
-| 0 | NULL | A database upgraded from schema version 5 or older: still milestone 8 plaintext. `loadOrCreateKey()`, then the legacy migration (below). |
+| 0 | NULL | A database upgraded from schema version 5 or older: still milestone 8 plaintext, **if** it passes the [downgrade checks](#downgrade-protection); then the legacy migration (below). Otherwise `DowngradeRejected`. |
+| 0 | set | `DowngradeRejected`: the database was bound to a key before. |
 | other | | `UnsupportedFormat`. |
 
 The provider is always called outside database transactions. Provider
@@ -264,8 +266,11 @@ means no initiation is accepted with it.
    (schema 5 → 6). It only creates `storage_encryption` with `format = 0`;
    SQL cannot encrypt, and no key is available at that point. Nothing else is
    read or changed.
-2. `SqlDelightClientStorage.open` sees `format = 0` and gets the key with
-   `loadOrCreateKey()`. If that fails the database is left exactly as it was.
+2. `SqlDelightClientStorage.open` sees `format = 0`, runs the
+   [downgrade checks](#downgrade-protection), gets the key with
+   `loadOrCreateKey()` and commits the sealed migration intent in its own
+   short transaction. If that fails the database is left exactly as it was
+   (only the provider may already hold the new key).
 3. In **one SQLite transaction** (`LegacyPlaintextMigration`), each sensitive
    table (`local_identity`, `signed_pre_key`, `one_time_pre_key`, `session`,
    `pending_outbound_message`) is rebuilt as SQLite documents for schema
@@ -276,11 +281,13 @@ means no initiation is accepted with it.
    sequence numbers are never reused. During the signed prekey rebuild
    `pre_key_state.current_signed_pre_key_id` is detached and restored, so
    the migration also works with foreign keys enforced.
-4. In the same transaction: `format = 1`, the key ID and the key check.
+4. In the same transaction: `format = 1`, the key ID and the key check, and
+   the migration intent is cleared.
 
 Any failure rolls the whole transaction back: the marker stays 0, every
-legacy row and the schema are byte-for-byte unchanged, no `_m9` table
-remains, and the next `open` runs the migration again. There is never a
+legacy row and the schema are byte-for-byte unchanged (only the intent from
+step 2 remains), no `_m9` table remains, and the next `open` resumes the
+migration with the same key, proven by the intent. There is never a
 mixed state. Tests inject a failure at every single seal of the migration.
 
 After migration the schema equals a new database's (tested). Identities,
@@ -304,6 +311,60 @@ does not run `VACUUM`, `secure_delete` or file wiping. An application that
 needs that must take its own measures (for example `PRAGMA secure_delete`
 plus `VACUUM` after the migration, and handling of backups), and even then
 flash storage may keep old blocks.
+
+## Downgrade protection
+
+S1, finding F7 (docs/security-review-remediation.md). The `format` row is
+plaintext. Before S1 an attacker with write access to the database file
+could set it back to `0`, rebuild the sensitive tables in the milestone 8
+layout with rows of their choice (for example an identity whose private key
+they know) and have the next `open` seal those rows with the legitimate
+storage key and treat them as authentic.
+
+Since S1 a `format = 0` database is migrated only if it can be shown to be
+a genuine database from before record encryption:
+
+1. **Structure** (`DowngradeRejected` otherwise, nothing read or changed):
+   `key_id`, `key_check`, `highest_key_id`, `next_key_id`, `retiring_key_id`
+   and `retiring_key_check` are NULL and `rotation_phase` is 0; the five
+   rebuilt tables are in the milestone 8 plaintext layout (checked with
+   `pragma_table_info`, no `sealed_*` column); and no record type exists
+   that only encrypted storage writes (device authentication keys and their
+   pending replacements, pending inbound frames, processed digests).
+2. **Provider**, using `StorageKeyProvider.hasKeys()` (a query that never
+   creates, repairs or replaces a key):
+   - no key: a genuine first migration. `loadOrCreateKey()` creates key 1;
+     a **migration intent** (record type 13, sealed with that key) is
+     committed to `storage_encryption.migration_intent` (schema version 16,
+     `15.sqm`) before any row is migrated;
+   - a key and an intent that opens with it as a migration intent: an
+     interrupted first migration; it resumes with the same key;
+   - a key and no valid intent (none, garbage, a key check, an intent of
+     another key): `DowngradeRejected`. Nothing is sealed or cleared.
+3. The migration transaction re-checks the structure and that the intent is
+   still exactly the verified one, migrates, binds the key and clears the
+   intent. A `format = 1` database that carries an intent is refused.
+
+`StaticStorageKeyProvider` always holds a key, so a milestone 8 database
+cannot be migrated with it (it cannot show the key is new); use a platform
+provider, which starts empty. This is a deliberate S1 behavior change.
+
+Limitations, stated plainly:
+
+- A crash between the provider persisting the new key and the intent
+  commit leaves a provider key without an intent: the next `open` fails
+  closed with `DowngradeRejected`; recovery is manual.
+- Someone who copied the database file while a genuine first migration was
+  interrupted could later restore that copy (with an intent sealed by the
+  current key) plus chosen rows. This needs the attacker to have captured
+  exactly that window; a completed migration clears the intent.
+- This is authenticity of the migration input, not rollback protection of
+  the whole database: an attacker can still restore an older copy of an
+  encrypted database (see [Not covered](#not-covered)).
+
+Tests: `StorageDowngradeTest` and `SqlDelightMigrationTest`
+(`storage:client:sqldelight`), `StorageCipherTest` (record type 13 vector),
+`StorageKeyProviderContractTest` (`hasKeys`).
 
 ## Key IDs and rotation
 

@@ -240,8 +240,8 @@ class ApplicationDeliveryStorageTest {
         val before = driver.dump()
 
         val migrated = reopen()
-        assertEquals(listOf(15L), driver.longs("PRAGMA user_version"))
-        assertEquals(before.withLegacyProcessedMessages(), driver.dump(), "no existing row changes")
+        assertEquals(listOf(16L), driver.longs("PRAGMA user_version"))
+        assertEquals(before.withLegacyProcessedMessages().withEmptyMigrationIntent(), driver.dump(), "no existing row changes")
         val entry = assertNotNull(migrated.processedInbound.get(ALICE, legacy))
         assertNull(entry.digest)
         assertNull(entry.finalizedAt)

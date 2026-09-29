@@ -92,7 +92,7 @@ class DeviceAuthenticationTest {
         assertNull(network.server.preKeys.consumePreKeyBundle(BOB))
 
         val envelope = EncryptedEnvelope(MessageId("m"), ALICE, BOB, payload = byteArrayOf(1))
-        network.send(envelope)
+        network.server.mailboxes.enqueue(envelope)
         val drain = assertFailsWith<SecureMessageTransportException.AuthenticationFailed> { bob.receive() }
         assertEquals(AuthenticationFailure.NOT_REGISTERED, drain.failure)
         assertEquals(listOf(envelope.id), network.receive(BOB).map { it.id }, "mailbox untouched")

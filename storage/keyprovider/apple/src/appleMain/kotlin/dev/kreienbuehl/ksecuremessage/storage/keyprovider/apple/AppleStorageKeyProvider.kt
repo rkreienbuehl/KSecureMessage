@@ -56,6 +56,9 @@ class AppleStorageKeyProvider internal constructor(
         }
     }
 
+    // Queries the item IDs only; any OSStatus except not-found throws KeyUnavailable like every other call.
+    override suspend fun hasKeys(): Boolean = keychainCall { storedKeyIds().isNotEmpty() }
+
     override suspend fun key(id: StorageKeyId): StorageEncryptionKey? = keychainCall { readKey(id) }
 
     override suspend fun createKey(id: StorageKeyId): StorageEncryptionKey = keychainCall {

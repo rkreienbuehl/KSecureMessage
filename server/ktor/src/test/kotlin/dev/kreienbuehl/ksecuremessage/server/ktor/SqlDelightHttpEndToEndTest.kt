@@ -22,6 +22,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -39,7 +40,7 @@ class SqlDelightHttpEndToEndTest {
     private val bobAddress = DeviceAddress(UserId("bob"), DeviceId("laptop"))
 
     private fun persistentServer(block: suspend io.ktor.server.testing.ApplicationTestBuilder.(ReopenableServerStorage, io.ktor.client.HttpClient) -> Unit) =
-        ReopenableServerStorage().use { storage -> testServer(storage, block = block) }
+        ReopenableServerStorage().use { storage -> testServer(TestDeviceRegistrationAuthorizer.allowAll(), storage, block = block) }
 
     @Test
     fun firstContactAcknowledgementAndReplyAcrossServerRestarts() = persistentServer { server, http ->
@@ -119,10 +120,8 @@ class SqlDelightHttpEndToEndTest {
         device.register(KtorSecureMessageTransport("", http))
 
         server.driver.execute(null, "DROP TABLE mailbox_message", 0)
-        val relay = http.post("/v1/messages") {
-            contentType(ContentType.Application.Json)
-            setBody(EncryptedEnvelope(MessageId("m1"), bobAddress, aliceAddress, payload = byteArrayOf(1)))
-        }
+        val envelope = Json.encodeToString(EncryptedEnvelope(MessageId("m1"), aliceAddress, aliceAddress, payload = byteArrayOf(1))).encodeToByteArray()
+        val relay = http.raw(HttpMethod.Post, "/v1/messages", envelope, device.signSubmission(envelope), device.submissionHeaders())
         assertEquals(HttpStatusCode.InternalServerError, relay.status)
         assertEquals("""{"error":"internal_error"}""", relay.bodyAsText())
 

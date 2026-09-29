@@ -18,6 +18,7 @@ public abstract interface class dev/kreienbuehl/ksecuremessage/storage/encryptio
 	public abstract fun sealDeviceAuthenticationRotationKey (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationKeyPair;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun sealIdentity (Ldev/kreienbuehl/ksecuremessage/protocol/LocalIdentity;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun sealKeyCheck (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun sealMigrationIntent (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun sealOneTimePreKey (Ldev/kreienbuehl/ksecuremessage/protocol/OneTimePreKeyPair;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun sealPendingFrame-tFwzz2k (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun sealPendingInboundFrame-tFwzz2k (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/uuid/Uuid;[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -25,6 +26,7 @@ public abstract interface class dev/kreienbuehl/ksecuremessage/storage/encryptio
 	public abstract fun sealSession (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun sealSignedPreKey (Ldev/kreienbuehl/ksecuremessage/protocol/SignedPreKeyPair;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun verifyKeyCheck ([BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun verifyMigrationIntent ([BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
 public final class dev/kreienbuehl/ksecuremessage/storage/encryption/ClientRecordCipherKt {
@@ -41,6 +43,7 @@ public final class dev/kreienbuehl/ksecuremessage/storage/encryption/SealedRecor
 public final class dev/kreienbuehl/ksecuremessage/storage/encryption/StaticStorageKeyProvider : dev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyProvider {
 	public fun <init> (Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionKey;[Ldev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionKey;)V
 	public fun createKey-vFH2tSs (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun hasKeys (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun key-vFH2tSs (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun loadOrCreateKey (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun removeKey-vFH2tSs (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -51,6 +54,10 @@ public abstract class dev/kreienbuehl/ksecuremessage/storage/encryption/StorageE
 }
 
 public final class dev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionException$AuthenticationFailed : dev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class dev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionException$DowngradeRejected : dev/kreienbuehl/ksecuremessage/storage/encryption/StorageEncryptionException {
 	public fun <init> (Ljava/lang/String;)V
 }
 
@@ -100,6 +107,7 @@ public final class dev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyI
 
 public abstract interface class dev/kreienbuehl/ksecuremessage/storage/encryption/StorageKeyProvider {
 	public abstract fun createKey-vFH2tSs (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun hasKeys (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun key-vFH2tSs (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun loadOrCreateKey (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun removeKey-vFH2tSs (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;

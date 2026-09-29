@@ -71,6 +71,7 @@ nav:
   - Getting started: getting-started.md
   - Application lifecycle: application-lifecycle.md
   - Security model: security-review.md
+  - Security review remediation (S1): security-review-remediation.md
   - Identity & verification:
       - Remote identity trust: identity-trust.md
       - Safety numbers and verification: identity-verification.md

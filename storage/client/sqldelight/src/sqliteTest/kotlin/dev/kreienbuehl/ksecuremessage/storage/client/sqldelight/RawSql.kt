@@ -44,6 +44,15 @@ fun SqlDriver.dump(): Map<String, List<String?>> = tables().associateWith { tabl
 }
 
 /**
+ * A [dump] of a database from before schema version 16 as migration leaves
+ * it: the storage_encryption row gained an empty migration_intent (S1).
+ */
+fun Map<String, List<String?>>.withEmptyMigrationIntent(): Map<String, List<String?>> {
+    val row = get("storage_encryption") ?: return this
+    return this + ("storage_encryption" to row.map { "$it|NULL" })
+}
+
+/**
  * A [dump] of a database from before schema version 10 as migration leaves
  * it: every remote identity pin gained `verification` 0 (unverified).
  */
@@ -57,7 +66,16 @@ fun Map<String, List<String?>>.withUnverifiedPins(): Map<String, List<String?>> 
  * turn a new database into an older one: the pending outbound recipient index.
  */
 fun SqlDriver.dropVersion15Additions() {
+    dropVersion16Additions()
     exec("DROP INDEX pending_outbound_message_recipient")
+}
+
+/**
+ * Removes what schema version 16 (S1, 15.sqm) added, for tests that turn a
+ * new database into an older one: the storage encryption migration intent.
+ */
+fun SqlDriver.dropVersion16Additions() {
+    exec("ALTER TABLE storage_encryption DROP COLUMN migration_intent")
 }
 
 /**

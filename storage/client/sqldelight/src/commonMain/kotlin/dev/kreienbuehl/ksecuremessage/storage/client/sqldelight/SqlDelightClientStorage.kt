@@ -38,6 +38,7 @@ import dev.kreienbuehl.ksecuremessage.storage.SessionInitiationStore
 import dev.kreienbuehl.ksecuremessage.storage.SessionStore
 import dev.kreienbuehl.ksecuremessage.storage.SignedPreKeyInfo
 import dev.kreienbuehl.ksecuremessage.storage.client.sqldelight.db.ClientStateQueries
+import dev.kreienbuehl.ksecuremessage.storage.client.sqldelight.db.SelectStorageEncryption
 import dev.kreienbuehl.ksecuremessage.storage.encryption.ClientRecordCipher
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionException
 import dev.kreienbuehl.ksecuremessage.storage.encryption.StorageEncryptionKey
@@ -370,6 +371,16 @@ class SqlDelightClientStorage private constructor(
          *   and every sensitive record is encrypted in one transaction before
          *   this returns. If anything fails, the database stays as it was and
          *   the next open tries again.
+         * - Downgrade protection (S1, finding F7; docs/storage-encryption.md):
+         *   a database is migrated from plaintext only if it still looks
+         *   exactly like one from before record encryption (no key, key
+         *   check or rotation state, no record type added after milestone 8)
+         *   and either the provider holds no key yet (genuine first
+         *   migration) or the database carries a migration intent sealed
+         *   with the provider's key (an interrupted first migration). Anything
+         *   else, in particular an encrypted database whose format was set
+         *   back to 0, fails with [StorageEncryptionException.DowngradeRejected]
+         *   and nothing is encrypted.
          *
          * The provider is called outside any database transaction.
          */
@@ -386,6 +397,10 @@ class SqlDelightClientStorage private constructor(
             val queries = database.clientStateQueries
             val state = queries.selectStorageEncryption().awaitAsOne()
             val keyId = state.key_id
+            if (state.format == FORMAT_RECORD_ENCRYPTION_V1 && state.migration_intent != null) {
+                // Only an unfinished plaintext migration (format 0) carries an intent.
+                throw StorageEncryptionException.DowngradeRejected("Encrypted storage carries a legacy migration intent")
+            }
             return when {
                 state.format == FORMAT_RECORD_ENCRYPTION_V1 && keyId != null -> {
                     val current = boundKey(keyProvider, storageKeyId(keyId), state.key_check, "Missing key check record")
@@ -414,26 +429,109 @@ class SqlDelightClientStorage private constructor(
                     }
                     SqlDelightClientStorage(driver, keyProvider, cipherFactory, key, records)
                 }
-                state.format == FORMAT_LEGACY_PLAINTEXT -> {
-                    val key = provide("No storage key could be provided") { keyProvider.loadOrCreateKey() }
-                    val records = cipherFactory(key, emptyList())
-                    val keyCheck = records.sealKeyCheck()
-                    database.transaction {
-                        val current = queries.selectStorageEncryption().awaitAsOne()
-                        if (current.format != FORMAT_LEGACY_PLAINTEXT) {
-                            throw IllegalStateException("Storage encryption state changed while opening")
-                        }
-                        LegacyPlaintextMigration(driver, records).run()
-                        driver.execute(null, "UPDATE storage_encryption SET format = ?, key_id = ?, key_check = ?, highest_key_id = ?", 4) {
-                            bindLong(0, FORMAT_RECORD_ENCRYPTION_V1)
-                            bindLong(1, records.keyId.value.toLong())
-                            bindBytes(2, keyCheck)
-                            bindLong(3, records.keyId.value.toLong())
-                        }.await()
-                    }
-                    SqlDelightClientStorage(driver, keyProvider, cipherFactory, key, records)
-                }
+                state.format == FORMAT_LEGACY_PLAINTEXT -> openLegacyPlaintext(driver, database, keyProvider, cipherFactory)
                 else -> throw StorageEncryptionException.UnsupportedFormat("Unsupported storage encryption format ${state.format}")
+            }
+        }
+
+        /**
+         * The format 0 branch of [open]: a database from before record
+         * encryption, or one whose marker was set back (finding F7). See
+         * docs/storage-encryption.md, "Downgrade protection".
+         */
+        private suspend fun openLegacyPlaintext(
+            driver: SqlDriver,
+            database: KSecureMessageDatabase,
+            keyProvider: StorageKeyProvider,
+            cipherFactory: RecordCipherFactory,
+        ): SqlDelightClientStorage {
+            val queries = database.clientStateQueries
+            val state = queries.selectStorageEncryption().awaitAsOne()
+            requireGenuineLegacyDatabase(driver, database, state)
+            val providerHasKeys = try {
+                keyProvider.hasKeys()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: StorageEncryptionException) {
+                throw e
+            } catch (e: Exception) {
+                throw StorageEncryptionException.KeyUnavailable("Storage key provider state cannot be read", e)
+            }
+            val recordedIntent = state.migration_intent
+            val key: StorageEncryptionKey
+            val intent: ByteArray
+            if (!providerHasKeys) {
+                // Genuine first migration: the provider never held a key. An intent
+                // without a provider key cannot be verified and is not trusted.
+                if (recordedIntent != null) throw StorageEncryptionException.DowngradeRejected("Legacy migration intent without a storage key")
+                key = provide("No storage key could be provided") { keyProvider.loadOrCreateKey() }
+                intent = ClientRecordCipher(key).sealMigrationIntent()
+                // Committed before any record is migrated: if the migration fails or the
+                // process dies, the next open proves with it that this key is ours.
+                database.transaction {
+                    requireGenuineLegacyDatabase(driver, database, queries.selectStorageEncryption().awaitAsOne())
+                    if (queries.recordMigrationIntent(intent) != 1L) {
+                        throw IllegalStateException("Storage encryption state changed while opening")
+                    }
+                }
+            } else {
+                // The provider holds a key: only an interrupted migration of this
+                // database may continue, proven by an intent sealed with that key.
+                recordedIntent ?: throw StorageEncryptionException.DowngradeRejected(
+                    "Storage from before record encryption, but the storage key provider already holds a key",
+                )
+                key = provide("No storage key could be provided") { keyProvider.loadOrCreateKey() }
+                try {
+                    ClientRecordCipher(key).verifyMigrationIntent(recordedIntent)
+                } catch (e: StorageEncryptionException) {
+                    throw StorageEncryptionException.DowngradeRejected("Legacy migration intent does not verify with the storage key")
+                }
+                intent = recordedIntent
+            }
+            val records = cipherFactory(key, emptyList())
+            val keyCheck = records.sealKeyCheck()
+            database.transaction {
+                val current = queries.selectStorageEncryption().awaitAsOne()
+                requireGenuineLegacyDatabase(driver, database, current)
+                if (!intent.contentEquals(current.migration_intent)) {
+                    throw IllegalStateException("Storage encryption state changed while opening")
+                }
+                LegacyPlaintextMigration(driver, records).run()
+                driver.execute(
+                    null,
+                    "UPDATE storage_encryption SET format = ?, key_id = ?, key_check = ?, highest_key_id = ?, migration_intent = NULL",
+                    4,
+                ) {
+                    bindLong(0, FORMAT_RECORD_ENCRYPTION_V1)
+                    bindLong(1, records.keyId.value.toLong())
+                    bindBytes(2, keyCheck)
+                    bindLong(3, records.keyId.value.toLong())
+                }.await()
+            }
+            return SqlDelightClientStorage(driver, keyProvider, cipherFactory, key, records)
+        }
+
+        /**
+         * Refuses a format 0 database that does not look exactly like one
+         * from before record encryption (finding F7): any key, key check or
+         * rotation state, a record type that only exists since record
+         * encryption, or sealed-layout legacy tables prove that it was
+         * encrypted before. Reads only.
+         */
+        private suspend fun requireGenuineLegacyDatabase(
+            driver: SqlDriver,
+            database: KSecureMessageDatabase,
+            state: SelectStorageEncryption,
+        ) {
+            fun reject(reason: String): Nothing = throw StorageEncryptionException.DowngradeRejected(reason)
+            if (state.format != FORMAT_LEGACY_PLAINTEXT) throw IllegalStateException("Storage encryption state changed while opening")
+            if (state.key_id != null || state.key_check != null || state.highest_key_id != null) reject("Storage was bound to a storage key before")
+            if (state.rotation_phase != 0L || state.next_key_id != null || state.retiring_key_id != null || state.retiring_key_check != null) {
+                reject("Storage has storage key rotation state")
+            }
+            if (!LegacyPlaintextMigration.hasPlaintextLayout(driver)) reject("Storage tables are not in the plaintext layout")
+            if (database.clientStateQueries.countPostPlaintextSealedRecords().awaitAsOne() != 0L) {
+                reject("Storage holds records that only encrypted storage has")
             }
         }
 

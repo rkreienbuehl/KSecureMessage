@@ -70,7 +70,7 @@ class DeviceRecoveryServerTest {
     private val bobKey = newKey()
 
     private suspend fun setUp(storage: ServerStorage = InMemoryServerStorage()): Pair<ServerStorage, SecureMessageServer> {
-        val server = SecureMessageServer(storage, clock)
+        val server = SecureMessageServer(storage, clock, TestDeviceRegistrationAuthorizer.allowAll())
         for ((address, key) in listOf(laptop to laptopKey, phone to phoneKey, tablet to tabletKey, bob to bobKey)) {
             val body = key.publicKey
             val request = ServerRequest(address, "PUT", ServerApiPaths.device(address, ServerApiPaths.REGISTRATION), body)
@@ -115,7 +115,7 @@ class DeviceRecoveryServerTest {
         // State that recovery must keep: prekeys, a consumed one-time prekey and queued envelopes.
         storage.preKeys.publish(preKeyPublication())
         server.fetchPreKeyBundle(laptop)
-        server.relay(EncryptedEnvelope(MessageId("m1"), bob, laptop, payload = byteArrayOf(1)))
+        storage.mailboxes.enqueue(EncryptedEnvelope(MessageId("m1"), bob, laptop, payload = byteArrayOf(1)))
 
         assertEquals(DeviceRecoveryOutcome.REPLACED, server.recoverDevice(authorization(replacement)))
 

@@ -168,6 +168,7 @@ abstract interface dev.kreienbuehl.ksecuremessage.storage/DeviceAuthenticationKe
 }
 
 abstract interface dev.kreienbuehl.ksecuremessage.storage/DeviceRegistrationRepository { // dev.kreienbuehl.ksecuremessage.storage/DeviceRegistrationRepository|null[0]
+    abstract suspend fun hasRegisteredDevices(dev.kreienbuehl.ksecuremessage.model/UserId): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.storage/DeviceRegistrationRepository.hasRegisteredDevices|hasRegisteredDevices(dev.kreienbuehl.ksecuremessage.model.UserId){}[0]
     abstract suspend fun register(dev.kreienbuehl.ksecuremessage.model/DeviceRegistration, kotlin.time/Instant): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.storage/DeviceRegistrationRepository.register|register(dev.kreienbuehl.ksecuremessage.model.DeviceRegistration;kotlin.time.Instant){}[0]
     abstract suspend fun registration(dev.kreienbuehl.ksecuremessage.model/DeviceAddress): dev.kreienbuehl.ksecuremessage.model/DeviceRegistration? // dev.kreienbuehl.ksecuremessage.storage/DeviceRegistrationRepository.registration|registration(dev.kreienbuehl.ksecuremessage.model.DeviceAddress){}[0]
     abstract suspend fun registrationState(dev.kreienbuehl.ksecuremessage.model/DeviceAddress): dev.kreienbuehl.ksecuremessage.storage/DeviceRegistrationState? // dev.kreienbuehl.ksecuremessage.storage/DeviceRegistrationRepository.registrationState|registrationState(dev.kreienbuehl.ksecuremessage.model.DeviceAddress){}[0]
@@ -698,6 +699,10 @@ sealed class dev.kreienbuehl.ksecuremessage.storage/DeviceRegistrationException 
 
     final class InvalidRegistration : dev.kreienbuehl.ksecuremessage.storage/DeviceRegistrationException { // dev.kreienbuehl.ksecuremessage.storage/DeviceRegistrationException.InvalidRegistration|null[0]
         constructor <init>(kotlin/String) // dev.kreienbuehl.ksecuremessage.storage/DeviceRegistrationException.InvalidRegistration.<init>|<init>(kotlin.String){}[0]
+    }
+
+    final class NotAuthorized : dev.kreienbuehl.ksecuremessage.storage/DeviceRegistrationException { // dev.kreienbuehl.ksecuremessage.storage/DeviceRegistrationException.NotAuthorized|null[0]
+        constructor <init>() // dev.kreienbuehl.ksecuremessage.storage/DeviceRegistrationException.NotAuthorized.<init>|<init>(){}[0]
     }
 }
 

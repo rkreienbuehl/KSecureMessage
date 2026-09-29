@@ -57,7 +57,7 @@ Details: [docs/supported-platforms.md](docs/supported-platforms.md).
 
 ## Security
 
-Read [docs/security-review.md](docs/security-review.md) (threat model and known limitations) before depending on KSecureMessage. Report vulnerabilities privately through [GitHub private vulnerability reporting](https://github.com/rkreienbuehl/KSecureMessage/security/advisories/new) as described in [SECURITY.md](SECURITY.md), never in a public issue.
+Read [docs/security-review.md](docs/security-review.md) (threat model and known limitations) before depending on KSecureMessage. The findings of the first security review and their fixes (S1, pending independent re-review) are in [docs/security-review-remediation.md](docs/security-review-remediation.md). KSecureMessage does not authenticate accounts: a server must be given a `DeviceRegistrationAuthorizer` that decides which device may join which user. Report vulnerabilities privately through [GitHub private vulnerability reporting](https://github.com/rkreienbuehl/KSecureMessage/security/advisories/new) as described in [SECURITY.md](SECURITY.md), never in a public issue.
 
 ## Building
 

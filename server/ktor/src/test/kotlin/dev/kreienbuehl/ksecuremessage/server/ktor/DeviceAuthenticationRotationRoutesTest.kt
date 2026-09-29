@@ -116,7 +116,7 @@ class DeviceAuthenticationRotationRoutesTest {
     }
 
     @Test
-    fun registrationStateIsSignedAndReturnsTheEpochAndInstallationTime() = testServer(clock) { _, http ->
+    fun registrationStateIsSignedAndReturnsTheEpochAndInstallationTime() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { _, http ->
         val registeredAt = clock.now
         val (phoneDevice) = registered(http)
         clock.now = registeredAt + 3.days
@@ -142,7 +142,7 @@ class DeviceAuthenticationRotationRoutesTest {
     }
 
     @Test
-    fun successIsNoContentAndSwitchesTheKeyAtOnce() = testServer(clock) { storage, http ->
+    fun successIsNoContentAndSwitchesTheKeyAtOnce() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val (phoneDevice, laptopDevice) = registered(http)
         val k2 = newKey()
         val authorization = rotation(phoneDevice.keyPair, k2)
@@ -160,7 +160,7 @@ class DeviceAuthenticationRotationRoutesTest {
     }
 
     @Test
-    fun rejectionsAreMappedAndChangeNothing() = testServer(clock) { storage, http ->
+    fun rejectionsAreMappedAndChangeNothing() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val (phoneDevice, laptopDevice) = registered(http)
         val k1 = phoneDevice.keyPair
         http.rotate(rotation(k1, epoch = 2)).assertError(HttpStatusCode.Conflict, "device_auth_rotation_conflict")
@@ -187,7 +187,7 @@ class DeviceAuthenticationRotationRoutesTest {
     }
 
     @Test
-    fun malformedBodiesAreBadRequests() = testServer(clock) { storage, http ->
+    fun malformedBodiesAreBadRequests() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val (phoneDevice) = registered(http)
         val k1 = phoneDevice.keyPair
         val authorization = rotation(k1)
@@ -214,7 +214,7 @@ class DeviceAuthenticationRotationRoutesTest {
     }
 
     @Test
-    fun staleRotationIsRejectedAfterALaterOne() = testServer(clock) { storage, http ->
+    fun staleRotationIsRejectedAfterALaterOne() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val (phoneDevice) = registered(http)
         val k2 = newKey()
         val k3 = newKey()
@@ -227,7 +227,7 @@ class DeviceAuthenticationRotationRoutesTest {
     }
 
     @Test
-    fun clientsRotateThroughTheKtorAdapterAndMessagingIsUnaffected() = testServer(clock) { storage, http ->
+    fun clientsRotateThroughTheKtorAdapterAndMessagingIsUnaffected() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val transport = KtorSecureMessageTransport("", http)
         val engine = KodiumProtocolEngine()
         val phoneStorage = InMemoryClientStorage()
@@ -288,7 +288,7 @@ class DeviceAuthenticationRotationRoutesTest {
     }
 
     @Test
-    fun lostResponseIsResolvedByTheClient() = testServer(clock) { storage, http ->
+    fun lostResponseIsResolvedByTheClient() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val transport = KtorSecureMessageTransport("", http)
         val phoneStorage = InMemoryClientStorage()
         val phoneClient = SecureMessageClient(phone, phoneStorage, KodiumProtocolEngine(), transport, PreKeyConfiguration(oneTimePreKeyTarget = 1), clock)
@@ -311,7 +311,7 @@ class DeviceAuthenticationRotationRoutesTest {
 
     @Test
     fun rotationPersistsAcrossServerRestarts() = ReopenableServerStorage().use { persistent ->
-        testServer(persistent, clock) { server, http ->
+        testServer(TestDeviceRegistrationAuthorizer.allowAll(), persistent, clock) { server, http ->
             val (phoneDevice) = registered(http)
             val k1 = phoneDevice.keyPair
             val k2 = newKey()
@@ -341,7 +341,7 @@ class DeviceAuthenticationRotationRoutesTest {
 
     @Test
     fun storageFailureIsAGenericServerError() = ReopenableServerStorage().use { persistent ->
-        testServer(persistent, clock) { server, http ->
+        testServer(TestDeviceRegistrationAuthorizer.allowAll(), persistent, clock) { server, http ->
             val (phoneDevice) = registered(http)
             server.driver.execute(null, "DROP TABLE authentication_nonce", 0)
             val response = http.rotate(rotation(phoneDevice.keyPair))

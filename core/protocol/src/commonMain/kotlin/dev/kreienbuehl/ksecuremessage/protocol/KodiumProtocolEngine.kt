@@ -6,6 +6,7 @@ import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyBundle
 import dev.kreienbuehl.ksecuremessage.model.PreKeyMessage
 import dev.kreienbuehl.ksecuremessage.model.RatchetMessage
+import dev.kreienbuehl.ksecuremessage.model.SessionInitiationVersion
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import io.kodium.Kodium
 import io.kodium.KodiumPrivateKey
@@ -27,9 +28,13 @@ import io.kodium.ratchet.RatchetMessage as KodiumRatchetMessage
  * the caller's stored session stays valid.
  *
  * Kodium's X3DH neither verifies the signed prekey signature nor defines
- * associated data. This engine verifies the signature before key agreement
- * and uses `initiatorIdentityKey || responderIdentityKey` as associated data
- * for every ratchet message, as in the X3DH specification.
+ * associated data. This engine verifies the signature before key agreement.
+ * Sessions it creates use session initiation version 2 (S1): the associated
+ * data of every ratchet message is the canonical initiation transcript
+ * ([SessionInitiationId.v2Transcript]) with both device addresses, both
+ * identity keys, the whole ephemeral key and both prekey IDs. Sessions
+ * created before S1 keep their version 1 associated data
+ * `initiatorIdentityKey || responderIdentityKey`.
  */
 class KodiumProtocolEngine : ProtocolEngine {
     override suspend fun createIdentity(): LocalIdentity {
@@ -70,7 +75,7 @@ class KodiumProtocolEngine : ProtocolEngine {
         }
     }
 
-    override suspend fun initiateSession(localIdentity: LocalIdentity, remoteBundle: PreKeyBundle): SecureSession {
+    override suspend fun initiateSession(localIdentity: LocalIdentity, localAddress: DeviceAddress, remoteBundle: PreKeyBundle): SecureSession {
         val remoteIdentityKey = bundleKey(remoteBundle.identityKey)
         val signedPreKey = bundleKey(remoteBundle.signedPreKey.publicKey)
         val oneTimePreKey = remoteBundle.oneTimePreKey?.let { bundleKey(it.publicKey) }
@@ -93,17 +98,30 @@ class KodiumProtocolEngine : ProtocolEngine {
             ephemeralKey.secretKey.fill(0)
         }
 
-        val associatedData = localIdentity.publicKey + remoteBundle.identityKey
-        val pending = PendingPreKey(
+        val header = PendingPreKey(
             identityKey = localIdentity.publicKey.copyOf(),
             ephemeralKey = ephemeralKey.getPublicKey().toBytes(),
             signedPreKeyId = remoteBundle.signedPreKey.id,
             oneTimePreKeyId = remoteBundle.oneTimePreKey?.id,
         )
+        // Version 2: the transcript binds both addresses and every header field (S1).
+        val transcript = SessionInitiationId.v2Transcript(
+            sender = localAddress,
+            recipient = remoteBundle.address,
+            initiatorIdentityKey = header.identityKey,
+            responderIdentityKey = remoteBundle.identityKey,
+            ephemeralKey = header.ephemeralKey,
+            signedPreKeyId = header.signedPreKeyId,
+            oneTimePreKeyId = header.oneTimePreKeyId,
+        )
         val state = SessionState(
-            associatedData = associatedData,
-            pending = pending,
-            origin = SessionState.originOf(associatedData, pending),
+            initiationVersion = SessionInitiationVersion.V2,
+            associatedData = transcript,
+            initiatorIdentityKey = localIdentity.publicKey.copyOf(),
+            responderIdentityKey = remoteBundle.identityKey.copyOf(),
+            pending = header,
+            initiation = header,
+            origin = SessionInitiationId.ofTranscript(transcript),
             acceptedSignedPreKeyId = null,
             ratchet = ratchet.exportToArray(),
         )
@@ -112,11 +130,17 @@ class KodiumProtocolEngine : ProtocolEngine {
 
     override suspend fun acceptSession(
         localIdentity: LocalIdentity,
+        localAddress: DeviceAddress,
         remote: DeviceAddress,
         signedPreKey: SignedPreKeyPair,
         oneTimePreKey: OneTimePreKeyPair?,
         message: PreKeyMessage,
     ): SessionAcceptanceResult {
+        // A version 1 initiation leaves header fields and the sender address
+        // unauthenticated; it never creates a session (S1, findings F3/F4).
+        if (message.initiationVersion != SessionInitiationVersion.V2) {
+            throw ProtocolException.InvalidMessage("Version 1 session initiations are not accepted")
+        }
         if (signedPreKey.id != message.signedPreKeyId) {
             throw ProtocolException.InvalidMessage("Signed prekey ID does not match the message")
         }
@@ -126,7 +150,15 @@ class KodiumProtocolEngine : ProtocolEngine {
         val initiatorIdentityKey = messageKey(message.identityKey)
         val initiatorEphemeralKey = messageKey(message.ephemeralKey)
         val ratchetMessage = parse(message.message)
-        val origin = SessionInitiationId.of(message, localIdentity.publicKey)
+        val transcript = SessionInitiationId.v2Transcript(
+            sender = remote,
+            recipient = localAddress,
+            initiatorIdentityKey = message.identityKey,
+            responderIdentityKey = localIdentity.publicKey,
+            ephemeralKey = message.ephemeralKey,
+            signedPreKeyId = message.signedPreKeyId,
+            oneTimePreKeyId = message.oneTimePreKeyId,
+        )
 
         val sharedSecret = X3DH.calculateSecretAsResponder(
             responderIdentityKey = privateKey(localIdentity.privateKey),
@@ -144,14 +176,18 @@ class KodiumProtocolEngine : ProtocolEngine {
                 privateKey(signedPreKey.privateKey),
                 RATCHET_INFO,
             )
-            val associatedData = message.identityKey + localIdentity.publicKey
-            val plaintext = ratchet.decrypt(ratchetMessage, associatedData)
+            val plaintext = ratchet.decrypt(ratchetMessage, transcript)
                 .getOrElse { throw ProtocolException.DecryptionFailed("Could not decrypt the first message", it) }
-            // Decryption authenticated the X3DH inputs, so origin is genuine.
+            // Decryption authenticated the whole transcript (addresses and
+            // every header field), so the origin derived from it is genuine.
             val state = SessionState(
-                associatedData,
+                initiationVersion = SessionInitiationVersion.V2,
+                associatedData = transcript,
+                initiatorIdentityKey = message.identityKey.copyOf(),
+                responderIdentityKey = localIdentity.publicKey.copyOf(),
                 pending = null,
-                origin = origin,
+                initiation = PendingPreKey(message.identityKey.copyOf(), message.ephemeralKey.copyOf(), message.signedPreKeyId, message.oneTimePreKeyId),
+                origin = SessionInitiationId.ofTranscript(transcript),
                 acceptedSignedPreKeyId = signedPreKey.id,
                 ratchet = ratchet.exportToArray(),
             )
@@ -182,28 +218,21 @@ class KodiumProtocolEngine : ProtocolEngine {
                 signedPreKeyId = pending.signedPreKeyId,
                 oneTimePreKeyId = pending.oneTimePreKeyId,
                 message = ratchetMessage,
+                // A pending session keeps the version it was initiated with.
+                initiationVersion = state.initiationVersion,
             )
         }
-        val updated = SessionState(state.associatedData, pending, state.origin, state.acceptedSignedPreKeyId, ratchet.exportToArray())
+        val updated = state.advanced(pending, ratchet.exportToArray())
         state.ratchet.fill(0)
         return EncryptionResult(message, session.copy(state = updated.encodeAndWipe()))
     }
 
-    override suspend fun decrypt(session: SecureSession, message: CiphertextMessage): DecryptionResult {
+    override suspend fun decrypt(session: SecureSession, message: CiphertextMessage, localIdentityKey: ByteArray): DecryptionResult {
         val state = SessionState.decode(session.state)
         val ratchetMessage = when (message) {
             is RatchetMessage -> message
             is PreKeyMessage -> {
-                // Initiator repeats its X3DH data until it sees a reply; it
-                // must belong to the identity this session was set up with.
-                if (!state.associatedData.startsWith(message.identityKey)) {
-                    throw ProtocolException.InvalidMessage("Prekey message is from a different identity")
-                }
-                // A session set up by another initiation cannot decrypt it.
-                val origin = state.origin
-                if (origin != null && origin != SessionInitiationId.of(message, state.responderIdentityKey())) {
-                    throw ProtocolException.InvalidMessage("Prekey message belongs to another session initiation")
-                }
+                checkRepeatedInitiation(state, message, localIdentityKey)
                 message.message
             }
         }
@@ -214,15 +243,49 @@ class KodiumProtocolEngine : ProtocolEngine {
 
         // An authenticated message from the remote side proves it has the
         // session, so the initiator can stop sending prekey messages.
-        val updated = SessionState(
-            state.associatedData,
-            pending = null,
-            origin = state.origin,
-            acceptedSignedPreKeyId = state.acceptedSignedPreKeyId,
-            ratchet = ratchet.exportToArray(),
-        )
+        val updated = state.advanced(pending = null, ratchet = ratchet.exportToArray())
         state.ratchet.fill(0)
         return DecryptionResult(plaintext, session.copy(state = updated.encodeAndWipe()))
+    }
+
+    /**
+     * A [PreKeyMessage] on an existing session is only the initiator
+     * repeating its X3DH data until it sees a reply. So the local device
+     * must be the session's responder (never its initiator: that is how a
+     * reflected or rewrapped message would pin the local identity as the
+     * remote one, finding F9), the message must name the session's
+     * initiator, have the session's initiation version, and belong to the
+     * initiation that created the session.
+     */
+    private fun checkRepeatedInitiation(state: SessionState, message: PreKeyMessage, localIdentityKey: ByteArray) {
+        if (message.initiationVersion != state.initiationVersion) {
+            throw ProtocolException.InvalidMessage("Prekey message has another session initiation version")
+        }
+        if (!state.responderIdentityKey.contentEquals(localIdentityKey) || state.initiatorIdentityKey.contentEquals(localIdentityKey)) {
+            throw ProtocolException.InvalidMessage("Prekey message for a session this device did not accept")
+        }
+        if (!state.initiatorIdentityKey.contentEquals(message.identityKey)) {
+            throw ProtocolException.InvalidMessage("Prekey message is from a different identity")
+        }
+        when (state.initiationVersion) {
+            SessionInitiationVersion.V2 -> {
+                // Every field the transcript binds must be the session's own.
+                val initiation = state.initiation ?: throw ProtocolException.InvalidSessionState("Version 2 session without initiation")
+                if (!initiation.ephemeralKey.contentEquals(message.ephemeralKey) ||
+                    initiation.signedPreKeyId != message.signedPreKeyId ||
+                    initiation.oneTimePreKeyId != message.oneTimePreKeyId
+                ) {
+                    throw ProtocolException.InvalidMessage("Prekey message belongs to another session initiation")
+                }
+            }
+            SessionInitiationVersion.V1 -> {
+                // A session set up by another initiation cannot decrypt it.
+                val origin = state.origin
+                if (origin != null && origin != SessionInitiationId.of(message, state.responderIdentityKey)) {
+                    throw ProtocolException.InvalidMessage("Prekey message belongs to another session initiation")
+                }
+            }
+        }
     }
 
     override fun sessionInfo(session: SecureSession): SessionInfo {
@@ -232,12 +295,21 @@ class KodiumProtocolEngine : ProtocolEngine {
             initiationId = state.origin,
             awaitingReply = state.pending != null,
             acceptedSignedPreKeyId = state.acceptedSignedPreKeyId,
+            initiationVersion = state.initiationVersion,
         )
     }
 
-    private fun SessionState.responderIdentityKey(): ByteArray {
-        if (associatedData.size != 2 * PUBLIC_KEY_SIZE) throw ProtocolException.InvalidSessionState("Stored associated data is invalid")
-        return associatedData.copyOfRange(PUBLIC_KEY_SIZE, associatedData.size)
+    override fun sessionRemoteIdentityKey(session: SecureSession, localIdentityKey: ByteArray): ByteArray? {
+        val state = SessionState.decode(session.state)
+        state.ratchet.fill(0)
+        val initiatorIsLocal = state.initiatorIdentityKey.contentEquals(localIdentityKey)
+        val responderIsLocal = state.responderIdentityKey.contentEquals(localIdentityKey)
+        return when {
+            initiatorIsLocal && !responderIsLocal -> state.responderIdentityKey.copyOf()
+            responderIsLocal && !initiatorIsLocal -> state.initiatorIdentityKey.copyOf()
+            // Both or neither slot is the local key: the remote identity cannot be told apart.
+            else -> null
+        }
     }
 
     private fun importRatchet(state: SessionState): DoubleRatchetSession =
@@ -278,9 +350,6 @@ class KodiumProtocolEngine : ProtocolEngine {
     private fun KodiumPublicKey.toBytes(): ByteArray = encryptionKey + signingKey
 
     private fun SessionState.encodeAndWipe(): ByteArray = encode().also { ratchet.fill(0) }
-
-    private fun ByteArray.startsWith(prefix: ByteArray): Boolean =
-        size >= prefix.size && prefix.indices.all { this[it] == prefix[it] }
 
     private companion object {
         const val KEY_SIZE = 32

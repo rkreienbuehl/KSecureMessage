@@ -11,6 +11,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
 import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
+import dev.kreienbuehl.ksecuremessage.server.DeviceRegistrationAuthorizer
 import dev.kreienbuehl.ksecuremessage.server.RecoveryKeyResetPolicy
 import dev.kreienbuehl.ksecuremessage.server.SecureMessageServer
 import dev.kreienbuehl.ksecuremessage.storage.ServerStorage
@@ -33,15 +34,21 @@ import kotlin.time.Instant
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation as ClientContentNegotiation
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation as ServerContentNegotiation
 
-/** Runs [block] against the v1 routes backed by fresh in-memory storage, with [clock] as the server time. */
+/**
+ * Runs [block] against the v1 routes backed by fresh in-memory storage, with
+ * [clock] as the server time and [authorizer] as the host's registration
+ * decision (S1): every test states it, there is no hidden allow-all.
+ */
 internal fun testServer(
+    authorizer: DeviceRegistrationAuthorizer,
     clock: Clock = Clock.System,
     resetPolicy: RecoveryKeyResetPolicy? = null,
     block: suspend ApplicationTestBuilder.(storage: InMemoryServerStorage, http: HttpClient) -> Unit,
-) = testServer(InMemoryServerStorage(), clock, resetPolicy, block)
+) = testServer(authorizer, InMemoryServerStorage(), clock, resetPolicy, block)
 
 /** Runs [block] against the v1 routes backed by [storage], which the test chose and owns. */
 internal fun <S : ServerStorage> testServer(
+    authorizer: DeviceRegistrationAuthorizer,
     storage: S,
     clock: Clock = Clock.System,
     resetPolicy: RecoveryKeyResetPolicy? = null,
@@ -49,7 +56,7 @@ internal fun <S : ServerStorage> testServer(
 ) {
     testApplication {
         install(ServerContentNegotiation) { json() }
-        routing { kSecureMessageRoutes(SecureMessageServer(storage, clock, resetPolicy)) }
+        routing { kSecureMessageRoutes(SecureMessageServer(storage, clock, authorizer, resetPolicy)) }
         val http = createClient { install(ClientContentNegotiation) { json() } }
         block(storage, http)
     }
@@ -76,6 +83,18 @@ internal class TestDevice(val address: DeviceAddress, private val clock: Clock =
         nonce: RequestNonce = RequestNonce.random(),
     ): RequestAuthentication =
         ServerRequestAuthentication.sign(keyPair, ServerRequest(address, method, ServerApiPaths.device(address, endpoint), body), timestamp, nonce)
+
+    /** Signs a message submission, `POST /v1/messages`, of [body] as [address] (S1). */
+    fun signSubmission(
+        body: ByteArray,
+        address: DeviceAddress = this.address,
+        timestamp: Instant = clock.now(),
+        nonce: RequestNonce = RequestNonce.random(),
+    ): RequestAuthentication =
+        ServerRequestAuthentication.sign(keyPair, ServerRequest(address, "POST", ServerApiPaths.SUBMIT_MESSAGE, body), timestamp, nonce)
+
+    /** The submitting-device header for [address]. */
+    fun submissionHeaders(address: DeviceAddress = this.address) = mapOf(AuthHeaders.DEVICE to ServerApiPaths.encodeDevice(address))
 
     suspend fun register(transport: KtorSecureMessageTransport) =
         transport.registerDevice(DeviceRegistration(address, keyPair.publicKey), signer)

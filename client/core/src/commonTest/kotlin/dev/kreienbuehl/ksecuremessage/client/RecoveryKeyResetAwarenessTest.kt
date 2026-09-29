@@ -438,7 +438,7 @@ class RecoveryKeyResetAwarenessTest {
 
         override suspend fun fetchPreKeyBundle(address: DeviceAddress): PreKeyBundle = write().let { base.fetchPreKeyBundle(address) }
 
-        override suspend fun send(envelope: EncryptedEnvelope) = write().let { base.send(envelope) }
+        override suspend fun send(envelope: EncryptedEnvelope, signer: ServerRequestSigner) = write().let { base.send(envelope, signer) }
 
         override suspend fun receive(address: DeviceAddress, signer: ServerRequestSigner): List<EncryptedEnvelope> =
             write().let { base.receive(address, signer) }

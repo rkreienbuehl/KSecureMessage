@@ -209,9 +209,11 @@ interface SecureMessageTransport {
     /**
      * Hands [envelope] to the server. When this returns, the envelope is
      * queued behind every envelope this device sent to the same recipient
-     * before (docs/transport-ordering.md). Public.
+     * before (docs/transport-ordering.md). Authenticated (S1): signed by
+     * [signer] as the envelope's sender, and the server refuses an envelope
+     * whose sender is not the signing device.
      */
-    suspend fun send(envelope: EncryptedEnvelope)
+    suspend fun send(envelope: EncryptedEnvelope, signer: ServerRequestSigner)
 
     /**
      * Removes and returns the envelopes queued for [address]. Envelopes of

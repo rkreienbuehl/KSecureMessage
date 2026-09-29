@@ -73,7 +73,7 @@ class DeviceAuthenticationRotationServerTest {
     private val bobKey = newKey()
 
     private suspend fun setUp(storage: ServerStorage = InMemoryServerStorage()): Pair<ServerStorage, SecureMessageServer> {
-        val server = SecureMessageServer(storage, clock)
+        val server = SecureMessageServer(storage, clock, TestDeviceRegistrationAuthorizer.allowAll())
         for ((address, key) in listOf(phone to phoneKey, laptop to laptopKey, bob to bobKey)) {
             val body = key.publicKey
             val request = ServerRequest(address, "PUT", ServerApiPaths.device(address, ServerApiPaths.REGISTRATION), body)
@@ -128,7 +128,7 @@ class DeviceAuthenticationRotationServerTest {
         val (storage, server) = setUp()
         storage.preKeys.publish(preKeyPublication())
         server.fetchPreKeyBundle(phone)
-        server.relay(EncryptedEnvelope(MessageId("m1"), bob, phone, payload = byteArrayOf(1)))
+        storage.mailboxes.enqueue(EncryptedEnvelope(MessageId("m1"), bob, phone, payload = byteArrayOf(1)))
         assertEquals(1, server.epoch(phone, phoneKey))
         val k2 = newKey()
 

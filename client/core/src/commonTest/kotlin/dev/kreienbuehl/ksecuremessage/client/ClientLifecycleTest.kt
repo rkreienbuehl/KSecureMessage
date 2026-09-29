@@ -138,7 +138,7 @@ class ClientLifecycleTest {
         val bundle = bob.currentPreKeyBundle()
         assertContentEquals(identity.publicKey, bundle.identityKey)
         // Verifies the signature against the identity key.
-        engine.initiateSession(engine.createIdentity(), bundle)
+        engine.initiateSession(engine.createIdentity(), ALICE, bundle)
     }
 
     @Test
@@ -252,11 +252,12 @@ class ClientLifecycleTest {
             assertFalse(privateKeys.any { it.contentEquals(value) }, "no private key is published")
         }
 
-        engine.initiateSession(engine.createIdentity(), bundle)
+        engine.initiateSession(engine.createIdentity(), ALICE, bundle)
         val badSignature = bundle.signedPreKey.signature.copyOf().also { it[0] = (it[0].toInt() xor 1).toByte() }
         assertFailsWith<ProtocolException.InvalidSignature> {
             engine.initiateSession(
                 engine.createIdentity(),
+                ALICE,
                 bundle.copy(signedPreKey = bundle.signedPreKey.copy(signature = badSignature)),
             )
         }

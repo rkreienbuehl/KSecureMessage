@@ -20,7 +20,7 @@ class KodiumProtocolEngineTest {
     private val carolAddress = DeviceAddress(UserId("carol"), DeviceId("tablet"))
 
     private suspend fun establish(alice: Party, bob: Party): Pair<SecureSession, SecureSession> {
-        val aliceSession = engine.initiateSession(alice.identity, bob.bundle())
+        val aliceSession = engine.initiateSession(alice.identity, alice.address, bob.bundle())
         val first = engine.encrypt(aliceSession, "hi".encodeToByteArray())
         val accepted = engine.accept(bob, alice.address, assertIs<PreKeyMessage>(first.message))
         return first.updatedSession to accepted.session
@@ -32,20 +32,24 @@ class KodiumProtocolEngineTest {
 
     @Test
     fun tamperedCiphertextFailsAndKeepsSessionUsable() = runTest {
-        val (aliceSession, bobSession) = establish(engine.party(ALICE), engine.party(BOB))
+        val alice = engine.party(ALICE)
+        val bob = engine.party(BOB)
+        val (aliceSession, bobSession) = establish(alice, bob)
         val message = assertIs<RatchetMessage>(engine.encrypt(bobSession, "secret".encodeToByteArray()).message)
 
-        assertFailsWith<ProtocolException.DecryptionFailed> { engine.decrypt(aliceSession, message.tampered()) }
+        assertFailsWith<ProtocolException.DecryptionFailed> { engine.decrypt(aliceSession, message.tampered(), alice.identity.publicKey) }
 
-        assertEquals("secret", engine.decrypt(aliceSession, message).plaintext.decodeToString())
+        assertEquals("secret", engine.decrypt(aliceSession, message, alice.identity.publicKey).plaintext.decodeToString())
     }
 
     @Test
     fun truncatedRatchetMessageIsRejected() = runTest {
-        val (aliceSession, _) = establish(engine.party(ALICE), engine.party(BOB))
+        val alice = engine.party(ALICE)
+        val bob = engine.party(BOB)
+        val (aliceSession, _) = establish(alice, bob)
 
         assertFailsWith<ProtocolException.InvalidMessage> {
-            engine.decrypt(aliceSession, RatchetMessage(ByteArray(10)))
+            engine.decrypt(aliceSession, RatchetMessage(ByteArray(10)), alice.identity.publicKey)
         }
     }
 
@@ -56,7 +60,7 @@ class KodiumProtocolEngineTest {
         val signature = bundle.signedPreKey.signature.copyOf().also { it[0] = (it[0].toInt() xor 1).toByte() }
         val tampered = bundle.copy(signedPreKey = bundle.signedPreKey.copy(signature = signature))
 
-        assertFailsWith<ProtocolException.InvalidSignature> { engine.initiateSession(alice.identity, tampered) }
+        assertFailsWith<ProtocolException.InvalidSignature> { engine.initiateSession(alice.identity, alice.address, tampered) }
     }
 
     @Test
@@ -66,7 +70,7 @@ class KodiumProtocolEngineTest {
         val carol = engine.party(carolAddress)
         val forged = bob.bundle().copy(signedPreKey = carol.signedPreKey.toPublic())
 
-        assertFailsWith<ProtocolException.InvalidSignature> { engine.initiateSession(alice.identity, forged) }
+        assertFailsWith<ProtocolException.InvalidSignature> { engine.initiateSession(alice.identity, alice.address, forged) }
     }
 
     @Test
@@ -74,16 +78,18 @@ class KodiumProtocolEngineTest {
         val alice = engine.party(ALICE)
         val bundle = engine.party(BOB).bundle().copy(identityKey = ByteArray(12))
 
-        assertFailsWith<ProtocolException.InvalidPreKeyBundle> { engine.initiateSession(alice.identity, bundle) }
+        assertFailsWith<ProtocolException.InvalidPreKeyBundle> { engine.initiateSession(alice.identity, alice.address, bundle) }
     }
 
     @Test
     fun exportedStateRestoresEquivalentSession() = runTest {
-        val (aliceSession, bobSession) = establish(engine.party(ALICE), engine.party(BOB))
+        val alice = engine.party(ALICE)
+        val bob = engine.party(BOB)
+        val (aliceSession, bobSession) = establish(alice, bob)
         val message = engine.encrypt(bobSession, "round trip".encodeToByteArray()).message
 
-        val live = engine.decrypt(aliceSession, message)
-        val restored = engine.decrypt(aliceSession.persistAndRestore(), message)
+        val live = engine.decrypt(aliceSession, message, alice.identity.publicKey)
+        val restored = engine.decrypt(aliceSession.persistAndRestore(), message, alice.identity.publicKey)
 
         assertEquals("round trip", live.plaintext.decodeToString())
         assertEquals("round trip", restored.plaintext.decodeToString())
@@ -92,7 +98,9 @@ class KodiumProtocolEngineTest {
 
     @Test
     fun corruptedSessionStateIsRejected() = runTest {
-        val (aliceSession, _) = establish(engine.party(ALICE), engine.party(BOB))
+        val alice = engine.party(ALICE)
+        val bob = engine.party(BOB)
+        val (aliceSession, _) = establish(alice, bob)
         val corrupted = aliceSession.copy(state = aliceSession.state.copyOf(aliceSession.state.size - 1))
 
         assertFailsWith<ProtocolException.InvalidSessionState> {
@@ -105,7 +113,7 @@ class KodiumProtocolEngineTest {
         val alice = engine.party(ALICE)
         val bob = engine.party(BOB)
         val carol = engine.party(carolAddress)
-        val aliceSession = engine.initiateSession(alice.identity, bob.bundle())
+        val aliceSession = engine.initiateSession(alice.identity, alice.address, bob.bundle())
         val message = assertIs<PreKeyMessage>(engine.encrypt(aliceSession, "for Bob".encodeToByteArray()).message)
 
         // Carol uses the same prekey IDs, but her keys derive a different secret.
@@ -120,10 +128,10 @@ class KodiumProtocolEngineTest {
         val (_, bobWithAlice) = establish(alice, bob)
         val (carolSession, bobWithCarol) = establish(carol, bob)
 
-        val fromCarol = engine.decrypt(carolSession, engine.encrypt(bobWithCarol, "hi".encodeToByteArray()).message)
+        val fromCarol = engine.decrypt(carolSession, engine.encrypt(bobWithCarol, "hi".encodeToByteArray()).message, carol.identity.publicKey)
         val carolMessage = engine.encrypt(fromCarol.updatedSession, "to Bob".encodeToByteArray()).message
 
-        assertFailsWith<ProtocolException.DecryptionFailed> { engine.decrypt(bobWithAlice, carolMessage) }
+        assertFailsWith<ProtocolException.DecryptionFailed> { engine.decrypt(bobWithAlice, carolMessage, bob.identity.publicKey) }
     }
 
     @Test
@@ -132,10 +140,10 @@ class KodiumProtocolEngineTest {
         val bob = engine.party(BOB)
         val carol = engine.party(carolAddress)
         val (_, bobWithAlice) = establish(alice, bob)
-        val carolSession = engine.initiateSession(carol.identity, bob.bundle())
+        val carolSession = engine.initiateSession(carol.identity, carol.address, bob.bundle())
         val carolMessage = engine.encrypt(carolSession, "hi".encodeToByteArray()).message
 
-        assertFailsWith<ProtocolException.InvalidMessage> { engine.decrypt(bobWithAlice, carolMessage) }
+        assertFailsWith<ProtocolException.InvalidMessage> { engine.decrypt(bobWithAlice, carolMessage, bob.identity.publicKey) }
     }
 
     @Test
@@ -143,7 +151,7 @@ class KodiumProtocolEngineTest {
         val alice = engine.party(ALICE)
         val bob = engine.party(BOB)
         val bundle = bob.bundle()
-        val aliceSession = engine.initiateSession(alice.identity, bundle)
+        val aliceSession = engine.initiateSession(alice.identity, alice.address, bundle)
         val message = assertIs<PreKeyMessage>(engine.encrypt(aliceSession, "hi".encodeToByteArray()).message)
 
         assertEquals(bob.signedPreKey.id, message.signedPreKeyId)
@@ -155,7 +163,7 @@ class KodiumProtocolEngineTest {
     fun sessionWithoutOneTimePreKey() = runTest {
         val alice = engine.party(ALICE)
         val bob = engine.party(BOB)
-        val aliceSession = engine.initiateSession(alice.identity, bob.bundle(withOneTimePreKey = false))
+        val aliceSession = engine.initiateSession(alice.identity, alice.address, bob.bundle(withOneTimePreKey = false))
         val message = assertIs<PreKeyMessage>(engine.encrypt(aliceSession, "hi".encodeToByteArray()).message)
 
         assertNull(message.oneTimePreKeyId)
@@ -168,14 +176,14 @@ class KodiumProtocolEngineTest {
     fun mismatchedPreKeyIdsAreRejected() = runTest {
         val alice = engine.party(ALICE)
         val bob = engine.party(BOB)
-        val aliceSession = engine.initiateSession(alice.identity, bob.bundle())
+        val aliceSession = engine.initiateSession(alice.identity, alice.address, bob.bundle())
         val message = assertIs<PreKeyMessage>(engine.encrypt(aliceSession, "hi".encodeToByteArray()).message)
 
         assertFailsWith<ProtocolException.InvalidMessage> {
-            engine.acceptSession(bob.identity, ALICE, bob.signedPreKey, bob.oneTimePreKeys[1], message)
+            engine.acceptSession(bob.identity, BOB, ALICE, bob.signedPreKey, bob.oneTimePreKeys[1], message)
         }
         assertFailsWith<ProtocolException.InvalidMessage> {
-            engine.acceptSession(bob.identity, ALICE, bob.signedPreKey, null, message)
+            engine.acceptSession(bob.identity, BOB, ALICE, bob.signedPreKey, null, message)
         }
     }
 

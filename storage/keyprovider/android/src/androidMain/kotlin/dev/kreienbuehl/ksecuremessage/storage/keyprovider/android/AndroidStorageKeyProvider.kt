@@ -67,6 +67,9 @@ class AndroidStorageKeyProvider(context: Context, private val namespace: String 
         }
     }
 
+    // Reads the wrapped key file only; unreadable state throws KeyUnavailable like every other call.
+    override suspend fun hasKeys(): Boolean = locked { readState()?.entries?.isNotEmpty() == true }
+
     override suspend fun key(id: StorageKeyId): StorageEncryptionKey? = locked {
         val state = readState()
         if (state?.entry(id) == null) null else unwrap(state, id)

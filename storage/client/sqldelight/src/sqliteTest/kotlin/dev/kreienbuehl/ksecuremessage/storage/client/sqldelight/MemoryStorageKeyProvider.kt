@@ -70,6 +70,8 @@ private class MemoryStorageKeyProvider(private val store: MemoryKeyStore, privat
         }
     }
 
+    override suspend fun hasKeys(): Boolean = keys { isNotEmpty() }
+
     override suspend fun key(id: StorageKeyId): StorageEncryptionKey? = keys { get(id) }
 
     override suspend fun createKey(id: StorageKeyId): StorageEncryptionKey = keys {

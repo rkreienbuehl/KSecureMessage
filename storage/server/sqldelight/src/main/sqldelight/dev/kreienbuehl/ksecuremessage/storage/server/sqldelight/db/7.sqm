@@ -1,0 +1,16 @@
+-- Server schema version 7 to 8 (S1, security review finding F8): monotonic
+-- nonce prune watermark (docs/server-authentication.md, "Nonce lifetime").
+-- Adds a single-row table with the largest prune bound any nonce claim has
+-- applied. A claim refuses a request timestamp before it, so a nonce can
+-- never be pruned while a request carrying it could still be accepted.
+-- Starts at the lowest possible value, so every existing nonce row keeps
+-- being honored until an ordinary claim advances the watermark. No other
+-- table changes.
+CREATE TABLE authentication_nonce_watermark (
+    id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    prune_before INTEGER NOT NULL
+);
+
+INSERT INTO authentication_nonce_watermark (id, prune_before) VALUES (0, -9223372036854775808);
+
+UPDATE server_storage SET format = 8;

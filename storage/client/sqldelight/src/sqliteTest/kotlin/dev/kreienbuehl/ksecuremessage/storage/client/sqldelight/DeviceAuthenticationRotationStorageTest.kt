@@ -309,9 +309,9 @@ class DeviceAuthenticationRotationStorageTest {
         val before = driver.dump()
 
         val migrated = reopen()
-        assertEquals(listOf(15L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(16L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
-        assertEquals(before.withLegacyProcessedMessages(), after - "device_authentication_rotation_key" - "device_authentication_last_device_recovery_key", "no existing row changes")
+        assertEquals(before.withLegacyProcessedMessages().withEmptyMigrationIntent(), after - "device_authentication_rotation_key" - "device_authentication_last_device_recovery_key", "no existing row changes")
         assertEquals(emptyList(), after.getValue("device_authentication_rotation_key"))
         assertEquals(emptyList(), after.getValue("device_authentication_last_device_recovery_key"))
         assertContentEquals(identity.privateKey, migrated.identity.identity()?.privateKey)
@@ -462,7 +462,7 @@ class DeviceAuthenticationRotationStorageTest {
 
         override suspend fun fetchPreKeyBundle(address: DeviceAddress): PreKeyBundle = bundles.getValue(address)
 
-        override suspend fun send(envelope: EncryptedEnvelope) {
+        override suspend fun send(envelope: EncryptedEnvelope, signer: ServerRequestSigner) {
             mailboxes.getOrPut(envelope.recipient) { mutableListOf() }.add(envelope)
         }
 

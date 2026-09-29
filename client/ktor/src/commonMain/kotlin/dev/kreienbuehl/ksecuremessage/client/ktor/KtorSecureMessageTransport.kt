@@ -31,12 +31,14 @@ import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyResetStatusQuery
 import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRevocationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.RecoveryKeyRotationAuthorization
 import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
+import dev.kreienbuehl.ksecuremessage.protocol.RequestAuthentication
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.post
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
@@ -76,6 +78,7 @@ class KtorSecureMessageTransport(
         when {
             response.status.isSuccess() -> Unit
             response.status == HttpStatusCode.Conflict -> throw SecureMessageTransportException.DeviceRegistrationConflict()
+            response.status == HttpStatusCode.Forbidden -> throw SecureMessageTransportException.DeviceRegistrationNotAuthorized()
             response.status == HttpStatusCode.BadRequest -> throw SecureMessageTransportException.RegistrationRejected()
             else -> throw response.unexpected()
         }
@@ -348,12 +351,25 @@ class KtorSecureMessageTransport(
         }
     }
 
-    override suspend fun send(envelope: EncryptedEnvelope) {
-        val response = client.post("$baseUrl/v1/messages") {
-            contentType(ContentType.Application.Json)
-            setBody(envelope)
+    /**
+     * `POST /v1/messages`, ServerAuth-signed as the envelope's sender, which
+     * the device header names (S1, docs/server-authentication.md).
+     */
+    override suspend fun send(envelope: EncryptedEnvelope, signer: ServerRequestSigner) {
+        val body = Json.encodeToString(envelope).encodeToByteArray()
+        val path = ServerApiPaths.SUBMIT_MESSAGE
+        val authentication = signer.sign(ServerRequest(envelope.sender, HttpMethod.Post.value, path, body))
+        val response = client.request(baseUrl + path) {
+            method = HttpMethod.Post
+            header(AuthHeaders.DEVICE, ServerApiPaths.encodeDevice(envelope.sender))
+            authenticationHeaders(authentication)
+            setBody(ByteArrayContent(body, ContentType.Application.Json))
         }
-        if (!response.status.isSuccess()) throw SecureMessageTransportException.UnexpectedResponse(response.status.value)
+        when {
+            response.status.isSuccess() -> Unit
+            response.status == HttpStatusCode.Forbidden -> throw SecureMessageTransportException.EnvelopeSenderRejected()
+            else -> throw response.unexpected()
+        }
     }
 
     override suspend fun receive(address: DeviceAddress, signer: ServerRequestSigner): List<EncryptedEnvelope> {
@@ -374,12 +390,16 @@ class KtorSecureMessageTransport(
         val authentication = signer.sign(ServerRequest(address, method.value, path, body ?: ByteArray(0)))
         return client.request(baseUrl + path) {
             this.method = method
-            header(AuthHeaders.VERSION, AuthHeaders.CURRENT_VERSION)
-            header(AuthHeaders.TIMESTAMP, authentication.timestamp.toEpochMilliseconds().toString())
-            header(AuthHeaders.NONCE, Base64.encode(authentication.nonce.bytes))
-            header(AuthHeaders.SIGNATURE, Base64.encode(authentication.signature))
+            authenticationHeaders(authentication)
             if (body != null) setBody(ByteArrayContent(body, ContentType.Application.Json))
         }
+    }
+
+    private fun HttpRequestBuilder.authenticationHeaders(authentication: RequestAuthentication) {
+        header(AuthHeaders.VERSION, AuthHeaders.CURRENT_VERSION)
+        header(AuthHeaders.TIMESTAMP, authentication.timestamp.toEpochMilliseconds().toString())
+        header(AuthHeaders.NONCE, Base64.encode(authentication.nonce.bytes))
+        header(AuthHeaders.SIGNATURE, Base64.encode(authentication.signature))
     }
 
     /** 401 becomes [SecureMessageTransportException.AuthenticationFailed]; anything else is unexpected. */

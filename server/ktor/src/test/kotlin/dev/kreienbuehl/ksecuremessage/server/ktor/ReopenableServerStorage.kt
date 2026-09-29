@@ -73,6 +73,7 @@ internal class ReopenableServerStorage : ServerStorage, AutoCloseable {
         override suspend fun registration(address: DeviceAddress) = current.devices.registration(address)
         override suspend fun register(registration: DeviceRegistration, installedAt: Instant) = current.devices.register(registration, installedAt)
         override suspend fun registrationState(address: DeviceAddress) = current.devices.registrationState(address)
+        override suspend fun hasRegisteredDevices(userId: UserId) = current.devices.hasRegisteredDevices(userId)
         override suspend fun replaceForRecovery(replacement: RecoveryReplacement) = current.devices.replaceForRecovery(replacement)
         override suspend fun replaceForRotation(replacement: RotationReplacement) = current.devices.replaceForRotation(replacement)
         override suspend fun replaceForLastDeviceRecovery(replacement: LastDeviceRecoveryReplacement) =

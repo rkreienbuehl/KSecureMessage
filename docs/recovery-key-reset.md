@@ -37,7 +37,7 @@ Code:
   - `server/core/.../server/RecoveryKeyResetService.kt`
     (`RecoveryKeyResetPolicy`, `RecoveryKeyResetException`,
     `RecoveryKeyResetRequestOutcome`, `RecoveryKeyResetCompletionOutcome`);
-  - `SecureMessageServer(storage, clock, recoveryKeyResetPolicy)` and its
+  - `SecureMessageServer(storage, clock, deviceRegistrationAuthorizer, recoveryKeyResetPolicy)` and its
     `requestLastDeviceRecoveryKeyReset`, `lastDeviceRecoveryKeyResetStatus`,
     `lastDeviceRecoveryKeyResetStatusByRecoveryKey`,
     `completeLastDeviceRecoveryKeyReset`, `cancelLastDeviceRecoveryKeyReset`,
@@ -95,7 +95,7 @@ the reset). That is unchanged from M19.
 ## Policy and clock
 
 ```kotlin
-SecureMessageServer(storage, clock, recoveryKeyResetPolicy = RecoveryKeyResetPolicy(delay = 3.days))
+SecureMessageServer(storage, clock, registrationAuthorizer, recoveryKeyResetPolicy = RecoveryKeyResetPolicy(delay = 3.days))
 ```
 
 - **The delay:**

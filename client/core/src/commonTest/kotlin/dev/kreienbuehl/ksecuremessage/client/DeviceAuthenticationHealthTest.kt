@@ -552,7 +552,7 @@ class DeviceAuthenticationHealthTest {
 
         override suspend fun fetchPreKeyBundle(address: DeviceAddress): PreKeyBundle = other().let { base.fetchPreKeyBundle(address) }
 
-        override suspend fun send(envelope: EncryptedEnvelope) = other().let { base.send(envelope) }
+        override suspend fun send(envelope: EncryptedEnvelope, signer: ServerRequestSigner) = other().let { base.send(envelope, signer) }
 
         override suspend fun receive(address: DeviceAddress, signer: ServerRequestSigner): List<EncryptedEnvelope> =
             other().let { base.receive(address, signer) }

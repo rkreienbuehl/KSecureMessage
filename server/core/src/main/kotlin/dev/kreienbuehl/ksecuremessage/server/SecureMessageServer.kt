@@ -35,11 +35,18 @@ import kotlin.time.Instant
  *
  * Device-scoped operations need the device's authentication
  * (docs/server-authentication.md): a device registers its authentication key
- * once ([registerDevice]); publishing prekeys and draining the mailbox then
- * take an [AuthenticatedDevice] from [authenticate]. Fetching a prekey bundle
- * and relaying an envelope stay open to anyone. [clock] is the server time
- * that request timestamps are checked against and that is recorded as the
- * installation time of registered device authentication keys.
+ * once ([registerDevice]), which the host application must allow through
+ * [deviceRegistrationAuthorizer]; publishing prekeys, relaying an envelope
+ * and draining the mailbox then take an [AuthenticatedDevice] from
+ * [authenticate]. Only fetching a prekey bundle stays open to anyone.
+ * [clock] is the server time that request timestamps are checked against
+ * and that is recorded as the installation time of registered device
+ * authentication keys.
+ *
+ * [deviceRegistrationAuthorizer] is required and has no allow-all default:
+ * KSecureMessage does not know who owns a user ID, so the host decides
+ * which device may become one of a user's devices (S1,
+ * docs/security-review-remediation.md).
  *
  * [recoveryKeyResetPolicy] enables delayed recovery key resets
  * (docs/recovery-key-reset.md) with the host's delay; `null` (the default)
@@ -48,7 +55,8 @@ import kotlin.time.Instant
  */
 class SecureMessageServer(
     private val storage: ServerStorage,
-    private val clock: Clock = Clock.System,
+    private val clock: Clock,
+    private val deviceRegistrationAuthorizer: DeviceRegistrationAuthorizer,
     recoveryKeyResetPolicy: RecoveryKeyResetPolicy? = null,
 ) {
     private val preKeys = PreKeyService(storage.preKeys)
@@ -70,14 +78,21 @@ class SecureMessageServer(
      *
      * Throws [DeviceRegistrationException.InvalidRegistration] for a key of
      * the wrong size, [DeviceAuthenticationException] if the request is not
-     * authenticated with that key (nothing is registered), and
-     * [DeviceRegistrationException.Conflict] if another key is registered;
-     * a registered key is never replaced.
+     * authenticated with that key (nothing is registered),
+     * [DeviceRegistrationException.Conflict] if another key is registered (a
+     * registered key is never replaced) and
+     * [DeviceRegistrationException.NotAuthorized] if the host's
+     * [DeviceRegistrationAuthorizer] denied it. An exception the authorizer
+     * throws propagates unchanged. In every failure nothing is registered;
+     * only the request's nonce is claimed.
      *
-     * First registration is trust on first registration: whoever registers
-     * an unregistered address first owns it. There is no reset; only
-     * [recoverDevice], [rotateDeviceAuthenticationKey] and [recoverLastDevice]
-     * replace a registered key.
+     * Order: size → authentication (key possession, window, nonce) →
+     * existing registration (same key: `false` without asking the host;
+     * other key: conflict) → host authorization → store. Every first
+     * registration of an address, including a user's first device, needs
+     * the host's authorization. There is no reset; only [recoverDevice],
+     * [rotateDeviceAuthenticationKey] and [recoverLastDevice] replace a
+     * registered key.
      */
     suspend fun registerDevice(
         registration: DeviceRegistration,
@@ -88,6 +103,24 @@ class SecureMessageServer(
             throw DeviceRegistrationException.InvalidRegistration("Device authentication key has an invalid size")
         }
         authenticator.authenticateRegistration(registration.address, registration.publicKey, body, authentication)
+        val existing = storage.devices.registration(registration.address)
+        if (existing != null) {
+            // A retry of exactly the registered key changes no membership: no host decision needed.
+            if (existing.publicKey.contentEquals(registration.publicKey)) return false
+            throw DeviceRegistrationException.Conflict()
+        }
+        val userState = if (storage.devices.hasRegisteredDevices(registration.address.userId)) {
+            DeviceRegistrationUserState.USER_HAS_REGISTERED_DEVICES
+        } else {
+            DeviceRegistrationUserState.USER_HAS_NO_REGISTERED_DEVICES
+        }
+        val request = DeviceRegistrationAuthorizationRequest(registration.address, registration.publicKey, userState)
+        when (deviceRegistrationAuthorizer.authorize(request)) {
+            DeviceRegistrationAuthorizationResult.Authorized -> Unit
+            DeviceRegistrationAuthorizationResult.Denied -> throw DeviceRegistrationException.NotAuthorized()
+        }
+        // A concurrent registration of the same address may have won meanwhile: register() still
+        // returns false for the same key and throws Conflict for another one.
         return storage.devices.register(registration, installedAt = Instant.fromEpochMilliseconds(clock.now().toEpochMilliseconds()))
     }
 
@@ -303,9 +336,17 @@ class SecureMessageServer(
      * Queues [envelope] for its recipient. When this returns, the envelope is
      * ordered after every envelope of the same sender for the same recipient
      * that was relayed before ([MailboxRepository], docs/transport-ordering.md).
-     * Public: the envelope's sender is not authenticated here.
+     *
+     * [device] must be authenticated for [ProtectedEndpoint.SEND_MESSAGE] and
+     * be exactly the envelope's sender; otherwise
+     * [EnvelopeSenderMismatchException] is thrown and nothing is queued
+     * (S1, docs/server-authentication.md). The payload is never inspected.
      */
-    suspend fun relay(envelope: EncryptedEnvelope) = storage.mailboxes.enqueue(envelope)
+    suspend fun relay(device: AuthenticatedDevice, envelope: EncryptedEnvelope) {
+        require(device.endpoint == ProtectedEndpoint.SEND_MESSAGE) { "Not authenticated for message submission" }
+        if (device.address != envelope.sender) throw EnvelopeSenderMismatchException()
+        storage.mailboxes.enqueue(envelope)
+    }
 
     /** Removes and returns the authenticated [device]'s envelopes, each sender's in relay order. */
     suspend fun receive(device: AuthenticatedDevice): List<EncryptedEnvelope> {
@@ -313,3 +354,9 @@ class SecureMessageServer(
         return storage.mailboxes.drain(device.address)
     }
 }
+
+/**
+ * A submitted envelope names a sender other than the device that
+ * authenticated the submission. Nothing was queued.
+ */
+class EnvelopeSenderMismatchException : Exception("Envelope sender is not the authenticated device")

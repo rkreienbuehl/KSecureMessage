@@ -56,7 +56,7 @@ class DeviceAuthenticationServerTest {
     private val bob = DeviceAddress(UserId("bob"), DeviceId("phone"))
     private val clock = ManualClock(Instant.fromEpochMilliseconds(1_767_225_600_000))
     private val storage = InMemoryServerStorage()
-    private val server = SecureMessageServer(storage, clock)
+    private val server = SecureMessageServer(storage, clock, TestDeviceRegistrationAuthorizer.allowAll())
     private val aliceKey = newKey()
     private val otherKey = newKey()
 
@@ -231,7 +231,7 @@ class DeviceAuthenticationServerTest {
     fun concurrentIdenticalDrainsExecuteOnce() = runTest {
         register(alice, aliceKey)
         repeat(20) { round ->
-            repeat(10) { server.relay(envelope(round * 10 + it)) }
+            repeat(10) { storage.mailboxes.enqueue(envelope(round * 10 + it)) }
             val authentication = drainAuthentication()
             val results = withContext(Dispatchers.Default) {
                 List(16) {
@@ -328,7 +328,7 @@ class DeviceAuthenticationServerTest {
     fun unauthenticatedDrainLeavesTheMailboxUntouched() = runTest {
         register(alice, aliceKey)
         register(aliceLaptop, otherKey)
-        repeat(3) { server.relay(envelope(it)) }
+        repeat(3) { storage.mailboxes.enqueue(envelope(it)) }
         val attempts: List<Pair<String, suspend () -> Unit>> = listOf(
             "missing" to { drain(null) },
             "wrong key" to { drain(drainAuthentication(keyPair = otherKey)) },
@@ -344,20 +344,67 @@ class DeviceAuthenticationServerTest {
         }
         assertEquals(listOf("m0", "m1", "m2"), drain(drainAuthentication()).map { it.id.value })
         val replayed = drainAuthentication()
-        server.relay(envelope(3))
+        storage.mailboxes.enqueue(envelope(3))
         drain(replayed)
-        server.relay(envelope(4))
+        storage.mailboxes.enqueue(envelope(4))
         assertFailsWith<DeviceAuthenticationException.AuthenticationReplay> { drain(replayed) }
         assertEquals(listOf("m4"), drain(drainAuthentication()).map { it.id.value })
     }
 
+    private suspend fun submit(envelope: EncryptedEnvelope, keyPair: DeviceAuthenticationKeyPair, signer: DeviceAddress = envelope.sender, body: ByteArray = this.body) {
+        val authentication = ServerRequestAuthentication.sign(
+            keyPair, ServerRequest(signer, "POST", ServerApiPaths.SUBMIT_MESSAGE, body), clock.now, RequestNonce.random(),
+        )
+        server.relay(server.authenticate(signer, ProtectedEndpoint.SEND_MESSAGE, body, authentication), envelope)
+    }
+
     @Test
-    fun relayAndBundleFetchStayPublic() = runTest {
+    fun bundleFetchStaysPublicAndSubmissionIsSignedByTheSender() = runTest {
         register(alice, aliceKey)
+        register(bob, otherKey)
         publish(publishAuthentication())
-        server.relay(envelope(1)) // no authentication of the sender
         assertEquals(OneTimePreKeyId(0), server.fetchPreKeyBundle(alice)?.oneTimePreKey?.id)
-        assertNull(server.fetchPreKeyBundle(bob))
+        assertNull(server.fetchPreKeyBundle(DeviceAddress(UserId("carol"), DeviceId("tablet"))))
+        submit(envelope(1), otherKey)
         assertEquals(listOf("m1"), drain(drainAuthentication()).map { it.id.value })
     }
+
+    @Test
+    fun f4SubmissionAsAnotherSenderIsRejectedAndQueuesNothing() = runTest {
+        val mallory = DeviceAddress(UserId("mallory"), DeviceId("phone"))
+        val malloryKey = newKey()
+        register(alice, aliceKey)
+        register(mallory, malloryKey)
+        // Mallory authenticates as herself but names Bob as the sender.
+        assertFailsWith<EnvelopeSenderMismatchException> { submit(envelope(1), malloryKey, signer = mallory) }
+        // Or signs as Bob with her own key.
+        assertFailsWith<DeviceAuthenticationException.DeviceNotRegistered> { submit(envelope(2), malloryKey) }
+        register(bob, otherKey)
+        assertFailsWith<DeviceAuthenticationException.InvalidAuthentication> { submit(envelope(3), malloryKey) }
+        // Without any authentication.
+        assertFailsWith<DeviceAuthenticationException.MissingAuthentication> {
+            server.relay(server.authenticate(bob, ProtectedEndpoint.SEND_MESSAGE, body, null), envelope(4))
+        }
+        assertEquals(emptyList(), drain(drainAuthentication()).map { it.id.value }, "nothing queued")
+    }
+
+    @Test
+    fun submissionAuthenticationCoversTheExactBodyAndIsNotReusableForOtherEndpoints() = runTest {
+        register(alice, aliceKey)
+        register(bob, otherKey)
+        val authentication = ServerRequestAuthentication.sign(
+            otherKey, ServerRequest(bob, "POST", ServerApiPaths.SUBMIT_MESSAGE, body), clock.now, RequestNonce.random(),
+        )
+        assertFailsWith<DeviceAuthenticationException.InvalidAuthentication> {
+            server.authenticate(bob, ProtectedEndpoint.SEND_MESSAGE, body + 1, authentication)
+        }
+        // A drain signature of Bob is no submission signature.
+        assertFailsWith<DeviceAuthenticationException.InvalidAuthentication> {
+            server.authenticate(bob, ProtectedEndpoint.SEND_MESSAGE, ByteArray(0), sign(otherKey, bob, "GET", ServerApiPaths.MESSAGES, ByteArray(0)))
+        }
+        // An authentication for another endpoint cannot relay.
+        val drainDevice = server.authenticate(bob, ProtectedEndpoint.DRAIN_MAILBOX, ByteArray(0), sign(otherKey, bob, "GET", ServerApiPaths.MESSAGES, ByteArray(0)))
+        assertFailsWith<IllegalArgumentException> { server.relay(drainDevice, envelope(1)) }
+    }
+
 }

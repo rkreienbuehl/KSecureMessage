@@ -125,7 +125,10 @@ class SqlDelightServerRotationTest {
         assertEquals(REPLACED, storage.devices.replaceForRotation(storage.rotation(2)))
         val after = restart()
         val dump = driver.dump()
-        assertEquals(before - "device_registration" - "authentication_nonce", dump - "device_registration" - "authentication_nonce")
+        assertEquals(
+            before - "device_registration" - "authentication_nonce" - "authentication_nonce_watermark",
+            dump - "device_registration" - "authentication_nonce" - "authentication_nonce_watermark",
+        )
         assertEquals(1, dump.getValue("authentication_nonce").size, "only the rotation's nonce was added")
 
         after.preKeys.publish(publication)

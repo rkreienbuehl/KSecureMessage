@@ -65,8 +65,16 @@ class SqlDelightMigrationTest {
 
     private fun client(address: DeviceAddress, storage: ClientStorage) = SecureMessageClient(address, storage, engine, network, config, clock)
 
+    /**
+     * A platform-like key store that starts empty, as for a device that ran
+     * milestone 8 (no storage key existed). A migration from plaintext needs
+     * a provider that can show it has no key yet (S1, finding F7).
+     */
+    private val keyStore = MemoryKeyStore()
+    private val keys: StorageKeyProvider get() = keyStore.provider("m8-device")
+
     /** Opens the database file like an application restart, with the current schema. */
-    private suspend fun reopen(records: MutableList<FailingRecords>? = null, keys: StorageKeyProvider = TestKeys.providerA): SqlDelightClientStorage {
+    private suspend fun reopen(records: MutableList<FailingRecords>? = null, keys: StorageKeyProvider = this.keys): SqlDelightClientStorage {
         database.closeOpenDrivers()
         driver = database.open()
         return if (records == null) SqlDelightClientStorage.open(driver, keys) else SqlDelightClientStorage.open(driver, keys, FailingRecords.factory(records))
@@ -282,25 +290,37 @@ class SqlDelightMigrationTest {
         // One identity, two signed prekeys, two one-time prekeys (0 was consumed), one session, one pending message.
         val seals = 1 + 2 + 2 + 1 + 1
         assertEquals(listOf(2L), driver.longs("SELECT count(*) FROM one_time_pre_key"))
+        var expected = before
         for (failAt in 1..seals) {
             database.closeOpenDrivers()
             driver = database.open()
             val records = mutableListOf<FailingRecords>()
             assertFailsWith<IllegalStateException>("seal $failAt") {
-                SqlDelightClientStorage.open(driver, TestKeys.providerA, FailingRecords.factory(records, failAtSeal = failAt))
+                SqlDelightClientStorage.open(driver, keys, FailingRecords.factory(records, failAtSeal = failAt))
             }
             assertEquals(failAt, records.single().seals)
-            assertEquals(before, driver.dump(), "seal $failAt: rows unchanged, marker still 0")
+            if (failAt == 1) {
+                // The first attempt created the provider key and committed the
+                // migration intent before migrating (S1): only that changed.
+                assertEquals(setOf(StorageKeyId(1)), keyStore.ids("m8-device"))
+                assertEquals(before - "storage_encryption", driver.dump() - "storage_encryption", "seal 1: rows unchanged")
+                assertEquals(listOf(1L), driver.longs("SELECT count(*) FROM storage_encryption WHERE migration_intent IS NOT NULL"))
+                expected = driver.dump()
+            }
+            assertEquals(expected, driver.dump(), "seal $failAt: rows unchanged, marker still 0")
+            assertEquals(listOf(0L), driver.longs("SELECT format FROM storage_encryption"))
             assertEquals(schema, driver.strings("SELECT sql FROM sqlite_master ORDER BY name"), "seal $failAt: no rebuilt tables")
         }
 
-        // The untouched database migrates on the next open.
+        // The untouched database migrates on the next open, resumed with the intent.
         val records = mutableListOf<FailingRecords>()
         database.closeOpenDrivers()
         driver = database.open()
-        val storage = SqlDelightClientStorage.open(driver, TestKeys.providerA, FailingRecords.factory(records))
+        val storage = SqlDelightClientStorage.open(driver, keys, FailingRecords.factory(records))
         assertEquals(seals, records.single().seals)
         assertEquals(listOf(1L), driver.longs("SELECT format FROM storage_encryption"))
+        assertEquals(listOf(0L), driver.longs("SELECT count(*) FROM storage_encryption WHERE migration_intent IS NOT NULL"), "the intent is cleared")
+        assertEquals(setOf(StorageKeyId(1)), keyStore.ids("m8-device"), "the key of the first attempt was used")
         assertNotNull(storage.identity.identity())
     }
 
@@ -339,7 +359,7 @@ class SqlDelightMigrationTest {
         m8Database(aliceClient())
         driver = database.openWithForeignKeys()
         assertEquals(listOf(1L), driver.longs("PRAGMA foreign_keys"))
-        val storage = SqlDelightClientStorage.open(driver, TestKeys.providerA)
+        val storage = SqlDelightClientStorage.open(driver, keys)
         assertEquals(SignedPreKeyId(1), storage.preKeys.currentSignedPreKey()?.id)
         assertTrue(driver.strings("SELECT \"table\" FROM pragma_foreign_key_check").isEmpty())
     }
@@ -384,9 +404,9 @@ class SqlDelightMigrationTest {
         val before = old.dump()
         database.closeOpenDrivers()
 
-        val storage = reopen()
+        val storage = reopen(keys = TestKeys.providerA)
         assertEquals(StorageKeyRotationStatus(StorageKeyRotationPhase.STABLE, StorageKeyId(1), null, null, 0), storage.storageKeyRotationStatus())
-        assertEquals(listOf(15L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(16L), driver.longs("PRAGMA user_version"))
         // Every row is unchanged; storage_encryption only gained the rotation columns, the
         // device authentication tables of schema version 8 mark the identity as awaiting its key,
         // and the recovery table of schema version 9, the rotation table of version 11 and the
@@ -406,7 +426,7 @@ class SqlDelightMigrationTest {
         assertEquals(emptyList(), after.getValue("device_authentication_rotation_key"))
         assertEquals(emptyList(), after.getValue("device_authentication_last_device_recovery_key"))
         assertEquals(listOf("0|1"), after.getValue("device_authentication_state"))
-        assertEquals(before.getValue("storage_encryption").single() + "|1|0|NULL|NULL|NULL", after.getValue("storage_encryption").single())
+        assertEquals(before.getValue("storage_encryption").single() + "|1|0|NULL|NULL|NULL|NULL", after.getValue("storage_encryption").single())
 
         assertContentEquals(ByteArray(32) { 2 }, storage.identity.identity()?.privateKey)
         assertEquals(listOf(SignedPreKeyInfo(SignedPreKeyId(4), true, Instant.fromEpochMilliseconds(1000), null)), storage.preKeys.signedPreKeyInfos())
@@ -453,6 +473,10 @@ class SqlDelightMigrationTest {
 
         // Signed prekey lifecycle metadata is untouched by the storage key rotation.
         assertEquals(spkInfos, reopen(keys = provider()).preKeys.signedPreKeyInfos())
+
+        // Submissions are signed with the device authentication key (S1), which
+        // initialize() creates once for storage from before milestone 12.
+        bob().initialize()
 
         // The pending M8 message keeps its logical ID, sequence and frame, is resent and acknowledged.
         val pending = reopen(keys = provider()).pendingOutbound.page(0, Int.MAX_VALUE, ALICE).single()

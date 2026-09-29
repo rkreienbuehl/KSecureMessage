@@ -213,10 +213,10 @@ class DeviceRecoveryStorageTest {
         database.closeOpenDrivers()
 
         val storage = reopen()
-        assertEquals(listOf(15L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(16L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
         assertEquals(
-            before.withUnverifiedPins().withLegacyProcessedMessages(),
+            before.withUnverifiedPins().withLegacyProcessedMessages().withEmptyMigrationIntent(),
             after - "device_authentication_recovery_key" - "device_authentication_rotation_key" - "device_authentication_last_device_recovery_key",
             "no existing row changes",
         )
@@ -338,6 +338,6 @@ class DeviceRecoveryStorageTest {
 
         override suspend fun fetchPreKeyBundle(address: DeviceAddress): PreKeyBundle = error("not used")
 
-        override suspend fun send(envelope: EncryptedEnvelope) = error("not used")
+        override suspend fun send(envelope: EncryptedEnvelope, signer: ServerRequestSigner) = error("not used")
     }
 }

@@ -1,0 +1,12 @@
+-- Schema version 15 to 16 (S1, security review finding F7): legacy plaintext
+-- migration intent (docs/storage-encryption.md, "Downgrade protection").
+--
+-- storage_encryption gains migration_intent: a sealed record (type 13) that
+-- the first open of a database from before record encryption writes right
+-- after the storage key provider created the key for it, and that the
+-- migration's own transaction clears. It is the only evidence that lets a
+-- later open resume an interrupted migration with an existing provider key;
+-- a format 0 database whose provider already holds a key and that has no
+-- valid intent is refused as a downgrade. NULL in every existing row. No
+-- other table or sealed record changes.
+ALTER TABLE storage_encryption ADD COLUMN migration_intent BLOB;

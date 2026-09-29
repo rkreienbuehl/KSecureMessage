@@ -26,6 +26,8 @@ internal val SEALED_COLUMNS: List<Pair<String, String>> = listOf(
     "processed_inbound_message" to "sealed_digest",
     "storage_encryption" to "key_check",
     "storage_encryption" to "retiring_key_check",
+    // NULL except while a format 0 database is being migrated (S1); scanned so no sealed value is missed.
+    "storage_encryption" to "migration_intent",
 )
 
 /**

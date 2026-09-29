@@ -297,17 +297,20 @@ public final class dev/kreienbuehl/ksecuremessage/model/PreKeyBundle$Companion {
 
 public final class dev/kreienbuehl/ksecuremessage/model/PreKeyMessage : dev/kreienbuehl/ksecuremessage/model/CiphertextMessage {
 	public static final field Companion Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage$Companion;
-	public synthetic fun <init> ([B[BILdev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> ([B[BILdev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage;Ldev/kreienbuehl/ksecuremessage/model/SessionInitiationVersion;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> ([B[BILdev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage;Ldev/kreienbuehl/ksecuremessage/model/SessionInitiationVersion;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()[B
 	public final fun component2 ()[B
 	public final fun component3-R6Xuwhw ()I
 	public final fun component4-GolpFjg ()Ldev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;
 	public final fun component5 ()Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage;
-	public final fun copy-FF6axS8 ([B[BILdev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage;)Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;
-	public static synthetic fun copy-FF6axS8$default (Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;[B[BILdev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage;ILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;
+	public final fun component6 ()Ldev/kreienbuehl/ksecuremessage/model/SessionInitiationVersion;
+	public final fun copy-rNTIzco ([B[BILdev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage;Ldev/kreienbuehl/ksecuremessage/model/SessionInitiationVersion;)Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;
+	public static synthetic fun copy-rNTIzco$default (Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;[B[BILdev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage;Ldev/kreienbuehl/ksecuremessage/model/SessionInitiationVersion;ILjava/lang/Object;)Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getEphemeralKey ()[B
 	public final fun getIdentityKey ()[B
+	public final fun getInitiationVersion ()Ldev/kreienbuehl/ksecuremessage/model/SessionInitiationVersion;
 	public final fun getMessage ()Ldev/kreienbuehl/ksecuremessage/model/RatchetMessage;
 	public final fun getOneTimePreKeyId-GolpFjg ()Ldev/kreienbuehl/ksecuremessage/model/OneTimePreKeyId;
 	public final fun getSignedPreKeyId-R6Xuwhw ()I
@@ -489,6 +492,19 @@ public final class dev/kreienbuehl/ksecuremessage/model/RecoveryKeyResetStatus$P
 	public fun hashCode ()I
 	public final fun isEligibleAt (Lkotlin/time/Instant;)Z
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/SessionInitiationVersion : java/lang/Enum {
+	public static final field Companion Ldev/kreienbuehl/ksecuremessage/model/SessionInitiationVersion$Companion;
+	public static final field V1 Ldev/kreienbuehl/ksecuremessage/model/SessionInitiationVersion;
+	public static final field V2 Ldev/kreienbuehl/ksecuremessage/model/SessionInitiationVersion;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/model/SessionInitiationVersion;
+	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/model/SessionInitiationVersion;
+}
+
+public final class dev/kreienbuehl/ksecuremessage/model/SessionInitiationVersion$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class dev/kreienbuehl/ksecuremessage/model/SignedPreKeyId {

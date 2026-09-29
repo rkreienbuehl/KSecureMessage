@@ -169,6 +169,7 @@ class SqlDelightEncryptionTest {
         assertFailsWith<StorageEncryptionException.KeyUnavailable> { reopen(StaticStorageKeyProvider(TestKeys.C)) }
         val throwing = object : StorageKeyProvider {
             override suspend fun loadOrCreateKey(): StorageEncryptionKey = error("keystore locked")
+            override suspend fun hasKeys(): Boolean = error("keystore locked")
             override suspend fun key(id: StorageKeyId): StorageEncryptionKey = error("keystore locked")
             override suspend fun createKey(id: StorageKeyId): StorageEncryptionKey = error("keystore locked")
             override suspend fun removeKey(id: StorageKeyId): Boolean = error("keystore locked")

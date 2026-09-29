@@ -15,6 +15,7 @@ import dev.kreienbuehl.ksecuremessage.model.PreKeyPublication
 import dev.kreienbuehl.ksecuremessage.model.PublicOneTimePreKey
 import dev.kreienbuehl.ksecuremessage.model.PublicSignedPreKey
 import dev.kreienbuehl.ksecuremessage.model.RatchetMessage
+import dev.kreienbuehl.ksecuremessage.model.SessionInitiationVersion
 import dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus
 import dev.kreienbuehl.ksecuremessage.protocol.ApplicationMessageDigest
 import dev.kreienbuehl.ksecuremessage.protocol.CiphertextMessageCodec
@@ -2004,7 +2005,7 @@ class SecureMessageClient(
             sendMutex.withLock {
                 // No bundle: without a session the encryption fails.
                 val envelope = storage.transaction { encryptOn(remote, bundle = null, frame) }
-                transport.send(envelope)
+                submit(envelope)
             }
             true
         } catch (e: CancellationException) {
@@ -2017,7 +2018,7 @@ class SecureMessageClient(
     /** Hands [envelope] to the transport; a failure leaves message [id] pending. */
     private suspend fun handOff(id: LogicalMessageId, envelope: EncryptedEnvelope) {
         try {
-            transport.send(envelope)
+            submit(envelope)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -2044,7 +2045,16 @@ class SecureMessageClient(
 
     /** [encryptRaw] plus hand-off, in encryption order. */
     internal suspend fun sendRaw(remote: DeviceAddress, plaintext: ByteArray): EncryptedEnvelope =
-        sendMutex.withLock { encryptRaw(remote, plaintext).also { transport.send(it) } }
+        sendMutex.withLock { encryptRaw(remote, plaintext).also { submit(it) } }
+
+    /**
+     * Submits [envelope] signed by this device's authentication key (S1):
+     * the server accepts only envelopes whose sender is the signing device.
+     * Loads the key in its own transaction; the network I/O runs outside it.
+     */
+    private suspend fun submit(envelope: EncryptedEnvelope) {
+        withRequestSigner { _, signer -> transport.send(envelope, signer) }
+    }
 
     /**
      * Decrypts [envelope] and returns the raw plaintext. Failures change
@@ -2102,7 +2112,7 @@ class SecureMessageClient(
             is PreKeyMessage -> receivePreKeyMessage(identity, sender, message)
             is RatchetMessage -> {
                 val session = sessions.load(sender) ?: throw ProtocolException.InvalidSessionState("No session with the sender")
-                Received.Plaintext(decryptOn(session, message))
+                Received.Plaintext(decryptOn(session, message, identity))
             }
         }
     }
@@ -2110,6 +2120,13 @@ class SecureMessageClient(
     /**
      * Session setup, repetition, replacement and collision handling for an
      * incoming [PreKeyMessage], see docs/session-lifecycle.md.
+     *
+     * Only a [SessionInitiationVersion.V2] message can create, replace or win
+     * anything; its transcript binds [sender], this device's address and
+     * every header field, so a relay that changes any of them makes it fail
+     * to decrypt before anything is pinned or retired (S1, findings F3/F4).
+     * A [SessionInitiationVersion.V1] message only continues an existing
+     * version 1 session as its initiator's repetition.
      */
     private suspend fun ClientStorage.receivePreKeyMessage(
         identity: LocalIdentity,
@@ -2120,34 +2137,37 @@ class SecureMessageClient(
         // pin only after decryption succeeded, so a forged first contact pins
         // nothing.
         val pinned = checkRemoteIdentity(sender, message.identityKey)
-        // Computed from unauthenticated header fields. It is only trusted as
-        // a session's origin after acceptSession decrypted with them.
-        val initiation = SessionInitiationId.of(message, identity.publicKey)
         val session = sessions.load(sender)
         val current = session?.let { protocol.sessionInfo(it) }
+
+        if (message.initiationVersion != SessionInitiationVersion.V2) {
+            // Never a new session, replacement, collision win, first pin or
+            // retired entry: only the repetition of the initiation that
+            // created the existing version 1 session, checked by the engine.
+            if (session == null || current?.initiationVersion != SessionInitiationVersion.V1) {
+                throw ProtocolException.InvalidMessage("Version 1 session initiations are not accepted")
+            }
+            val plaintext = decryptOn(session, message, identity)
+            if (!pinned) pinLegacySession(sender, session, message, identity)
+            return Received.Plaintext(plaintext)
+        }
+
+        // A lookup key until acceptSession decrypted with the same transcript.
+        val initiation = SessionInitiationId.v2Of(message, sender, localAddress, identity.publicKey)
         val currentInitiation = current?.initiationId
 
         val plaintext = when {
             // The initiator repeats its PreKeyMessage until it sees a reply.
-            session != null && currentInitiation == initiation -> decryptOn(session, message)
+            session != null && currentInitiation == initiation -> decryptOn(session, message, identity)
             sessionInitiations.isRetired(sender, initiation) ->
                 throw SecureMessageClientException.StaleSessionInitiation(sender)
             session == null || current == null -> acceptSession(identity, sender, message, replaced = null)
             // A session from before pinning is never replaced: without a pin
-            // there is no identity to hold the new initiation against. Its
-            // own repeated PreKeyMessages still decrypt (and pin it).
-            !pinned -> decryptOn(session, message)
-            // Established before milestone 6, so its initiation is unknown and
-            // may even be this one (a replay). Only an initiation with a
-            // one-time prekey that is still stored is certainly a different
-            // one: accepting the old session consumed its one-time prekey.
-            // Anything else is decrypted as a repetition on the old session.
-            currentInitiation == null ->
-                if (hasOneTimePreKeyFor(message)) {
-                    acceptSession(identity, sender, message, replaced = null)
-                } else {
-                    decryptOn(session, message)
-                }
+            // there is no identity to hold the new initiation against.
+            !pinned -> throw ProtocolException.InvalidMessage("Session without a pinned identity cannot be replaced")
+            // Established before milestone 6, so its initiation is unknown.
+            // A version 2 message never belongs to it: it is a new initiation.
+            currentInitiation == null -> acceptSession(identity, sender, message, replaced = null)
             // Simultaneous initiation: the smaller ID wins on both sides.
             current.awaitingReply && initiation > currentInitiation -> {
                 rejectLosingInitiation(identity, sender, message, initiation)
@@ -2155,20 +2175,35 @@ class SecureMessageClient(
             }
             else -> acceptSession(identity, sender, message, replaced = current)
         }
-        // A session from before pinning gets its pin here: the engine checked
-        // the key against the session and decrypted.
+        // Reached unpinned only by acceptance: the transcript authenticated
+        // the sender address and the identity key.
         if (!pinned) pinRemoteIdentity(sender, message.identityKey)
         return Received.Plaintext(plaintext)
     }
 
-    private suspend fun ClientStorage.decryptOn(session: SecureSession, message: CiphertextMessage): ByteArray {
-        val result = protocol.decrypt(session, message)
+    /**
+     * Pins a session created before identity pinning (milestone 5) from a
+     * version 1 repetition that just decrypted on it. Only the identity key
+     * the session itself was established with as remote may be pinned, and
+     * only if it is the message's: never the local identity, never a guess
+     * (S1, finding F9). Otherwise the session stays unpinned.
+     */
+    private suspend fun ClientStorage.pinLegacySession(
+        sender: DeviceAddress,
+        session: SecureSession,
+        message: PreKeyMessage,
+        identity: LocalIdentity,
+    ) {
+        val remoteIdentityKey = protocol.sessionRemoteIdentityKey(session, identity.publicKey) ?: return
+        if (remoteIdentityKey.contentEquals(identity.publicKey) || !remoteIdentityKey.contentEquals(message.identityKey)) return
+        pinRemoteIdentity(sender, remoteIdentityKey)
+    }
+
+    private suspend fun ClientStorage.decryptOn(session: SecureSession, message: CiphertextMessage, identity: LocalIdentity): ByteArray {
+        val result = protocol.decrypt(session, message, identity.publicKey)
         sessions.store(result.updatedSession)
         return result.plaintext
     }
-
-    private suspend fun ClientStorage.hasOneTimePreKeyFor(message: PreKeyMessage): Boolean =
-        message.oneTimePreKeyId?.let { preKeys.oneTimePreKey(it) } != null
 
     /**
      * Fetches [remote]'s bundle when there is no session yet. Runs outside
@@ -2193,7 +2228,7 @@ class SecureMessageClient(
         // Verifies the bundle (key sizes, signed prekey signature) first, so an
         // invalid bundle is never pinned. The caller stores the session in the
         // same transaction.
-        val session = protocol.initiateSession(requireIdentity(), bundle)
+        val session = protocol.initiateSession(requireIdentity(), localAddress, bundle)
         if (!pinned) pinRemoteIdentity(remote, bundle.identityKey)
         return session
     }
@@ -2251,7 +2286,7 @@ class SecureMessageClient(
             // Missing usually means it was already consumed by another session.
             preKeys.oneTimePreKey(id) ?: throw ProtocolException.InvalidMessage("Unknown one-time prekey")
         }
-        return protocol.acceptSession(identity, sender, signedPreKey, oneTimePreKey, message)
+        return protocol.acceptSession(identity, localAddress, sender, signedPreKey, oneTimePreKey, message)
     }
 
     /** Result of a decrypt transaction. A collision is reported after the commit. */

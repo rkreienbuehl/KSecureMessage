@@ -5,6 +5,7 @@ import dev.kreienbuehl.ksecuremessage.model.CiphertextMessage
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyMessage
 import dev.kreienbuehl.ksecuremessage.model.RatchetMessage
+import dev.kreienbuehl.ksecuremessage.model.SessionInitiationVersion
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 
 /**
@@ -14,11 +15,19 @@ import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
  * `docs/wire-format.md`.
  *
  * ```
- * RatchetMessage: version=0x01 | type=0x01 | length:u32 | ratchet bytes
- * PreKeyMessage:  version=0x01 | type=0x02 | signedPreKeyId:u32
- *                 | flag:u8 (0x00 absent, 0x01 present) | [oneTimePreKeyId:u32]
- *                 | identityKey[64] | ephemeralKey[64] | length:u32 | ratchet bytes
+ * RatchetMessage:    version=0x01 | type=0x01 | length:u32 | ratchet bytes
+ * PreKeyMessage:     version=0x01 | type=0x02 (initiation v1) or 0x03 (initiation v2)
+ *                    | signedPreKeyId:u32
+ *                    | flag:u8 (0x00 absent, 0x01 present) | [oneTimePreKeyId:u32]
+ *                    | identityKey[64] | ephemeralKey[64] | length:u32 | ratchet bytes
  * ```
+ *
+ * Types 0x02 and 0x03 share one layout and differ only in the session
+ * initiation version ([SessionInitiationVersion]). The type byte itself is
+ * not authenticated, but the initiation version selects the associated data
+ * the first ratchet message is authenticated with (docs/session-lifecycle.md):
+ * a relay that rewrites 0x03 to 0x02 or back makes decryption fail, and a
+ * v1 message never creates a session (S1).
  *
  * Integers are unsigned 32-bit big-endian. Prekey IDs must have the high bit
  * clear. Decoding treats input as untrusted: anything that is not exactly one
@@ -30,6 +39,9 @@ object CiphertextMessageCodec {
     const val WIRE_VERSION: Int = 0x01
     const val TYPE_RATCHET_MESSAGE: Int = 0x01
     const val TYPE_PREKEY_MESSAGE: Int = 0x02
+
+    /** [PreKeyMessage] with [SessionInitiationVersion.V2] (S1). */
+    const val TYPE_PREKEY_MESSAGE_V2: Int = 0x03
 
     /** Upper bound for the opaque ratchet bytes (Kodium header plus ciphertext). */
     const val MAX_RATCHET_PAYLOAD_SIZE: Int = 256 * 1024
@@ -52,7 +64,11 @@ object CiphertextMessageCodec {
                 out.ratchet(message)
             }
             is PreKeyMessage -> {
-                out.byte(TYPE_PREKEY_MESSAGE.toByte())
+                val type = when (message.initiationVersion) {
+                    SessionInitiationVersion.V1 -> TYPE_PREKEY_MESSAGE
+                    SessionInitiationVersion.V2 -> TYPE_PREKEY_MESSAGE_V2
+                }
+                out.byte(type.toByte())
                 out.id(message.signedPreKeyId.value)
                 val oneTimePreKeyId = message.oneTimePreKeyId
                 if (oneTimePreKeyId == null) {
@@ -75,12 +91,18 @@ object CiphertextMessageCodec {
         val version = bytes[0].toInt() and 0xFF
         if (version != WIRE_VERSION) throw ProtocolException.UnsupportedWireVersion(version)
         val type = bytes[1].toInt() and 0xFF
-        if (type != TYPE_RATCHET_MESSAGE && type != TYPE_PREKEY_MESSAGE) throw ProtocolException.UnknownMessageType(type)
+        if (type != TYPE_RATCHET_MESSAGE && type != TYPE_PREKEY_MESSAGE && type != TYPE_PREKEY_MESSAGE_V2) {
+            throw ProtocolException.UnknownMessageType(type)
+        }
 
         return try {
             val input = BinaryReader(bytes)
             input.fixed(2)
-            val message = if (type == TYPE_RATCHET_MESSAGE) input.ratchet() else input.preKeyMessage()
+            val message = when (type) {
+                TYPE_RATCHET_MESSAGE -> input.ratchet()
+                TYPE_PREKEY_MESSAGE -> input.preKeyMessage(SessionInitiationVersion.V1)
+                else -> input.preKeyMessage(SessionInitiationVersion.V2)
+            }
             input.requireEnd()
             message
         } catch (e: IllegalArgumentException) {
@@ -88,7 +110,7 @@ object CiphertextMessageCodec {
         }
     }
 
-    private fun BinaryReader.preKeyMessage(): PreKeyMessage {
+    private fun BinaryReader.preKeyMessage(version: SessionInitiationVersion): PreKeyMessage {
         val signedPreKeyId = SignedPreKeyId(id())
         val oneTimePreKeyId = when (byte()) {
             FLAG_ABSENT -> null
@@ -101,6 +123,7 @@ object CiphertextMessageCodec {
             signedPreKeyId = signedPreKeyId,
             oneTimePreKeyId = oneTimePreKeyId,
             message = ratchet(),
+            initiationVersion = version,
         )
     }
 

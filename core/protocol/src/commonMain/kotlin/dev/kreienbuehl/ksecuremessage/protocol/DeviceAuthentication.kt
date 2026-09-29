@@ -1,6 +1,7 @@
 package dev.kreienbuehl.ksecuremessage.protocol
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import io.kodium.Kodium
 import io.kodium.KodiumPrivateKey
@@ -107,6 +108,13 @@ object ServerApiPaths {
     const val PRE_KEY_BUNDLE: String = "prekey-bundle"
     const val MESSAGES: String = "messages"
 
+    /**
+     * `POST /v1/messages`: envelope submission, ServerAuth-signed by the
+     * sending device since S1 (docs/server-authentication.md). An absolute
+     * path, not device-scoped: the device is the signed request's address.
+     */
+    const val SUBMIT_MESSAGE: String = "/v1/messages"
+
     /** Device recovery (docs/device-recovery.md). Not a ServerAuth-signed endpoint. */
     const val REGISTRATION_RECOVERY: String = "registration/recovery"
 
@@ -165,6 +173,54 @@ object ServerApiPaths {
      * uses without any device (docs/recovery-key-reset.md). Never ServerAuth-signed.
      */
     fun user(userId: UserId, endpoint: String): String = "/v1/users/${encodeSegment(userId.value)}/$endpoint"
+
+    /**
+     * `{user}/{device}`, each component encoded with [encodeSegment]: the
+     * submitting device of `POST /v1/messages`, carried in a request header
+     * (S1, docs/server-authentication.md).
+     */
+    fun encodeDevice(address: DeviceAddress): String =
+        "${encodeSegment(address.userId.value)}/${encodeSegment(address.deviceId.value)}"
+
+    /**
+     * The inverse of [encodeDevice], or `null` unless [value] is exactly the
+     * canonical encoding of an address: two segments, only unreserved
+     * characters and upper-case `%XX` escapes of other bytes, valid UTF-8.
+     */
+    fun decodeDevice(value: String): DeviceAddress? {
+        val parts = value.split('/')
+        if (parts.size != 2) return null
+        val user = decodeSegment(parts[0]) ?: return null
+        val device = decodeSegment(parts[1]) ?: return null
+        val address = DeviceAddress(UserId(user), DeviceId(device))
+        return address.takeIf { encodeDevice(it) == value }
+    }
+
+    private fun decodeSegment(segment: String): String? {
+        val bytes = ArrayList<Byte>(segment.length)
+        var i = 0
+        while (i < segment.length) {
+            val c = segment[i]
+            if (c == '%') {
+                if (i + 2 >= segment.length) return null
+                val high = HEX.indexOf(segment[i + 1])
+                val low = HEX.indexOf(segment[i + 2])
+                if (high < 0 || low < 0) return null
+                bytes.add(((high shl 4) or low).toByte())
+                i += 3
+            } else {
+                if (c.code > 0x7F) return null
+                bytes.add(c.code.toByte())
+                i++
+            }
+        }
+        val decoded = bytes.toByteArray()
+        return try {
+            decoded.decodeToString(throwOnInvalidSequence = true)
+        } catch (e: CharacterCodingException) {
+            null
+        }
+    }
 
     fun encodeSegment(value: String): String = buildString {
         for (byte in value.encodeToByteArray()) {

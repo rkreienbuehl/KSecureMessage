@@ -22,6 +22,13 @@ internal object ProtocolConstants {
     const val SESSION_INITIATION_DOMAIN = "KSecureMessage-SessionInitiation-v1"
 
     /**
+     * Domain separator of the session initiation v2 transcript (S1): the
+     * associated data of every v2 session and the input of its
+     * [SessionInitiationId]. Never shared with v1.
+     */
+    const val SESSION_INITIATION_V2_DOMAIN = "KSecureMessage-SessionInitiation-v2"
+
+    /**
      * Domain separator of the server request signature input
      * ([ServerRequestAuthentication]). Registered devices and every signed
      * request depend on it.

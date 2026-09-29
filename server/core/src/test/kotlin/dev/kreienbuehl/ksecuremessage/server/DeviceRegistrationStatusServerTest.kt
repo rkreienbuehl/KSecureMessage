@@ -39,7 +39,7 @@ class DeviceRegistrationStatusServerTest {
     private val laptop = DeviceAddress(UserId("alice"), DeviceId("laptop"))
     private val t1 = Instant.fromEpochMilliseconds(1_767_225_600_123)
     private val clock = ManualClock(t1)
-    private val server = SecureMessageServer(InMemoryServerStorage(), clock)
+    private val server = SecureMessageServer(InMemoryServerStorage(), clock, TestDeviceRegistrationAuthorizer.allowAll())
 
     private fun newKey(): DeviceAuthenticationKeyPair = runBlocking { KodiumProtocolEngine().createDeviceAuthenticationKey() }
 

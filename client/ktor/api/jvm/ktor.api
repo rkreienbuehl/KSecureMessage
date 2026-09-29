@@ -20,6 +20,6 @@ public final class dev/kreienbuehl/ksecuremessage/client/ktor/KtorSecureMessageT
 	public fun revokeLastDeviceRecoveryKey (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRevocationAuthorization;Ldev/kreienbuehl/ksecuremessage/client/ServerRequestSigner;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun rotateDeviceAuthenticationKey (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceAuthenticationRotationAuthorization;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun rotateLastDeviceRecoveryKey (Ldev/kreienbuehl/ksecuremessage/protocol/RecoveryKeyRotationAuthorization;Ldev/kreienbuehl/ksecuremessage/client/ServerRequestSigner;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public fun send (Ldev/kreienbuehl/ksecuremessage/model/EncryptedEnvelope;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun send (Ldev/kreienbuehl/ksecuremessage/model/EncryptedEnvelope;Ldev/kreienbuehl/ksecuremessage/client/ServerRequestSigner;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 

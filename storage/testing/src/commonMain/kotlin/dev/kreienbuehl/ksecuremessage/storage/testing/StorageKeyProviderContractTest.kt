@@ -67,6 +67,39 @@ abstract class StorageKeyProviderContractTest {
         assertEquals(StorageEncryptionKey.SIZE, key.copyBytes().size)
     }
 
+    // hasKeys (S1, finding F7): a query only; storage relies on it to tell a
+    // database that never had a key from a downgraded one.
+
+    @Test
+    fun hasKeysIsFalseForANewNamespaceAndCreatesNothing() = runTest {
+        assertFalse(provider(namespace).hasKeys())
+        assertFalse(provider(namespace).hasKeys(), "hasKeys created nothing")
+        assertNull(provider(namespace).key(StorageKeyId(1)))
+    }
+
+    @Test
+    fun hasKeysIsTrueOnceAKeyExistsAlsoAfterARestart() = runTest {
+        provider(namespace).loadOrCreateKey()
+        assertTrue(provider(namespace).hasKeys())
+        assertTrue(provider(namespace).hasKeys())
+        assertFalse(provider(otherNamespace).hasKeys(), "namespaces are separate")
+    }
+
+    @Test
+    fun hasKeysNeverReportsDamagedStateAsEmpty() = runTest {
+        provider(namespace).loadOrCreateKey()
+        corruptState(namespace)
+        repeat(2) {
+            val result = runCatching { provider(namespace).hasKeys() }
+            val failure = result.exceptionOrNull()
+            if (failure != null) {
+                assertTrue(failure is StorageEncryptionException.KeyUnavailable, "fails closed: $failure")
+            } else {
+                assertTrue(result.getOrThrow(), "damaged state is never 'no key'")
+            }
+        }
+    }
+
     @Test
     fun loadOrCreateKeyIsIdempotent() = runTest {
         val provider = provider(namespace)

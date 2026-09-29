@@ -30,4 +30,14 @@ sealed class StorageEncryptionException(message: String, cause: Throwable? = nul
      * every ID up to [Int.MAX_VALUE]. IDs are never reused or wrapped around.
      */
     class KeyIdsExhausted(message: String) : StorageEncryptionException(message)
+
+    /**
+     * The database claims to hold plaintext from before record encryption,
+     * but it cannot be proven to be such a database: it was bound to a
+     * storage key before, holds records only encrypted storage has, or the
+     * storage key provider already holds a key without a valid migration
+     * intent (S1, finding F7; docs/storage-encryption.md, "Downgrade
+     * protection"). Nothing was encrypted or changed.
+     */
+    class DowngradeRejected(message: String) : StorageEncryptionException(message)
 }

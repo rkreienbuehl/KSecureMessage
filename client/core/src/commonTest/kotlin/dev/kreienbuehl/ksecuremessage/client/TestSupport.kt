@@ -167,7 +167,9 @@ internal class FakeNetwork : SecureMessageTransport {
 
     private val holds = mutableMapOf<DeviceAddress, HeldSend>()
 
-    override suspend fun send(envelope: EncryptedEnvelope) {
+    /** Checks only that the client signs as the envelope's sender (the signer refuses any other address). */
+    override suspend fun send(envelope: EncryptedEnvelope, signer: ServerRequestSigner) {
+        signer.sign(ServerRequest(envelope.sender, "POST", ServerApiPaths.SUBMIT_MESSAGE, ByteArray(0)))
         holds.remove(envelope.sender)?.let { held ->
             held.reached.complete(envelope)
             held.release.await()
@@ -220,10 +222,24 @@ internal class ServerBackedNetwork(
     /** The server's time, in milliseconds like server:core. */
     private fun now() = Instant.fromEpochMilliseconds(clock.now().toEpochMilliseconds())
 
+    /**
+     * The host application's registration decision (server:core's
+     * DeviceRegistrationAuthorizer), for first registrations only: the
+     * address and whether its user has registered devices. Allows by default
+     * in these tests.
+     */
+    var authorizeRegistration: suspend (DeviceAddress, Boolean) -> Boolean = { _, _ -> true }
+
     override suspend fun registerDevice(registration: DeviceRegistration, signer: ServerRequestSigner) {
         beforeNetworkCall()
         val key = registration.publicKey
         authenticate(registration.address, "PUT", ServerApiPaths.REGISTRATION, key, signer) { key }
+        val existing = server.devices.registration(registration.address)
+        if (existing == null &&
+            !authorizeRegistration(registration.address, server.devices.hasRegisteredDevices(registration.address.userId))
+        ) {
+            throw SecureMessageTransportException.DeviceRegistrationNotAuthorized()
+        }
         try {
             server.devices.register(registration, now())
         } catch (e: DeviceRegistrationException.Conflict) {
@@ -696,7 +712,9 @@ internal class ServerBackedNetwork(
         signer: ServerRequestSigner,
         verificationKey: suspend () -> ByteArray? = { server.devices.registration(address)?.publicKey },
     ) {
-        val request = ServerRequest(address, method, ServerApiPaths.device(address, endpoint), body)
+        // An absolute endpoint (message submission) is not device-scoped.
+        val path = if (endpoint.startsWith("/")) endpoint else ServerApiPaths.device(address, endpoint)
+        val request = ServerRequest(address, method, path, body)
         val authentication = signer.sign(request)
         val key = verificationKey() ?: throw SecureMessageTransportException.AuthenticationFailed(
             SecureMessageTransportException.AuthenticationFailure.NOT_REGISTERED,
@@ -714,8 +732,10 @@ internal class ServerBackedNetwork(
         return server.preKeys.consumePreKeyBundle(address) ?: throw SecureMessageTransportException.DeviceNotFound(address)
     }
 
-    override suspend fun send(envelope: EncryptedEnvelope) {
+    /** Signed by the sender like server:core's SEND_MESSAGE, then the sender must be the signer. */
+    override suspend fun send(envelope: EncryptedEnvelope, signer: ServerRequestSigner) {
         beforeNetworkCall()
+        authenticate(envelope.sender, "POST", ServerApiPaths.SUBMIT_MESSAGE, ByteArray(0), signer)
         server.mailboxes.enqueue(envelope)
     }
 
