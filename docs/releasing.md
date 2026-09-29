@@ -246,6 +246,12 @@ order and prints PASSED / FAILED / NOT EXECUTED per gate.
 | `.github/workflows/platform.yml` (Tier B) | push to `main`, manual, weekly | macOS: Apple tests + full `checkKotlinAbi` + iOS simulator keychain host; signed macOS keychain host (only with secrets and a profile for all devices, see "Apple signing"); Android emulator instrumentation (API 35) |
 | `.github/workflows/docs.yml` | push to `main`, pull requests, manual | `build`: Dokka, `mkdocs build --strict`, `checkDocsSite`, Pages artifact; `deploy` (push to `main` only): GitHub Pages |
 
+Dependency downloads retry transient failures, including Maven Central's
+`429 Too Many Requests` (seen when parallel CI jobs start with a cold cache):
+`gradle.properties` and `samples/jvm-e2e/gradle.properties` raise Gradle's
+retries to 8 attempts with exponential backoff from 1 s. Pull request runs
+only read the Gradle cache that `main` runs write.
+
 The two Tier A test jobs together run exactly the test tasks of plain
 `./gradlew build`; `verifyTestExecution` with `js` and `non-js` together
 checks the whole Linux matrix. Workflow permissions are `contents: read`;
