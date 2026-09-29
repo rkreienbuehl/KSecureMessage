@@ -33,6 +33,7 @@ import kotlin.time.Clock
 fun main() = runBlocking {
     // Server: the host owns the SQLite driver and the schema; the storage never
     // creates, migrates or closes it (docs/operating-the-server.md).
+    // --8<-- [start:server]
     val databaseFile = Files.createTempDirectory("ksecuremessage-sample").resolve("server.db")
     val driver = JdbcSqliteDriver("jdbc:sqlite:$databaseFile", Properties(), SqlDelightServerStorage.Schema)
     val serverStorage = SqlDelightServerStorage.open(driver)
@@ -42,6 +43,7 @@ fun main() = runBlocking {
         install(ContentNegotiation) { json() }
         routing { kSecureMessageRoutes(server) }
     }.start(wait = false)
+    // --8<-- [end:server]
     val port = http.engine.resolvedConnectors().single().port
     val baseUrl = "http://127.0.0.1:$port"
     step("server listening on $baseUrl, database $databaseFile")
@@ -49,27 +51,35 @@ fun main() = runBlocking {
     try {
         // Clients: in-memory storage keeps the sample short. A real application
         // uses SqlDelightClientStorage with a platform StorageKeyProvider.
+        // --8<-- [start:clients]
         val aliceAddress = DeviceAddress(UserId("alice"), DeviceId("phone"))
         val bobAddress = DeviceAddress(UserId("bob"), DeviceId("laptop"))
         val alice = SecureMessageClient(aliceAddress, InMemoryClientStorage(), KodiumProtocolEngine(), KtorSecureMessageTransport(baseUrl))
         val bob = SecureMessageClient(bobAddress, InMemoryClientStorage(), KodiumProtocolEngine(), KtorSecureMessageTransport(baseUrl))
+        // --8<-- [end:clients]
 
         // First launch: local keys, server registration, prekey publication.
+        // --8<-- [start:first-launch]
         for (client in listOf(alice, bob)) {
             client.initialize()
             client.registerDevice()
             client.publishPreKeys()
         }
+        // --8<-- [end:first-launch]
         step("alice and bob initialized, registered and published prekeys")
 
         // Send: the message stays pending on Alice's side until Bob's ACK.
+        // --8<-- [start:send]
         val sent = alice.send(bobAddress, "Hello Bob".encodeToByteArray())
+        // --8<-- [end:send]
         check(alice.pendingMessageCount(bobAddress) == 1L) { "the sent message must be pending" }
         step("alice sent ${sent.id}; pending outbound = 1")
 
         // Receive: drain the mailbox, decrypt, get a Delivery (not yet acknowledged).
+        // --8<-- [start:receive]
         val delivered = bob.receive().map { bob.decrypt(it) }
         val delivery = delivered.single() as? ReceiveResult.Delivery ?: error("expected a Delivery, got $delivered")
+        // --8<-- [end:receive]
         val text = delivery.message.plaintext.decodeToString()
         check(text == "Hello Bob") { "unexpected plaintext" }
         check(bob.pendingReceivedMessageCount() == 1L) { "the delivery must be pending until committed" }
@@ -77,7 +87,9 @@ fun main() = runBlocking {
 
         // The application applies the message durably (here: it prints it),
         // then commits it; the commit sends the ACK.
+        // --8<-- [start:commit]
         val commit = bob.commitReceivedMessage(delivery.message)
+        // --8<-- [end:commit]
         check(commit.status == CommitStatus.COMMITTED && commit.ackSent) { "commit failed: ${commit.status}, ackSent=${commit.ackSent}" }
         check(bob.pendingReceivedMessageCount() == 0L) { "nothing may stay pending after the commit" }
         step("bob committed ${commit.id} and sent the ACK")

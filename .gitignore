@@ -6,3 +6,7 @@ build/
 local.properties
 .DS_Store
 .kotlin/
+# Documentation site: Python environment, MkDocs output, generated API reference
+.venv/
+site/
+docs/api/

@@ -3,7 +3,7 @@
 What an application built on `SecureMessageClient` has to call, and when.
 Every call is explicit: the library has no background scheduler, no timer and
 no implicit maintenance. The compiled, runnable version of the minimal path is
-[`samples/jvm-e2e`](../samples/jvm-e2e/app/src/main/kotlin/dev/kreienbuehl/ksecuremessage/sample/Main.kt)
+[`samples/jvm-e2e`](https://github.com/rkreienbuehl/KSecureMessage/blob/main/samples/jvm-e2e/app/src/main/kotlin/dev/kreienbuehl/ksecuremessage/sample/Main.kt)
 (run by `./gradlew verifyPublication`).
 
 Each item is marked:

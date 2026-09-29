@@ -41,6 +41,12 @@ kotlin {
         "-sectcreate", "__TEXT", "__entitlements", rootProject.file("apple-keychain-host/ios-simulator.entitlements").absolutePath,
     )
 
+    // The linuxX64 test binary links the host's libsqlite3 (libsqlite3-dev on
+    // Ubuntu). Kotlin/Native links against its own older glibc sysroot, which
+    // has neither the host's library directory nor the newer glibc symbols the
+    // host library references; both resolve at runtime on the host.
+    linuxX64().binaries.getTest("DEBUG").linkerOpts("-L/usr/lib/x86_64-linux-gnu", "-L/usr/lib64", "--allow-shlib-undefined")
+
     sourceSets {
         commonMain.dependencies {
             api(project(":storage:core"))

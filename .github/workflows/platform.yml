@@ -98,8 +98,28 @@ jobs:
           security list-keychains -d user -s "$keychain" $existing
           rm "$RUNNER_TEMP/cert.p12"
 
-      - name: macOS keychain host
+      # A development profile lists the Macs it may run on; a GitHub-hosted
+      # runner is never one of them and macOS kills the host at launch. Such a
+      # profile makes this job NOT EXECUTED (a known limitation: the signed
+      # macOS host is then a maintainer-machine gate, docs/releasing.md), never
+      # passed. Only a profile for all devices (Developer ID) runs here, and
+      # then every failure fails the job.
+      - name: Profile usable on a hosted runner?
+        id: profile
         if: env.HAS_SIGNING == 'true'
+        run: |
+          security cms -D -i "$RUNNER_TEMP/ksm.provisionprofile" > "$RUNNER_TEMP/profile.plist"
+          if [ "$(/usr/libexec/PlistBuddy -c 'Print :ProvisionsAllDevices' "$RUNNER_TEMP/profile.plist" 2>/dev/null)" = "true" ]; then
+            echo "usable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "usable=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Signed macOS keychain host NOT EXECUTED::KSM_APPLE_MACOS_PROFILE_BASE64 is a device-bound development profile and cannot run on GitHub-hosted runners. The signed macOS host is a maintainer-machine release gate (docs/releasing.md)."
+            echo "KEYCHAIN HOST macOS: NOT EXECUTED — device-bound development profile, not usable on a hosted runner"
+          fi
+          rm "$RUNNER_TEMP/profile.plist"
+
+      - name: macOS keychain host
+        if: env.HAS_SIGNING == 'true' && steps.profile.outputs.usable == 'true'
         env:
           KSM_APPLE_TEAM_ID: ${{ secrets.KSM_APPLE_TEAM_ID }}
         run: ./gradlew macosArm64KeychainHostTest -Pksm.apple.keychainHost.required=true -Pksm.apple.macosProfile="$RUNNER_TEMP/ksm.provisionprofile"

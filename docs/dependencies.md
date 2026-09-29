@@ -7,7 +7,7 @@ metadata was available locally and nothing is assumed. Check the upstream
 project before redistributing.
 
 KSecureMessage itself is licensed under the Apache License 2.0
-([LICENSE](../LICENSE), [NOTICE](../NOTICE)).
+([LICENSE](https://github.com/rkreienbuehl/KSecureMessage/blob/main/LICENSE), [NOTICE](https://github.com/rkreienbuehl/KSecureMessage/blob/main/NOTICE)).
 
 ## Direct dependencies
 

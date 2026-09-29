@@ -57,21 +57,28 @@ failed() {
     exit 1
 }
 
-# SHA-1 of the valid code signing identity whose certificate belongs to $TEAM_ID.
-identity_for_team() {
-    local hash pem
-    for hash in $(security find-identity -v -p codesigning | awk '/"Apple Development/ {print $2}'); do
-        pem="$(security find-certificate -a -Z -p | awk -v h="$hash" '
-            /^SHA-1 hash:/ { found = ($3 == h) }
-            found && /BEGIN CERTIFICATE/ { copy = 1 }
-            copy { print }
-            copy && /END CERTIFICATE/ { exit }')"
-        if [ -n "$pem" ] && echo "$pem" | openssl x509 -noout -subject 2>/dev/null | grep -q "OU *= *$TEAM_ID"; then
-            echo "$hash"
-            return 0
-        fi
+# SHA-1 hashes (upper case) of the certificates embedded in a decoded profile.
+profile_certificates() {
+    local index=0 data
+    while data="$(plutil -extract "DeveloperCertificates.$index" raw -o - "$1" 2>/dev/null)"; do
+        echo "$data" | base64 --decode | shasum -a 1 | awk '{print toupper($1)}'
+        index=$((index + 1))
     done
-    return 1
+}
+
+# SHA-1 of the one valid code signing identity whose certificate is embedded in
+# the profile ($1: decoded profile). Several keychain identities of the same
+# team are common; only a certificate in the profile can launch the host.
+identity_for_profile() {
+    local valid in_profile matches
+    valid="$(security find-identity -v -p codesigning | awk '/"Apple Development/ {print $2}')"
+    in_profile="$(profile_certificates "$1")"
+    matches="$(comm -12 <(echo "$valid" | sort -u) <(echo "$in_profile" | sort -u) | sed '/^$/d')"
+    case "$(echo "$matches" | sed '/^$/d' | wc -l | tr -d ' ')" in
+        1) echo "$matches" ;;
+        0) return 1 ;;
+        *) return 2 ;;
+    esac
 }
 
 plist_value() { /usr/libexec/PlistBuddy -c "Print :$2" "$1" 2>/dev/null; }
@@ -86,17 +93,37 @@ prepare_macos() {
     local app_id
     app_id="$(plist_value "$decoded" "Entitlements:com.apple.application-identifier")"
     plist_value "$decoded" "Platform" | grep -q OSX || not_executed "profile is not a macOS profile"
+    # Material present but inconsistent is a failure, not a missing environment.
+    [ "$(plist_value "$decoded" "TeamIdentifier:0")" = "$TEAM_ID" ] ||
+        failed "provisioning profile belongs to another team than ksm.apple.teamId"
     case "$app_id" in
         "$TEAM_ID.$BUNDLE_ID" | "$TEAM_ID.*") ;;
-        *) not_executed "profile application identifier $app_id does not match $TEAM_ID.$BUNDLE_ID" ;;
+        *) failed "profile application identifier $app_id does not match $TEAM_ID.$BUNDLE_ID" ;;
     esac
+    # A development profile runs only on the Macs it lists; macOS kills an
+    # unlisted host at launch (Killed: 9). Hosted CI runners are never listed:
+    # only a profile with ProvisionsAllDevices (Developer ID) can run there.
+    if [ "$(plist_value "$decoded" "ProvisionsAllDevices")" != "true" ]; then
+        local udid
+        udid="$(system_profiler SPHardwareDataType 2>/dev/null | awk -F': ' '/Provisioning UDID/ {print $2}')"
+        [ -n "$udid" ] && /usr/libexec/PlistBuddy -c "Print :ProvisionedDevices" "$decoded" 2>/dev/null | grep -qx "[[:space:]]*$udid" ||
+            not_executed "this Mac is not a device of the development provisioning profile (use it on a listed Mac, or a Developer ID profile)"
+    fi
     local expiry
     expiry="$(plist_value "$decoded" "ExpirationDate")"
     [ "$(date -j -f '%a %b %d %T %Z %Y' "$expiry" +%s 2>/dev/null || echo 0)" -gt "$(date +%s)" ] || not_executed "profile expired ($expiry)"
 
-    local identity="$SIGNING_IDENTITY"
+    local identity="$SIGNING_IDENTITY" status=0
     if [ -z "$identity" ]; then
-        identity="$(identity_for_team)" || not_executed "no valid Apple Development identity of team $TEAM_ID"
+        identity="$(identity_for_profile "$decoded")" || status=$?
+        case "$status" in
+            0) ;;
+            2) failed "several keychain identities match the profile; set ksm.apple.signingIdentity to one SHA-1" ;;
+            *) not_executed "no valid Apple Development identity whose certificate is in the profile" ;;
+        esac
+    elif echo "$identity" | grep -Eq '^[0-9A-Fa-f]{40}$'; then
+        profile_certificates "$decoded" | grep -qi "^$identity$" ||
+            failed "ksm.apple.signingIdentity is not a certificate of the provisioning profile"
     fi
 
     APP="$WORK/$EXECUTABLE.app"

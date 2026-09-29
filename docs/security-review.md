@@ -129,4 +129,4 @@ Assumptions and non-goals, collected from the specifications in `docs/`:
 
 ## Reporting
 
-See [SECURITY.md](../SECURITY.md).
+See [Security reporting](security-reporting.md).

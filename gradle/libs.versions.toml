@@ -1,4 +1,5 @@
 [versions]
+snakeyaml = "2.7"
 agp = "9.4.1"
 android-compileSdk = "37"
 android-minSdk = "26"
@@ -19,6 +20,7 @@ dokka = "2.2.0"
 
 
 [libraries]
+snakeyaml = { module = "org.yaml:snakeyaml", version.ref = "snakeyaml" }
 kodium = { module = "eu.livotov.labs:kodium", version.ref = "kodium" }
 cryptography-core = { module = "dev.whyoleg.cryptography:cryptography-core", version.ref = "cryptography" }
 cryptography-random = { module = "dev.whyoleg.cryptography:cryptography-random", version.ref = "cryptography" }
