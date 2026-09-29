@@ -152,11 +152,11 @@ internal class FlakyNetwork(val fake: FakeNetwork = FakeNetwork()) : SecureMessa
         return fake.fetchPreKeyBundle(address)
     }
 
-    override suspend fun send(envelope: EncryptedEnvelope) {
+    override suspend fun send(envelope: EncryptedEnvelope, signer: ServerRequestSigner) {
         checkNoTransaction()
         if (envelope.sender in cancellingSenders) throw CancellationException("Injected cancellation")
         if (envelope.sender in failingSenders) throw SecureMessageTransportException.UnexpectedResponse(503)
-        fake.send(envelope)
+        fake.send(envelope, signer)
         sent += envelope
     }
 
@@ -223,8 +223,10 @@ internal class ReliableDevice(
     suspend fun sendFrame(to: ReliableDevice, payload: SecurePayload) =
         client.sendRaw(to.address, SecurePayloadCodec.encode(payload))
 
-    suspend fun initiationOf(envelope: EncryptedEnvelope): SessionInitiationId = SessionInitiationId.of(
+    suspend fun initiationOf(envelope: EncryptedEnvelope): SessionInitiationId = SessionInitiationId.v2Of(
         assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(envelope.payload)),
+        envelope.sender,
+        envelope.recipient,
         assertNotNull(storage.identity.identity()).publicKey,
     )
 }

@@ -1,5 +1,7 @@
 package dev.kreienbuehl.ksecuremessage.client
 
+import dev.kreienbuehl.ksecuremessage.model.SessionInitiationVersion
+import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
@@ -68,7 +70,7 @@ class SessionLifecycleTest {
 
         /** The initiation [envelope] (a PreKeyMessage to this device) belongs to. */
         suspend fun initiationOf(envelope: EncryptedEnvelope): SessionInitiationId =
-            SessionInitiationId.of(assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(envelope.payload)), identityKey())
+            SessionInitiationId.v2Of(assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(envelope.payload)), envelope.sender, envelope.recipient, identityKey())
     }
 
     private suspend fun device(address: DeviceAddress, withOneTimePreKey: Boolean = true) =
@@ -258,6 +260,8 @@ class SessionLifecycleTest {
         val source: ClientStorage = storage
         copy.transaction {
             identity.store(assertNotNull(source.identity.identity()))
+            // Submissions are signed with the device authentication key (S1).
+            deviceAuthentication.store(assertNotNull(source.deviceAuthentication.keyPair()))
             source.remoteIdentities.identityKey(remote.address)?.let { remoteIdentities.store(remote.address, it) }
             source.sessions.load(remote.address)?.let { sessions.store(it) }
             val highest = assertNotNull(source.preKeys.highestSignedPreKeyId()).value
@@ -417,67 +421,109 @@ class SessionLifecycleTest {
         assertBidirectional(carol, bob, 1)
     }
 
-    // Sessions from before milestone 6
+    // Sessions from before S1 (session initiation version 1), from the frozen LegacySessionFixture
 
-    /** Rewrites an established session in the version 1 state format, which has no origin. */
-    private fun SecureSession.asLegacyEstablished(): SecureSession {
-        // v3 with pending absent: version | len+AD(128) | 0x00 | 0x01 id[32] | accepted flag [id:u32] | len+ratchet
-        val originFlag = 1 + 4 + 128 + 1
-        assertEquals(3, state[0].toInt())
-        assertEquals(0, state[originFlag - 1].toInt(), "established session")
-        assertEquals(1, state[originFlag].toInt())
-        val acceptedFlag = originFlag + 33
-        val ratchetStart = acceptedFlag + if (state[acceptedFlag].toInt() == 1) 5 else 1
-        val legacy = state.copyOfRange(0, originFlag) + state.copyOfRange(ratchetStart, state.size)
-        legacy[0] = 1
-        return copy(state = legacy)
+    /**
+     * A device whose storage holds [identity] and the pre-S1 [session], as an
+     * upgraded device would; pinned to [pin] unless `null`. Initialized and
+     * published like any other device; the identity is kept.
+     */
+    private suspend fun legacyDevice(
+        address: DeviceAddress,
+        identity: LocalIdentity,
+        session: SecureSession?,
+        pin: ByteArray?,
+    ): Device {
+        val storage = InMemoryClientStorage()
+        val deviceKey = engine.createDeviceAuthenticationKey()
+        storage.transaction {
+            this.identity.store(identity)
+            deviceAuthentication.store(deviceKey)
+            session?.let { sessions.store(it) }
+            val remote = if (address == ALICE) BOB else ALICE
+            pin?.let { remoteIdentities.store(remote, it) }
+        }
+        return Device(address, storage).also {
+            it.client.initialize()
+            it.publish()
+        }
     }
 
-    private suspend fun legacySession(withOneTimePreKey: Boolean): Pair<Device, Device> {
-        val alice = device(ALICE)
-        val bob = device(BOB, withOneTimePreKey)
-        establish(alice, bob)
-        bob.storage.sessions.store(bob.sessionWith(alice).asLegacyEstablished())
-        assertNull(bob.origin(alice))
-        assertBidirectional(alice, bob, 0)
+    private suspend fun legacyPair(aliceSession: SecureSession, bobSession: SecureSession?): Pair<Device, Device> {
+        val fixture = LegacySessionFixture
+        val alice = legacyDevice(ALICE, fixture.aliceIdentity, aliceSession, fixture.bobIdentity.publicKey)
+        val bob = legacyDevice(BOB, fixture.bobIdentity, bobSession, bobSession?.let { fixture.aliceIdentity.publicKey })
         return alice to bob
     }
 
     @Test
-    fun legacySessionIsReplacedByAnInitiationWithAnUnusedOneTimePreKey() = runTest {
-        val (alice, bob) = legacySession(withOneTimePreKey = true)
-        alice.storage.sessions.remove(BOB)
-        bob.publish()
-        alice.send(bob, "new")
-        val envelope = bob.receiveOne()
-        assertEquals("new", bob.decryptText(envelope))
-        assertEquals(bob.initiationOf(envelope), bob.origin(alice))
-        assertBidirectional(alice, bob, 1)
-    }
-
-    @Test
-    fun legacySessionIsNotReplacedWithoutProofOfANewInitiation() = runTest {
-        val (alice, bob) = legacySession(withOneTimePreKey = false)
-        alice.storage.sessions.remove(BOB)
-        alice.send(bob, "maybe a replay")
-        val before = bob.snapshot(alice)
-        assertFailsWith<ProtocolException> { bob.client.decryptRaw(bob.receiveOne()) }
-        assertUnchanged(before, bob.snapshot(alice))
+    fun preS1EstablishedSessionsKeepRatchetingAfterTheUpgrade() = runTest {
+        val (alice, bob) = legacyPair(LegacySessionFixture.aliceEstablishedV1, LegacySessionFixture.bobEstablishedV1)
+        assertNull(bob.origin(alice), "a pre-milestone-6 session has no recorded origin")
+        assertEquals(SessionInitiationVersion.V1, engine.sessionInfo(bob.sessionWith(alice)).initiationVersion)
+        repeat(3) { assertBidirectional(alice, bob, it) }
+        assertEquals(SessionInitiationVersion.V1, engine.sessionInfo(bob.sessionWith(alice)).initiationVersion, "no new X3DH")
         assertNull(bob.origin(alice))
     }
 
     @Test
-    fun legacySessionAcceptsItsOwnRepeatedPreKeyMessages() = runTest {
-        val alice = device(ALICE)
-        val bob = device(BOB)
-        alice.send(bob, "one")
-        alice.send(bob, "two")
-        val (one, two) = bob.receiveAll()
-        bob.decryptText(one)
-        bob.storage.sessions.store(bob.sessionWith(alice).asLegacyEstablished())
+    fun preS1PendingInitiationContinuesWhenTheResponderAcceptedItBefore() = runTest {
+        val (alice, bob) = legacyPair(LegacySessionFixture.alicePendingV3, LegacySessionFixture.bobAcceptedV3)
+        val origin = assertNotNull(bob.origin(alice))
+        // Alice has not seen a reply: she repeats her version 1 PreKeyMessage header.
+        alice.send(bob, "still pending")
+        val envelope = bob.receiveOne()
+        assertEquals(SessionInitiationVersion.V1, assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(envelope.payload)).initiationVersion)
+        assertEquals("still pending", bob.decryptText(envelope))
+        assertEquals(origin, bob.origin(alice))
+        assertBidirectional(bob, alice, 0)
+        assertEquals(origin, alice.origin(bob))
+    }
 
-        assertEquals("two", bob.decryptText(two))
-        assertNull(bob.origin(alice), "no origin taken from unauthenticated header fields")
+    @Test
+    fun preS1InitiationTheResponderNeverAcceptedIsRejected() = runTest {
+        // Upgrade peers together: a version 1 initiation never creates a session,
+        // even though Bob still holds exactly the prekeys it names.
+        val (alice, bob) = legacyPair(LegacySessionFixture.alicePendingV3, bobSession = null)
+        bob.storage.transaction {
+            preKeys.storeCurrentSignedPreKey(LegacySessionFixture.bobSignedPreKey, Clock.System.now())
+            preKeys.storeOneTimePreKeys(listOf(LegacySessionFixture.bobOneTimePreKey))
+        }
+        alice.send(bob, "too late")
+        val before = bob.snapshot(alice)
+        val error = assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decryptRaw(bob.receiveOne()) }
+        assertEquals("Version 1 session initiations are not accepted", error.message)
+        assertUnchanged(before, bob.snapshot(alice))
+        assertNull(bob.storage.sessions.load(ALICE), "no session")
+        assertNull(bob.storage.remoteIdentities.identityKey(ALICE), "no pin")
+    }
+
+    @Test
+    fun preS1InitiationNeverReplacesAVersion2Session() = runTest {
+        val (alice, bob) = legacyPair(LegacySessionFixture.alicePendingV3, bobSession = null)
+        // Bob and a new Alice instance with the same identity set up a version 2 session.
+        val newAlice = legacyDevice(ALICE, LegacySessionFixture.aliceIdentity, session = null, pin = null)
+        establish(newAlice, bob)
+        val v2Origin = assertNotNull(bob.origin(alice))
+        // The old pending version 1 initiation arrives later.
+        alice.send(bob, "old initiation")
+        val before = bob.snapshot(alice)
+        assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decryptRaw(bob.receiveOne()) }
+        assertUnchanged(before, bob.snapshot(alice))
+        assertEquals(v2Origin, bob.origin(alice))
+        assertFalse(bob.storage.sessionInitiations.isRetired(ALICE, v2Origin))
+    }
+
+    @Test
+    fun preS1SessionIsReplacedByAVersion2Initiation() = runTest {
+        val (alice, bob) = legacyPair(LegacySessionFixture.aliceEstablishedV1, LegacySessionFixture.bobEstablishedV1)
+        alice.storage.sessions.remove(BOB)
+        alice.send(bob, "new")
+        val envelope = bob.receiveOne()
+        assertEquals("new", bob.decryptText(envelope))
+        assertEquals(bob.initiationOf(envelope), bob.origin(alice))
+        assertEquals(SessionInitiationVersion.V2, engine.sessionInfo(bob.sessionWith(alice)).initiationVersion)
+        assertBidirectional(alice, bob, 1)
     }
 
     @Test

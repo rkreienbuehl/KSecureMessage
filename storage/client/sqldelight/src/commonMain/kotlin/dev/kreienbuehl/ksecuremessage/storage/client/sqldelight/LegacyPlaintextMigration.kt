@@ -157,6 +157,25 @@ internal class LegacyPlaintextMigration(private val driver: SqlDriver, private v
     private fun SqlCursor.string(index: Int): String = checkNotNull(getString(index)) { "Unexpected NULL in legacy row" }
 
     companion object {
+        /** The milestone 8 plaintext columns of every table this migration rebuilds. */
+        private val PLAINTEXT_LAYOUT = mapOf(
+            "local_identity" to setOf("public_key", "private_key"),
+            "signed_pre_key" to setOf("public_key", "signature", "private_key"),
+            "one_time_pre_key" to setOf("public_key", "private_key"),
+            "session" to setOf("state"),
+            "pending_outbound_message" to setOf("frame"),
+        )
+
+        /**
+         * Whether every table this migration rebuilds is still in the
+         * milestone 8 plaintext layout: its plaintext columns exist and no
+         * sealed column does (S1, finding F7). Reads the schema only.
+         */
+        suspend fun hasPlaintextLayout(driver: SqlDriver): Boolean = PLAINTEXT_LAYOUT.all { (table, plaintext) ->
+            val columns = driver.queryRows("SELECT name FROM pragma_table_info('$table')") { checkNotNull(it.getString(0)) }.toSet()
+            columns.containsAll(plaintext) && columns.none { it.startsWith("sealed_") }
+        }
+
         // Identical to ClientState.sq. SqlDelightMigrationTest compares the
         // columns of a migrated database with those of a new one.
         const val IDENTITY_DDL = """CREATE TABLE local_identity (

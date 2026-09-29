@@ -90,7 +90,7 @@ class RecoveryKeyLifecycleServerTest {
     private val keys = mapOf(phone to phoneKey, laptop to laptopKey, bob to bobKey)
 
     private suspend fun setUp(storage: ServerStorage = InMemoryServerStorage()): Pair<ServerStorage, SecureMessageServer> {
-        val server = SecureMessageServer(storage, clock)
+        val server = SecureMessageServer(storage, clock, TestDeviceRegistrationAuthorizer.allowAll())
         for ((address, key) in keys) {
             val body = key.publicKey
             val request = ServerRequest(address, "PUT", ServerApiPaths.device(address, ServerApiPaths.REGISTRATION), body)
@@ -210,18 +210,22 @@ class RecoveryKeyLifecycleServerTest {
         // A user without a recovery key.
         val bobs = RecoveryKeyRotation.authorize(r1, r2, bob, 1, clock.now())
         assertFailsWith<RecoveryKeyLifecycleException.NotConfigured> { server.rotate(bobs) }
-        // Window: bounds included.
+        // Window: bounds included. The server clock only moves forward here:
+        // the nonce prune watermark (S1, F8) refuses requests from before a
+        // time the server has already passed by more than the window.
         val early = rotation()
         clock.now = t0 + 5.minutes + 1.milliseconds
-        assertFailsWith<RecoveryKeyLifecycleException.Expired> { server.rotate(early) }
-        clock.now = t0 - 5.minutes - 1.milliseconds
-        assertFailsWith<RecoveryKeyLifecycleException.Expired> { server.rotate(early) }
-        // Wrong epoch or key before any signature is checked.
+        val future = rotation()
+        clock.now = t0 - 1.milliseconds
+        val stale = rotation()
         clock.now = t0
+        assertFailsWith<RecoveryKeyLifecycleException.Expired> { server.rotate(future) }
+        // Wrong epoch or key before any signature is checked.
         assertFailsWith<RecoveryKeyLifecycleException.Conflict> { server.rotate(rotation(epoch = 2)) }
         assertFailsWith<RecoveryKeyLifecycleException.Conflict> { server.rotate(rotation(current = r3)) }
         server.assertActive(r1, epoch = 1)
         clock.now = t0 + 5.minutes
+        assertFailsWith<RecoveryKeyLifecycleException.Expired> { server.rotate(stale) }
         assertEquals(RecoveryKeyRotationOutcome.ROTATED, server.rotate(early), "the window bound is inclusive")
 
         // A statement nonce is single-use under the authorizing device.
@@ -251,10 +255,20 @@ class RecoveryKeyLifecycleServerTest {
         // R2 -> R3, then the R1 -> R2 replay: rejected, R3 stays.
         assertEquals(RecoveryKeyRotationOutcome.ROTATED, server.rotate(rotation(r2, r3, epoch = 2)))
         assertFailsWith<RecoveryKeyLifecycleException.Expired> { server.rotate(first) }
-        clock.now = t0
-        assertFailsWith<RecoveryKeyLifecycleException.Conflict> { server.rotate(first) }
         server.assertActive(r3, epoch = 3)
         assertEquals(1, storage.state().authEpoch, "the device registration is untouched")
+    }
+
+    @Test
+    fun staleRotationReplayedInsideTheWindowIsAConflict() = runTest {
+        val (_, server) = setUp()
+        val first = rotation()
+        clock.now = t0 + 1.minutes
+        assertEquals(RecoveryKeyRotationOutcome.ROTATED, server.rotate(first))
+        assertEquals(RecoveryKeyRotationOutcome.ROTATED, server.rotate(rotation(r2, r3, epoch = 2)))
+        // Still inside its window, but R2 -> R3 followed: no exact retry any more.
+        assertFailsWith<RecoveryKeyLifecycleException.Conflict> { server.rotate(first) }
+        server.assertActive(r3, epoch = 3)
     }
 
     @Test
@@ -338,7 +352,7 @@ class RecoveryKeyLifecycleServerTest {
         )
         server.publishPreKeys(server.signed(phone, ProtectedEndpoint.PUBLISH_PRE_KEYS), publication)
         assertEquals(OneTimePreKeyId(0), server.fetchPreKeyBundle(phone)?.oneTimePreKey?.id)
-        server.relay(EncryptedEnvelope(MessageId("m1"), bob, phone, payload = byteArrayOf(7)))
+        storage.mailboxes.enqueue(EncryptedEnvelope(MessageId("m1"), bob, phone, payload = byteArrayOf(7)))
         val before = keys.keys.map { storage.state(it) }
 
         assertEquals(RecoveryKeyRotationOutcome.ROTATED, server.rotate(rotation()))

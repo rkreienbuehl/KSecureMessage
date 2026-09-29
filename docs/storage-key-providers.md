@@ -44,6 +44,17 @@ val storage = SqlDelightClientStorage.open(driver, AppleStorageKeyProvider(names
   `loadOrCreateKey()` throws `KeyUnavailable`: the database, not the
   provider, knows which key is current.
 
+### `hasKeys` (S1)
+
+`hasKeys()` reports whether the provider holds any key. It never creates,
+rotates, repairs or replaces a key. State that exists but cannot be read
+throws `KeyUnavailable` (Android: a damaged wrapped key file) or reports
+`true` (Apple: an item exists even if its data is damaged); it is never
+reported as "no key". Storage uses it to tell a database from before record
+encryption from a downgraded one ([storage-encryption.md](storage-encryption.md#downgrade-protection)).
+`StaticStorageKeyProvider.hasKeys()` is always `true`. Contract tests:
+`StorageKeyProviderContractTest` (`hasKeys*`).
+
 ### `createKey` and `removeKey` (storage key rotation)
 
 Milestone 11 ([storage-key-rotation.md](storage-key-rotation.md)):
@@ -72,7 +83,9 @@ Milestone 11 ([storage-key-rotation.md](storage-key-rotation.md)):
 |------------------------------|----------------------|-------------------------|--------|
 | new (no bound key)           | `loadOrCreateKey()`  | none                    | key created, bound |
 | new                          | `loadOrCreateKey()`  | present                 | existing key bound |
-| milestone 8 (format 0)       | `loadOrCreateKey()`  | none or present         | key created/loaded, records encrypted in one transaction |
+| milestone 8 (format 0)       | `hasKeys()`, then `loadOrCreateKey()` | none | key created, migration intent committed, records encrypted in one transaction |
+| milestone 8 (format 0), interrupted migration | `hasKeys()`, then `loadOrCreateKey()` | present, intent verifies | migration resumed with that key |
+| format 0 without a valid intent | `hasKeys()` | present | `DowngradeRejected` (S1, [storage-encryption.md](storage-encryption.md#downgrade-protection)) |
 | encrypted, key ID bound      | `key(id)` only       | present                 | opens |
 | encrypted                    | `key(id)` only       | missing (lost, deleted) | `KeyUnavailable`, nothing created |
 | encrypted                    | `key(id)` only       | damaged                 | `KeyUnavailable`, nothing created |

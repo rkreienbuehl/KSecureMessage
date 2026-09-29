@@ -119,7 +119,7 @@ class LastDeviceRecoveryRoutesTest {
     }
 
     @Test
-    fun recoveryKeyRegistrationIsSignedAndNeverReplaced() = testServer(clock) { storage, http ->
+    fun recoveryKeyRegistrationIsSignedAndNeverReplaced() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val phoneDevice = registered(http, withRecoveryKey = false)
         val registration = keyJson(LastDeviceRecovery.registerKey(recoveryKey, phone.userId))
         http.registerKey(registration, null).assertError(HttpStatusCode.Unauthorized, "missing_authentication")
@@ -149,7 +149,7 @@ class LastDeviceRecoveryRoutesTest {
     }
 
     @Test
-    fun challengeIsPublicAndStableWhileValid() = testServer(clock) { _, http ->
+    fun challengeIsPublicAndStableWhileValid() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { _, http ->
         http.challenge().assertError(HttpStatusCode.NotFound, "last_device_recovery_target_not_registered")
         registered(http, withRecoveryKey = false)
         http.challenge().assertError(HttpStatusCode.NotFound, "last_device_recovery_not_configured")
@@ -160,7 +160,7 @@ class LastDeviceRecoveryRoutesTest {
     }
 
     @Test
-    fun challengeResponseCarriesOnlyPublicFields() = testServer(clock) { _, http ->
+    fun challengeResponseCarriesOnlyPublicFields() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { _, http ->
         registered(http)
         val response = http.challenge()
         assertEquals(HttpStatusCode.OK, response.status)
@@ -177,7 +177,7 @@ class LastDeviceRecoveryRoutesTest {
     }
 
     @Test
-    fun successIsNoContentAndSwitchesTheKeyAtOnce() = testServer(clock) { storage, http ->
+    fun successIsNoContentAndSwitchesTheKeyAtOnce() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val phoneDevice = registered(http)
         val k2 = newKey()
         val authorization = authorization(http, k2)
@@ -194,7 +194,7 @@ class LastDeviceRecoveryRoutesTest {
     }
 
     @Test
-    fun rejectionsAreMappedAndChangeNothing() = testServer(clock) { storage, http ->
+    fun rejectionsAreMappedAndChangeNothing() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val phoneDevice = registered(http)
         val valid = authorization(http)
         val otherKey = runBlocking { engine.createLastDeviceRecoveryKey() }
@@ -234,7 +234,7 @@ class LastDeviceRecoveryRoutesTest {
     }
 
     @Test
-    fun malformedBodiesAreBadRequests() = testServer(clock) { storage, http ->
+    fun malformedBodiesAreBadRequests() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val phoneDevice = registered(http)
         val valid = json(authorization(http))
         val bodies = listOf(
@@ -258,7 +258,7 @@ class LastDeviceRecoveryRoutesTest {
     }
 
     @Test
-    fun clientRecoversThroughTheKtorAdapterAndMessagingIsUnaffected() = testServer(clock) { storage, http ->
+    fun clientRecoversThroughTheKtorAdapterAndMessagingIsUnaffected() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val transport = KtorSecureMessageTransport("", http)
         val phoneStorage = InMemoryClientStorage()
         fun client(address: DeviceAddress, clientStorage: InMemoryClientStorage) =
@@ -299,7 +299,7 @@ class LastDeviceRecoveryRoutesTest {
     }
 
     @Test
-    fun lostResponseIsResolvedByTheClient() = testServer(clock) { storage, http ->
+    fun lostResponseIsResolvedByTheClient() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val transport = KtorSecureMessageTransport("", http)
         val phoneStorage = InMemoryClientStorage()
         val phoneClient = SecureMessageClient(phone, phoneStorage, engine, transport, PreKeyConfiguration(oneTimePreKeyTarget = 1), clock)
@@ -321,7 +321,7 @@ class LastDeviceRecoveryRoutesTest {
 
     @Test
     fun recoveryPersistsAcrossServerRestarts() = ReopenableServerStorage().use { persistent ->
-        testServer(persistent, clock) { server, http ->
+        testServer(TestDeviceRegistrationAuthorizer.allowAll(), persistent, clock) { server, http ->
             val phoneDevice = registered(http)
             val challenge = Json.parseToJsonElement(http.challenge().bodyAsText())
             server.restart()
@@ -353,7 +353,7 @@ class LastDeviceRecoveryRoutesTest {
 
     @Test
     fun storageFailureIsAGenericServerError() = ReopenableServerStorage().use { persistent ->
-        testServer(persistent, clock) { server, http ->
+        testServer(TestDeviceRegistrationAuthorizer.allowAll(), persistent, clock) { server, http ->
             val phoneDevice = registered(http)
             val authorization = authorization(http)
             server.driver.execute(null, "DROP TABLE last_device_recovery_challenge", 0)

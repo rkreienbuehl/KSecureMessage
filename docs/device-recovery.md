@@ -71,8 +71,16 @@ cannot authenticate. Recovery signatures never verify as rotation signatures
 or the other way round: other domains, other statement, other endpoint.
 
 The target must be registered already (`recovery_target_not_registered`
-otherwise): recovery is never a second way to register an address. First
-registration stays trust on first registration.
+otherwise): recovery is never a second way to register an address.
+
+**Authority rests on host-authorized membership (S1, findings F1/F2).**
+"Another registered device of the same user" is only as trustworthy as
+registration. Before S1 anyone could register a new device ID under an
+existing `UserId` and then authorize the recovery of that user's real
+devices. Since S1 every first registration needs the host application's
+`DeviceRegistrationAuthorizer` (docs/server-authentication.md), so only
+devices the host admitted to the user can authorize a recovery. The
+recovery protocol itself is unchanged.
 
 **Single-device limitation.** A user with only one registered device has no
 recovery path in M14 if that device loses its key. That is intentional:

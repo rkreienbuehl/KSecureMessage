@@ -23,6 +23,19 @@ sealed class SecureMessageTransportException(message: String) : Exception(messag
      */
     class DeviceRegistrationConflict : SecureMessageTransportException("Device is registered with a different authentication key")
 
+    /**
+     * The server's host application did not authorize this device to become
+     * a device of its user (S1, docs/server-authentication.md, "Registration
+     * authorization"). Nothing was registered. Carries no host-specific reason.
+     */
+    class DeviceRegistrationNotAuthorized : SecureMessageTransportException("Device registration is not authorized")
+
+    /**
+     * The server refused a submitted envelope because its sender is not the
+     * device that signed the submission (S1). Nothing was queued.
+     */
+    class EnvelopeSenderRejected : SecureMessageTransportException("Envelope sender is not the authenticated device")
+
     /** The server did not accept the request's device authentication; the request changed nothing. */
     class AuthenticationFailed(val failure: AuthenticationFailure) :
         SecureMessageTransportException("Device authentication failed: $failure")

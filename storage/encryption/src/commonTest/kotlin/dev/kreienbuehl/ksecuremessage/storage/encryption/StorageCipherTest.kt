@@ -191,6 +191,37 @@ class StorageCipherTest {
         assertEquals(12, StorageRecordType.PROCESSED_INBOUND_DIGEST.id.toInt())
     }
 
+    /**
+     * Record type 13 (S1, finding F7): the legacy plaintext migration intent,
+     * row key field "legacy-plaintext-migration", content the fixed marker
+     * "KSecureMessage-LegacyPlaintextMigration-v1". Computed independently
+     * (Python `cryptography`, AESGCM). Frozen. Its own fixed nonce.
+     */
+    @Test
+    fun migrationIntentVector() = runTest {
+        val header = EncryptedRecordFormat.header(StorageKeyId(7))
+        assertEquals(
+            "4b534d52010100000007000000194b5365637572654d6573736167652d53746f726167652d76310d010000001a6c65676163792d706c61696e746578742d6d6967726174696f6e",
+            EncryptedRecordFormat.associatedData(header, StorageRecordType.MIGRATION_INTENT, listOf("legacy-plaintext-migration".encodeToByteArray())).toHex(),
+        )
+        val vector = "4b534d52010100000007f0f1f2f3f4f5f6f7f8f9fafb225526630948b739fa8484fbe92f4ffa758638a1415723f93f3847c521479f6e7b6277f029ecdfb4ee69ccc4cfbb350ee55107466976b840ec7a"
+        val cipher = StorageCipher(key) { ByteArray(12) { (0xF0 + it).toByte() } }
+        assertEquals(vector, AeadClientRecordCipher(cipher).sealMigrationIntent().toHex())
+        ClientRecordCipher(key).verifyMigrationIntent(hex(vector))
+        assertEquals(13, StorageRecordType.MIGRATION_INTENT.id.toInt())
+    }
+
+    @Test
+    fun migrationIntentIsNoKeyCheckAndNeedsItsKey() = runTest {
+        val records = ClientRecordCipher(key)
+        val intent = records.sealMigrationIntent()
+        val keyCheck = records.sealKeyCheck()
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { records.verifyMigrationIntent(keyCheck) }
+        assertFailsWith<StorageEncryptionException.AuthenticationFailed> { records.verifyKeyCheck(intent) }
+        assertFailsWith<StorageEncryptionException> { ClientRecordCipher(testKey(7, 99)).verifyMigrationIntent(intent) }
+        assertFailsWith<StorageEncryptionException> { records.verifyMigrationIntent(intent.flipped(intent.size - 1)) }
+    }
+
     @Test
     fun roundtripAndLayout() = runTest {
         val record = cipher.seal(StorageRecordType.SESSION, fields, plaintext)
@@ -329,6 +360,6 @@ class StorageCipherTest {
             EncryptedRecordFormat.associatedData(EncryptedRecordFormat.header(StorageKeyId(2)), StorageRecordType.KEY_CHECK, emptyList()).toHex(),
         )
         assertEquals(all.size, all.toSet().size)
-        assertEquals(listOf<Byte>(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12), StorageRecordType.entries.map { it.id })
+        assertEquals(listOf<Byte>(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13), StorageRecordType.entries.map { it.id })
     }
 }

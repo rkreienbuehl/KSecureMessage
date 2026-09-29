@@ -1,6 +1,7 @@
 # KSecureMessage server authentication
 
-Milestone 12. Explains how a device proves to the KSecureMessage server that
+Milestone 12, extended by S1 (docs/security-review-remediation.md).
+Explains how a device proves to the KSecureMessage server that
 a request comes from the device registered for a `DeviceAddress`. Without
 this, anyone who knows an address could replace its published prekeys or
 drain its mailbox.
@@ -27,16 +28,25 @@ M12 gives the server one guarantee: **the server recognizes a previously
 registered device authentication key.** After an address is registered, only
 the holder of that key can publish prekeys for it or drain its mailbox.
 
-M12 does **not** establish:
+Since S1 (docs/security-review-remediation.md) two more guarantees hold:
 
-- human identity, accounts, phone number or email ownership;
+- **A device becomes one of a user's devices only with the host
+  application's authorization** ([Registration authorization](#bootstrap-registration-authorization)).
+  Every other device-scoped authority (device recovery, the offline recovery
+  key, its reset) rests on this membership.
+- **An envelope is queued only if its sender is the device that signed the
+  submission** ([Message submission](#message-submission)).
+
+KSecureMessage does **not** establish:
+
+- human identity, accounts, phone number or email ownership: the host
+  application decides who may register which `DeviceAddress`;
 - account recovery (device recovery through another device of the same
   user was added in M14, docs/device-recovery.md);
-- who registered an address first (see [Bootstrap](#bootstrap-trust-on-first-registration));
 - trust between messaging peers: TOFU pins ([identity-trust.md](identity-trust.md))
-  and future safety numbers are unchanged and independent of this;
-- sender authentication for `POST /v1/messages`, or hiding metadata from the
-  server (no sealed sender).
+  and safety numbers are unchanged and independent of this;
+- hiding metadata from the server (no sealed sender): the server sees who
+  sends to whom.
 
 ## The device authentication key
 
@@ -109,26 +119,62 @@ protects against accidental loss and bugs, not against that attacker.
 `InMemoryClientStorage` never holds pre-M12 data; its `awaitsUpgradeKey()` is
 always `false`.
 
-## Bootstrap: trust on first registration
+## Bootstrap: registration authorization
 
 The server binds `DeviceAddress → device authentication public key`:
 
 | Case | Result |
 |---|---|
-| address unregistered | the key is registered (`201 Created`) |
-| same address, same key | idempotent success (`204 No Content`) |
-| same address, other key | `DeviceRegistrationException.Conflict` (`409`); registration never replaces the registered key |
+| address unregistered, host authorizes | the key is registered (`201 Created`) |
+| address unregistered, host denies | `DeviceRegistrationException.NotAuthorized` (`403 registration_not_authorized`); nothing is registered |
+| same address, same key | idempotent success (`204 No Content`); the host is not asked |
+| same address, other key | `DeviceRegistrationException.Conflict` (`409`); registration never replaces the registered key, and the host is not asked |
 
 Only device recovery (M14, docs/device-recovery.md), authorized by another
-registered device of the same user, and routine rotation (M16,
+registered device of the same user, routine rotation (M16,
 docs/device-authentication-rotation.md), authorized by the registered key
-itself, replace a registered key; both are proven by the new key.
-Registration semantics are unchanged by them.
+itself, and last-device recovery (M18) replace a registered key; all are
+proven by the new key. The registration authorizer can never replace a key.
 
-**First registration is trust-on-first-registration at the server layer. M12
-prevents later unauthorized replacement but does not authenticate ownership
-of an unregistered `DeviceAddress`.** Whoever registers a free address first
-owns it on this server.
+### Registration authorization (S1, findings F1/F2)
+
+Until S1 registration was trust on first registration: whoever registered a
+free address first owned it. A stranger could register `alice/evil` and then
+act as one of Alice's devices: authorize a device recovery of Alice's phone,
+provision Alice's offline recovery key, manage its reset.
+
+Since S1 every first registration of an address, **including the first
+device of a user**, needs both:
+
+1. proof of possession of the device authentication key (the signed request
+   below), and
+2. the host application's decision: `DeviceRegistrationAuthorizer`
+   (`server:core`), a required constructor parameter of
+   `SecureMessageServer(storage, clock, deviceRegistrationAuthorizer,
+   recoveryKeyResetPolicy)`. There is no default and no allow-all class in
+   production code.
+
+The authorizer gets a `DeviceRegistrationAuthorizationRequest`: the
+address, the proposed public key (a copy) and
+`DeviceRegistrationUserState` (`USER_HAS_NO_REGISTERED_DEVICES` or
+`USER_HAS_REGISTERED_DEVICES`). It returns `Authorized` or `Denied`; a
+denial carries no reason, so nothing host-specific reaches HTTP. An
+exception it throws becomes `500 internal_error` (logged, no text in the
+body) and registers nothing.
+
+Order in `SecureMessageServer.registerDevice`: key size → authentication
+(signature with the key in the body, window, nonce claim) → existing
+registration (same key: `false`/`204` without asking the host; other key:
+conflict) → host authorization → atomic `register`. Nothing is stored before
+the host authorized; a denied request consumes only its own nonce.
+
+KSecureMessage still has no accounts: how the host decides (a session
+cookie, an account token, an enrollment code on the request that it checks
+out of band, a fixed device list in the sample) is the host's business. The
+flows that treat "a registered device of the same user" as an authority
+(M14 device recovery, M18 recovery key registration, M19 rotation and
+revocation, M23 reset request, status and cancellation) are unchanged; their
+authority is now exactly the host-authorized membership.
 
 Registration is explicit: `SecureMessageClient.registerDevice()`. Neither
 `initialize()` nor any protected request registers a key implicitly, so the
@@ -231,10 +277,10 @@ request that fails steps 1–4 consumes nothing.
   runs at most once per signed request.
 - **Final**: a claimed nonce stays claimed even if the operation then fails
   (for example a publication conflict). Clients sign every attempt anew.
-- **Retention**: an entry is needed only while its timestamp is inside the
-  window; afterwards step 3 rejects the request anyway. Every claim first
-  removes entries with `timestamp < now − 5 min` (in the same lock hold in the
-  in-memory repository, in the same SQLite transaction in
+- **Retention** ([Nonce lifetime](#nonce-lifetime)): an entry is kept as
+  long as any request carrying it could still pass the window, and pruned
+  only after that, in the same atomic step as a claim (the same lock hold in
+  the in-memory repository, the same SQLite transaction in
   `storage:server:sqldelight`, see docs/server-storage.md). With persistent
   storage, claimed nonces survive a server restart: a request replayed after
   a restart, while its timestamp is still in the window, is rejected.
@@ -249,9 +295,43 @@ request that fails steps 1–4 consumes nothing.
   rotation nonce), is claimed inside the rotation's compare-and-set
   transaction, and a rotation clears no nonces
   (docs/device-authentication-rotation.md).
-- **Clock**: the window assumes the server clock does not jump back by more
-  than the window; after such a jump a pruned nonce could be accepted again
-  until the clock catches up.
+- **Clock**: the prune watermark below never moves back. After the server
+  clock jumped back, requests with a timestamp before the watermark are
+  refused as replays until the clock has caught up; they are never accepted
+  twice.
+
+### Nonce lifetime
+
+S1, finding F8. The window accepts `serverNow − W ≤ ts ≤ serverNow + W`
+(`W` = 5 minutes, bounds inclusive). A request with timestamp `ts` passes
+the window at every server time `t` with `ts − W ≤ t ≤ ts + W`, so its nonce
+must stay claimed at least until `t = ts + W`, and may be pruned only once
+`ts < t − W`.
+
+Before S1 every claim pruned `ts < now − W` with its **own** `now`. Freshness
+and claim read the clock at different times, so a request checked at
+`ts + W` (still fresh) could claim after another request checked at
+`ts + W + 1 ms` had already pruned the original nonce: one replay got
+through.
+
+Since S1 `AuthenticationNonceRepository.claim(address, nonce, ts, pruneBefore)`
+keeps a **monotonic prune watermark** `P` = the largest `pruneBefore` any
+claim applied, and in one atomic step:
+
+1. `P := max(P, pruneBefore)`;
+2. refuses the claim if `ts < P` (the nonce may already be pruned);
+3. prunes every entry with timestamp `< P`;
+4. records the nonce, or refuses it if already recorded.
+
+Invariant: every entry with timestamp `≥ P` is retained, and every claim
+with timestamp `< P` is refused. A replay of `(nonce, ts)` either finds the
+entry (`ts ≥ P`) or is refused by step 2 (`ts < P`), whatever the
+interleaving. A legitimate request is refused by step 2 only if another
+request already moved `P` past its timestamp, that is, when it is at most
+the difference of the two callers' clock reads away from leaving its window.
+The server schema v8 (`7.sqm`) stores `P` in `authentication_nonce_watermark`
+(docs/server-storage.md). Device recovery, routine rotation and recovery key
+transitions claim through the same step.
 
 ### Atomicity and ordering
 
@@ -273,10 +353,10 @@ request that fails steps 1–4 consumes nothing.
 
 | Endpoint | Authentication | Success | Errors |
 |---|---|---|---|
-| `PUT /v1/devices/{u}/{d}/registration` `{"publicKey": "<b64, 32 bytes>"}` | signed with the key in the body | `201` first, `204` identical | `400 invalid_registration`, `401`, `409 device_registration_conflict` |
+| `PUT /v1/devices/{u}/{d}/registration` `{"publicKey": "<canonical b64, 32 bytes>"}` | signed with the key in the body, plus the host's `DeviceRegistrationAuthorizer` (S1) | `201` first, `204` identical | `400 invalid_registration`, `401`, `403 registration_not_authorized`, `409 device_registration_conflict`, `500 internal_error` (authorizer failure) |
 | `PUT /v1/devices/{u}/{d}/prekeys` | registered device | `204` | `401` first; then `400 invalid_publication`, `409 *_conflict` |
 | `GET /v1/devices/{u}/{d}/prekey-bundle` | public | `200` | `404 device_not_found` |
-| `POST /v1/messages` | public | `202` | – |
+| `POST /v1/messages` (signed since S1) | the envelope's sender device (`ProtectedEndpoint.SEND_MESSAGE`, `X-KSecureMessage-Device` header, signed body) | `202` | `401` first; then `400 invalid_envelope`, `403 sender_mismatch` |
 | `GET /v1/devices/{u}/{d}/messages` | registered device | `200` | `401` |
 | `PUT /v1/devices/{u}/{d}/registration/recovery` (M14) | authorizer signature + proof of possession in the body (docs/device-recovery.md) | `204` | `400 invalid_recovery`, `401`, `403`, `404`, `409 recovery_conflict`, `409 device_auth_epoch_exhausted` |
 | `GET /v1/devices/{u}/{d}/registration` (M16, extended M17) | registered device (`ProtectedEndpoint.READ_REGISTRATION`, empty body) | `200 {"authEpoch":N,"authKeyInstalledAt":T}` (T: server time the registered key was installed at, epoch ms; docs/device-authentication-rotation.md) | `401` |
@@ -294,7 +374,8 @@ Every exception is mapped explicitly; none falls through to `500`.
 `KtorSecureMessageTransport` maps them to
 `SecureMessageTransportException.AuthenticationFailed(failure)` (`MISSING`,
 `INVALID`, `EXPIRED`, `REPLAY`, `NOT_REGISTERED`),
-`DeviceRegistrationConflict` and `RegistrationRejected`.
+`DeviceRegistrationConflict`, `DeviceRegistrationNotAuthorized` (S1),
+`RegistrationRejected` and, for submission, `EnvelopeSenderRejected` (S1).
 
 The registration status response (M17) is trusted because the request is
 ServerAuth-signed with the registered key and the server is the authority
@@ -315,6 +396,46 @@ sessions, the signed prekey lifecycle, message reliability, per-pair FIFO,
 the KSMR record format v1 and its associated data, storage key provider
 formats and the storage key rotation state machine.
 
+S1 is a second intentional change of HTTP API v1 behavior (not of the
+signed input format v1, which is unchanged): registration needs the host's
+authorization (`403 registration_not_authorized`), and `POST /v1/messages`
+needs ServerAuth by the sender plus the `X-KSecureMessage-Device` header
+(`401`/`403 sender_mismatch`). Clients from before S1 can no longer send;
+upgrade servers and clients together (docs/security-review-remediation.md).
+
+## Message submission
+
+S1, finding F4. Before S1 `POST /v1/messages` was public and the server
+queued any envelope, so a client could name any sender. The recipient takes
+the sender address of a first contact from the envelope, so a malicious
+client could claim `alice/phone` with its own identity key and have the
+recipient pin that key for Alice.
+
+Since S1 the submission is a ServerAuth v1 request of the sending device:
+
+- the path stays `/v1/messages`; the signed canonical path is exactly
+  `/v1/messages` (`ServerApiPaths.SUBMIT_MESSAGE`, `ProtectedEndpoint.SEND_MESSAGE`);
+- the header `X-KSecureMessage-Device` names the signing device as
+  `{user}/{device}`, each component percent-encoded like a path segment
+  (`ServerApiPaths.encodeDevice`/`decodeDevice`; only the canonical encoding
+  is accepted);
+- order: device header → authentication with that device's **registered**
+  key (window, signature over the exact body, nonce) → parse the body →
+  `envelope.sender` must equal the authenticated device, else
+  `403 sender_mismatch` and nothing is queued → enqueue;
+- a missing header or missing authentication headers are `401
+  missing_authentication`; a malformed or repeated device header is `401
+  invalid_authentication`.
+
+The client signs every submission, including acknowledgements and retries
+(`SecureMessageTransport.send(envelope, signer)`); the key is loaded in its
+own short transaction and the request is sent outside any storage
+transaction. The server now vouches for the sender address; the session
+initiation v2 transcript additionally binds both addresses cryptographically,
+which catches a relay that rewrites them (docs/session-lifecycle.md). A
+device without its device authentication key cannot submit; its messages
+stay pending.
+
 ## Client usage
 
 ```kotlin
@@ -330,7 +451,9 @@ requests for another address. Applications never build signatures.
 
 ## Limitations
 
-- First registration is not proof of human or account ownership.
+- Registration proves possession of the device key; account ownership is
+  whatever the host's `DeviceRegistrationAuthorizer` checks. A host that
+  authorizes carelessly reopens F1/F2.
 - Auth-key recovery through another registered device of the same user
   (M14, docs/device-recovery.md) or, for the last device, with the user's
   offline recovery key (M18, docs/last-device-recovery.md); routine rotation
@@ -347,7 +470,10 @@ requests for another address. Applications never build signatures.
   commits only while that registration is still current.
 - Persistent server storage (`storage:server:sqldelight`, M13) is SQLite
   only, single node, unencrypted (docs/server-storage.md).
-- The server still sees sender and recipient metadata; `POST /v1/messages`
-  does not authenticate the envelope sender (no sealed sender).
+- The server sees sender and recipient metadata, and since S1 it is also the
+  authority for the sender address of a submission (no sealed sender). A
+  malicious server could still fabricate a first contact with a key of its
+  choice under any address, as it could hand out a bundle with a key of its
+  choice: first contact trusts the server (TOFU); safety numbers detect it.
 - Replay protection is at most once per signed request, not exactly-once
   application side effects.

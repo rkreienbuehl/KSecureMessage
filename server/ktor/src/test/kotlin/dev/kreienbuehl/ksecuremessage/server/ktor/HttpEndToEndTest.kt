@@ -36,7 +36,7 @@ class HttpEndToEndTest {
     private val bobAddress = DeviceAddress(UserId("bob"), DeviceId("laptop"))
 
     @Test
-    fun publishFetchFirstContactAndReplyOverHttp() = testServer { server, http ->
+    fun publishFetchFirstContactAndReplyOverHttp() = testServer(TestDeviceRegistrationAuthorizer.allowAll()) { server, http ->
         val engine = KodiumProtocolEngine()
         val transport = KtorSecureMessageTransport("", http)
         val bobStorage = InMemoryClientStorage()
@@ -104,7 +104,7 @@ class HttpEndToEndTest {
     }
 
     @Test
-    fun unregisteredClientCannotPublishOrDrain() = testServer { server, http ->
+    fun unregisteredClientCannotPublishOrDrain() = testServer(TestDeviceRegistrationAuthorizer.allowAll()) { server, http ->
         val transport = KtorSecureMessageTransport("", http)
         val bob = SecureMessageClient(bobAddress, InMemoryClientStorage(), KodiumProtocolEngine(), transport)
         bob.initialize()

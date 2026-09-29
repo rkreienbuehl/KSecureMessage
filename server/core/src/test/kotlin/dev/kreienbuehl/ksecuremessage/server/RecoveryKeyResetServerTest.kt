@@ -109,7 +109,7 @@ class RecoveryKeyResetServerTest {
         storage: ServerStorage = InMemoryServerStorage(),
         policy: RecoveryKeyResetPolicy? = RecoveryKeyResetPolicy(delay),
     ): Pair<ServerStorage, SecureMessageServer> {
-        val server = SecureMessageServer(storage, clock, policy)
+        val server = SecureMessageServer(storage, clock, TestDeviceRegistrationAuthorizer.allowAll(), policy)
         for ((address, key) in keys) {
             val body = key.publicKey
             val request = ServerRequest(address, "PUT", ServerApiPaths.device(address, ServerApiPaths.REGISTRATION), body)
@@ -197,7 +197,8 @@ class RecoveryKeyResetServerTest {
     fun aRepeatedRequestNeverRestartsTheDelay() = runTest {
         val (_, server) = setUp()
         val reset = server.pending()
-        for (step in listOf(1.hours, delay, 2.days)) {
+        // Forward only: the server clock never runs back (nonce prune watermark, S1).
+        for (step in listOf(1.hours, delay, 2.days).sorted()) {
             clock.now = t0 + step
             val again = server.request(laptop)
             assertFalse(again.created)

@@ -67,10 +67,17 @@ class SqlDelightPersistenceTest {
     @AfterTest
     fun close() = database.close()
 
+    /**
+     * A platform-like key store that outlives restarts and starts empty, so a
+     * database from before record encryption can prove it never had a key
+     * (S1, finding F7).
+     */
+    private val keys = MemoryKeyStore().provider("persistence")
+
     /** Closes the open connection and opens a new one on the same file. */
     private suspend fun reopen(): SqlDelightClientStorage {
         database.closeOpenDrivers()
-        return openStorage(database.open())
+        return openStorage(database.open(), keys)
     }
 
     private suspend fun ClientStorage.oneTimePreKeyIds() = preKeys.publicOneTimePreKeys().map { it.id.value }
@@ -222,7 +229,7 @@ class SqlDelightPersistenceTest {
         old.execute(null, "INSERT INTO session (remote_user_id, remote_device_id, state) VALUES ('alice', 'phone', X'0506')", 0)
         database.closeOpenDrivers()
 
-        val migrated = openStorage(database.open())
+        val migrated = openStorage(database.open(), keys)
         assertContentEquals(byteArrayOf(1, 2), migrated.identity.identity()?.publicKey)
         assertContentEquals(byteArrayOf(5, 6), migrated.sessions.load(ALICE)?.state)
         assertNull(migrated.remoteIdentities.identityKey(ALICE), "a pin is never invented for an old session")
@@ -242,7 +249,7 @@ class SqlDelightPersistenceTest {
         old.execute(null, "INSERT INTO one_time_pre_key (id, public_key, private_key) VALUES (4, X'09', X'0A')", 0)
         database.closeOpenDrivers()
 
-        val migrated = openStorage(database.open())
+        val migrated = openStorage(database.open(), keys)
         assertContentEquals(byteArrayOf(1, 2), migrated.identity.identity()?.publicKey)
         assertContentEquals(byteArrayOf(5, 6), migrated.sessions.load(ALICE)?.state)
         assertContentEquals(byteArrayOf(7, 8), migrated.remoteIdentities.identityKey(ALICE))
@@ -273,7 +280,7 @@ class SqlDelightPersistenceTest {
         }
         database.closeOpenDrivers()
 
-        val migrated = openStorage(database.open())
+        val migrated = openStorage(database.open(), keys)
         assertContentEquals(byteArrayOf(1, 2), migrated.identity.identity()?.publicKey)
         assertEquals(SignedPreKeyId(1), migrated.preKeys.currentSignedPreKey()?.id)
         assertContentEquals(byteArrayOf(0x12), migrated.preKeys.signedPreKey(SignedPreKeyId(0))?.privateKey)
@@ -451,8 +458,8 @@ class SqlDelightPersistenceTest {
         val restarted = SecureMessageClient(ALICE, aliceStorage, engine, network, config)
         val aliceIdentity = assertNotNull(aliceStorage.identity.identity()).publicKey
         val bobIdentity = assertNotNull(bobStorage.identity.identity()).publicKey
-        val aliceInitiation = SessionInitiationId.of(assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(toBob.payload)), bobIdentity)
-        val bobInitiation = SessionInitiationId.of(assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(toAlice.payload)), aliceIdentity)
+        val aliceInitiation = SessionInitiationId.v2Of(assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(toBob.payload)), toBob.sender, toBob.recipient, bobIdentity)
+        val bobInitiation = SessionInitiationId.v2Of(assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(toAlice.payload)), toAlice.sender, toAlice.recipient, aliceIdentity)
 
         if (aliceInitiation < bobInitiation) {
             assertFailsWith<SecureMessageClientException.SessionCollision> { restarted.decrypt(toAlice) }
@@ -494,7 +501,7 @@ class SqlDelightPersistenceTest {
         ) { bindBytes(0, initiation.bytes) }
         database.closeOpenDrivers()
 
-        val migrated = openStorage(database.open())
+        val migrated = openStorage(database.open(), keys)
         assertContentEquals(byteArrayOf(1, 2), migrated.identity.identity()?.publicKey)
         assertEquals(SignedPreKeyId(1), migrated.preKeys.currentSignedPreKey()?.id)
         assertContentEquals(byteArrayOf(0x12), migrated.preKeys.signedPreKey(SignedPreKeyId(0))?.privateKey)
@@ -612,8 +619,8 @@ class SqlDelightPersistenceTest {
         val toAlice = network.receive(ALICE).single()
         val aliceIdentity = assertNotNull(reopen().identity.identity()).publicKey
         val bobIdentity = assertNotNull(bobStorage.identity.identity()).publicKey
-        val aliceInitiation = SessionInitiationId.of(assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(toBob.payload)), bobIdentity)
-        val bobInitiation = SessionInitiationId.of(assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(toAlice.payload)), aliceIdentity)
+        val aliceInitiation = SessionInitiationId.v2Of(assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(toBob.payload)), toBob.sender, toBob.recipient, bobIdentity)
+        val bobInitiation = SessionInitiationId.v2Of(assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(toAlice.payload)), toAlice.sender, toAlice.recipient, aliceIdentity)
 
         if (aliceInitiation < bobInitiation) {
             // Bob's message is lost: Alice discards it, Bob keeps it pending.
@@ -734,7 +741,7 @@ class SqlDelightPersistenceTest {
 
         override suspend fun fetchPreKeyBundle(address: DeviceAddress) = bundles.getValue(address)
 
-        override suspend fun send(envelope: EncryptedEnvelope) {
+        override suspend fun send(envelope: EncryptedEnvelope, signer: ServerRequestSigner) {
             mailboxes.getOrPut(envelope.recipient) { mutableListOf() }.add(envelope)
         }
 

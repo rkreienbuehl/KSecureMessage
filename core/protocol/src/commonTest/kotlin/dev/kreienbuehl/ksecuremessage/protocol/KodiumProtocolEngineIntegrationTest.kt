@@ -46,6 +46,7 @@ internal suspend fun ProtocolEngine.party(address: DeviceAddress): Party {
 internal suspend fun ProtocolEngine.accept(receiver: Party, sender: DeviceAddress, message: PreKeyMessage) =
     acceptSession(
         localIdentity = receiver.identity,
+        localAddress = receiver.address,
         remote = sender,
         signedPreKey = receiver.signedPreKey,
         oneTimePreKey = receiver.oneTimePreKey(message.oneTimePreKeyId),
@@ -64,7 +65,7 @@ class KodiumProtocolEngineIntegrationTest {
         val bob = engine.party(BOB)
 
         // Alice starts the session from Bob's published bundle.
-        var aliceSession = engine.initiateSession(alice.identity, bob.bundle())
+        var aliceSession = engine.initiateSession(alice.identity, alice.address, bob.bundle())
         val first = engine.encrypt(aliceSession, "Hello Bob".encodeToByteArray())
         aliceSession = first.updatedSession
         val preKeyMessage = assertIs<PreKeyMessage>(first.message)
@@ -79,7 +80,7 @@ class KodiumProtocolEngineIntegrationTest {
         val reply = engine.encrypt(bobSession, "Hello Alice".encodeToByteArray())
         bobSession = reply.updatedSession
         val replyMessage = assertIs<RatchetMessage>(reply.message)
-        val replyDecrypted = engine.decrypt(aliceSession, replyMessage)
+        val replyDecrypted = engine.decrypt(aliceSession, replyMessage, alice.identity.publicKey)
         aliceSession = replyDecrypted.updatedSession
         assertEquals("Hello Alice", replyDecrypted.plaintext.decodeToString())
 
@@ -90,12 +91,12 @@ class KodiumProtocolEngineIntegrationTest {
         val third = engine.encrypt(aliceSession, "Still there?".encodeToByteArray())
         aliceSession = third.updatedSession
         val thirdMessage = assertIs<RatchetMessage>(third.message)
-        val thirdDecrypted = engine.decrypt(bobSession, thirdMessage)
+        val thirdDecrypted = engine.decrypt(bobSession, thirdMessage, bob.identity.publicKey)
         bobSession = thirdDecrypted.updatedSession
         assertEquals("Still there?", thirdDecrypted.plaintext.decodeToString())
 
         val fourth = engine.encrypt(bobSession, "Yes!".encodeToByteArray())
-        val fourthDecrypted = engine.decrypt(aliceSession, fourth.message)
+        val fourthDecrypted = engine.decrypt(aliceSession, fourth.message, alice.identity.publicKey)
         assertEquals("Yes!", fourthDecrypted.plaintext.decodeToString())
     }
 
@@ -104,7 +105,7 @@ class KodiumProtocolEngineIntegrationTest {
         val alice = engine.party(ALICE)
         val bob = engine.party(BOB)
 
-        var aliceSession = engine.initiateSession(alice.identity, bob.bundle())
+        var aliceSession = engine.initiateSession(alice.identity, alice.address, bob.bundle())
         val first = engine.encrypt(aliceSession, "one".encodeToByteArray())
         aliceSession = first.updatedSession.persistAndRestore()
         val second = engine.encrypt(aliceSession, "two".encodeToByteArray())
@@ -117,11 +118,11 @@ class KodiumProtocolEngineIntegrationTest {
 
         val accepted = engine.accept(bob, ALICE, firstMessage)
         assertEquals("one", accepted.plaintext.decodeToString())
-        val secondDecrypted = engine.decrypt(accepted.session.persistAndRestore(), secondMessage)
+        val secondDecrypted = engine.decrypt(accepted.session.persistAndRestore(), secondMessage, bob.identity.publicKey)
         assertEquals("two", secondDecrypted.plaintext.decodeToString())
 
         val reply = engine.encrypt(secondDecrypted.updatedSession, "ack".encodeToByteArray())
-        aliceSession = engine.decrypt(aliceSession, reply.message).updatedSession.persistAndRestore()
+        aliceSession = engine.decrypt(aliceSession, reply.message, alice.identity.publicKey).updatedSession.persistAndRestore()
 
         assertIs<RatchetMessage>(engine.encrypt(aliceSession, "three".encodeToByteArray()).message)
     }

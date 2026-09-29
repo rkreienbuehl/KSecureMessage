@@ -19,6 +19,11 @@
 -- yet current), 2 MIGRATING (records of retiring_key_id are re-encrypted;
 -- retiring_key_check proves that key), 3 RETIRING (no record uses
 -- retiring_key_id; its provider key is being removed).
+--
+-- migration_intent (schema version 16, see 15.sqm): while a format 0
+-- database is being migrated, a sealed record (type 13) proving that the
+-- provider's key was created for exactly this migration; NULL otherwise
+-- (docs/storage-encryption.md, "Downgrade protection").
 CREATE TABLE storage_encryption (
     id INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
     format INTEGER NOT NULL,
@@ -28,7 +33,8 @@ CREATE TABLE storage_encryption (
     rotation_phase INTEGER NOT NULL DEFAULT 0,
     next_key_id INTEGER,
     retiring_key_id INTEGER,
-    retiring_key_check BLOB
+    retiring_key_check BLOB,
+    migration_intent BLOB
 );
 
 INSERT INTO storage_encryption (id, format) VALUES (0, 1);
@@ -203,8 +209,21 @@ CREATE TABLE pending_inbound_message (
 CREATE INDEX pending_inbound_message_sender ON pending_inbound_message (sender_user_id, sender_device_id, sequence);
 
 selectStorageEncryption:
-SELECT format, key_id, key_check, highest_key_id, rotation_phase, next_key_id, retiring_key_id, retiring_key_check
+SELECT format, key_id, key_check, highest_key_id, rotation_phase, next_key_id, retiring_key_id, retiring_key_check, migration_intent
 FROM storage_encryption;
+
+-- Legacy plaintext migration (docs/storage-encryption.md, "Downgrade protection").
+recordMigrationIntent:
+UPDATE storage_encryption SET migration_intent = :intent WHERE format = 0 AND migration_intent IS NULL;
+
+countPostPlaintextSealedRecords:
+SELECT
+    (SELECT count(*) FROM device_authentication_key) +
+    (SELECT count(*) FROM device_authentication_recovery_key) +
+    (SELECT count(*) FROM device_authentication_rotation_key) +
+    (SELECT count(*) FROM device_authentication_last_device_recovery_key) +
+    (SELECT count(*) FROM pending_inbound_message) +
+    (SELECT count(*) FROM processed_inbound_message WHERE sealed_digest IS NOT NULL);
 
 bindStorageKey:
 UPDATE storage_encryption SET key_id = :keyId, key_check = :keyCheck, highest_key_id = :keyId;

@@ -62,6 +62,18 @@ abstract class DeviceRegistrationRepositoryContractTest {
     }
 
     @Test
+    fun hasRegisteredDevicesComparesTheExactUserIdAndChangesNothing() = runTest {
+        val repository = newRepository()
+        assertFalse(repository.hasRegisteredDevices(UserId("alice")))
+        assertTrue(repository.register(DeviceRegistration(alice, key(1)), registeredAt))
+        assertTrue(repository.hasRegisteredDevices(UserId("alice")))
+        assertFalse(repository.hasRegisteredDevices(UserId("Alice")), "exact compare")
+        assertFalse(repository.hasRegisteredDevices(UserId("alic")))
+        assertFalse(repository.hasRegisteredDevices(UserId("bob")))
+        assertNull(repository.registration(laptop), "reading registers nothing")
+    }
+
+    @Test
     fun firstRegistrationIsStoredAndRetriesAreIdempotent() = runTest {
         val repository = newRepository()
         assertNull(repository.registration(alice))

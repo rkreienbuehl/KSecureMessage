@@ -21,6 +21,7 @@ object TestKeys {
     /** Has no key at all: every call fails. */
     val missing: StorageKeyProvider = object : StorageKeyProvider {
         override suspend fun loadOrCreateKey(): StorageEncryptionKey = error("No key in the key store")
+        override suspend fun hasKeys(): Boolean = false
         override suspend fun key(id: StorageKeyId): StorageEncryptionKey? = null
         override suspend fun createKey(id: StorageKeyId): StorageEncryptionKey = error("No key in the key store")
         override suspend fun removeKey(id: StorageKeyId): Boolean = false

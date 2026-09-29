@@ -35,6 +35,22 @@ final enum class dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason : kot
     final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason> // dev.kreienbuehl.ksecuremessage.model/MessageDiscardReason.values|values#static(){}[0]
 }
 
+final enum class dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion : kotlin/Enum<dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion> { // dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion|null[0]
+    enum entry V1 // dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion.V1|null[0]
+    enum entry V2 // dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion.V2|null[0]
+
+    final val entries // dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion.entries|#static{}entries[0]
+        final fun <get-entries>(): kotlin.enums/EnumEntries<dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion> // dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion.entries.<get-entries>|<get-entries>#static(){}[0]
+
+    final fun valueOf(kotlin/String): dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion // dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion.valueOf|valueOf#static(kotlin.String){}[0]
+    final fun values(): kotlin/Array<dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion> // dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion.values|values#static(){}[0]
+
+    final object Companion : kotlinx.serialization.internal/SerializerFactory { // dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion.Companion|null[0]
+        final fun serializer(): kotlinx.serialization/KSerializer<dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion> // dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion.Companion.serializer|serializer(){}[0]
+        final fun serializer(kotlin/Array<out kotlinx.serialization/KSerializer<*>>...): kotlinx.serialization/KSerializer<*> // dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion.Companion.serializer|serializer(kotlin.Array<out|kotlinx.serialization.KSerializer<*>>...){}[0]
+    }
+}
+
 sealed interface dev.kreienbuehl.ksecuremessage.model/CiphertextMessage { // dev.kreienbuehl.ksecuremessage.model/CiphertextMessage|null[0]
     final object Companion : kotlinx.serialization.internal/SerializerFactory { // dev.kreienbuehl.ksecuremessage.model/CiphertextMessage.Companion|null[0]
         final fun serializer(): kotlinx.serialization/KSerializer<dev.kreienbuehl.ksecuremessage.model/CiphertextMessage> // dev.kreienbuehl.ksecuremessage.model/CiphertextMessage.Companion.serializer|serializer(){}[0]
@@ -246,12 +262,14 @@ final class dev.kreienbuehl.ksecuremessage.model/PreKeyBundle { // dev.kreienbue
 }
 
 final class dev.kreienbuehl.ksecuremessage.model/PreKeyMessage : dev.kreienbuehl.ksecuremessage.model/CiphertextMessage { // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage|null[0]
-    constructor <init>(kotlin/ByteArray, kotlin/ByteArray, dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId, dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId?, dev.kreienbuehl.ksecuremessage.model/RatchetMessage) // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.<init>|<init>(kotlin.ByteArray;kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId;dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId?;dev.kreienbuehl.ksecuremessage.model.RatchetMessage){}[0]
+    constructor <init>(kotlin/ByteArray, kotlin/ByteArray, dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId, dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId?, dev.kreienbuehl.ksecuremessage.model/RatchetMessage, dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion = ...) // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.<init>|<init>(kotlin.ByteArray;kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId;dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId?;dev.kreienbuehl.ksecuremessage.model.RatchetMessage;dev.kreienbuehl.ksecuremessage.model.SessionInitiationVersion){}[0]
 
     final val ephemeralKey // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.ephemeralKey|{}ephemeralKey[0]
         final fun <get-ephemeralKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.ephemeralKey.<get-ephemeralKey>|<get-ephemeralKey>(){}[0]
     final val identityKey // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.identityKey|{}identityKey[0]
         final fun <get-identityKey>(): kotlin/ByteArray // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.identityKey.<get-identityKey>|<get-identityKey>(){}[0]
+    final val initiationVersion // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.initiationVersion|{}initiationVersion[0]
+        final fun <get-initiationVersion>(): dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.initiationVersion.<get-initiationVersion>|<get-initiationVersion>(){}[0]
     final val message // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.message|{}message[0]
         final fun <get-message>(): dev.kreienbuehl.ksecuremessage.model/RatchetMessage // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.message.<get-message>|<get-message>(){}[0]
     final val oneTimePreKeyId // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.oneTimePreKeyId|{}oneTimePreKeyId[0]
@@ -264,7 +282,8 @@ final class dev.kreienbuehl.ksecuremessage.model/PreKeyMessage : dev.kreienbuehl
     final fun component3(): dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.component3|component3(){}[0]
     final fun component4(): dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId? // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.component4|component4(){}[0]
     final fun component5(): dev.kreienbuehl.ksecuremessage.model/RatchetMessage // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.component5|component5(){}[0]
-    final fun copy(kotlin/ByteArray = ..., kotlin/ByteArray = ..., dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId = ..., dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId? = ..., dev.kreienbuehl.ksecuremessage.model/RatchetMessage = ...): dev.kreienbuehl.ksecuremessage.model/PreKeyMessage // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.copy|copy(kotlin.ByteArray;kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId;dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId?;dev.kreienbuehl.ksecuremessage.model.RatchetMessage){}[0]
+    final fun component6(): dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.component6|component6(){}[0]
+    final fun copy(kotlin/ByteArray = ..., kotlin/ByteArray = ..., dev.kreienbuehl.ksecuremessage.model/SignedPreKeyId = ..., dev.kreienbuehl.ksecuremessage.model/OneTimePreKeyId? = ..., dev.kreienbuehl.ksecuremessage.model/RatchetMessage = ..., dev.kreienbuehl.ksecuremessage.model/SessionInitiationVersion = ...): dev.kreienbuehl.ksecuremessage.model/PreKeyMessage // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.copy|copy(kotlin.ByteArray;kotlin.ByteArray;dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId;dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId?;dev.kreienbuehl.ksecuremessage.model.RatchetMessage;dev.kreienbuehl.ksecuremessage.model.SessionInitiationVersion){}[0]
     final fun equals(kotlin/Any?): kotlin/Boolean // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.equals|equals(kotlin.Any?){}[0]
     final fun hashCode(): kotlin/Int // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.hashCode|hashCode(){}[0]
     final fun toString(): kotlin/String // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.toString|toString(){}[0]
@@ -279,6 +298,8 @@ final class dev.kreienbuehl.ksecuremessage.model/PreKeyMessage : dev.kreienbuehl
     }
 
     final object Companion { // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.Companion|null[0]
+        final val $childSerializers // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.Companion.$childSerializers|{}$childSerializers[0]
+
         final fun serializer(): kotlinx.serialization/KSerializer<dev.kreienbuehl.ksecuremessage.model/PreKeyMessage> // dev.kreienbuehl.ksecuremessage.model/PreKeyMessage.Companion.serializer|serializer(){}[0]
     }
 }

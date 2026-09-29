@@ -228,8 +228,8 @@ class MessageAbandonStorageTest {
         val before = driver.dump()
 
         reopen()
-        assertEquals(listOf(15L), driver.longs("PRAGMA user_version"))
-        assertEquals(before, driver.dump(), "no row changes")
+        assertEquals(listOf(16L), driver.longs("PRAGMA user_version"))
+        assertEquals(before.withEmptyMigrationIntent(), driver.dump(), "no row changes")
         assertTrue("pending_outbound_message_recipient" in driver.strings("SELECT name FROM sqlite_master WHERE type = 'index'"))
         assertEquals(ids, bob().pendingMessages(limit = 10, recipient = ALICE).messages.map { it.id })
         assertEquals(AbandonStatus.ABANDONED, bob().abandonPendingMessage(ALICE, ids[1]))

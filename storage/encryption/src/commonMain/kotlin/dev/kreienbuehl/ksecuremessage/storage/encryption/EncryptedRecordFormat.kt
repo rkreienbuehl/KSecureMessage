@@ -17,6 +17,9 @@ internal enum class StorageRecordType(val id: Byte) {
     DEVICE_AUTHENTICATION_LAST_DEVICE_RECOVERY_KEY(10),
     PENDING_INBOUND(11),
     PROCESSED_INBOUND_DIGEST(12),
+
+    /** Legacy plaintext migration in progress (S1, finding F7; docs/storage-encryption.md). */
+    MIGRATION_INTENT(13),
 }
 
 /**

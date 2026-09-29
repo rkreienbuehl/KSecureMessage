@@ -142,6 +142,10 @@ class SqlDelightServerStorage private constructor(
             false
         }
 
+        override suspend fun hasRegisteredDevices(userId: UserId): Boolean = transaction {
+            countRegisteredDevicesOfUser(userId.value).executeAsOne() > 0
+        }
+
         override suspend fun registrationState(address: DeviceAddress): DeviceRegistrationState? = transaction {
             loadState(address)
         }
@@ -307,8 +311,17 @@ class SqlDelightServerStorage private constructor(
     private fun DeviceRegistrationState.matches(expected: DeviceRegistrationState) =
         authEpoch == expected.authEpoch && registration.publicKey.contentEquals(expected.registration.publicKey)
 
+    /**
+     * Caller runs a transaction. Raises the monotonic prune watermark to
+     * [pruneBefore], refuses a [timestamp] before it (its nonce may already
+     * be pruned), prunes everything before it and claims [nonce]
+     * ([AuthenticationNonceRepository.claim]).
+     */
     private fun ServerStateQueries.claimNonce(address: DeviceAddress, nonce: ByteArray, timestamp: Instant, pruneBefore: Instant): Boolean {
-        pruneNonces(pruneBefore.toEpochMilliseconds())
+        raiseNonceWatermark(pruneBefore.toEpochMilliseconds())
+        val watermark = selectNonceWatermark().executeAsOne()
+        if (timestamp.toEpochMilliseconds() < watermark) return false
+        pruneNonces(watermark)
         return insertNonce(address.user, address.device, nonce, timestamp.toEpochMilliseconds()).value == 1L
     }
 
@@ -648,10 +661,7 @@ class SqlDelightServerStorage private constructor(
     private inner class SqlDelightAuthenticationNonceRepository : AuthenticationNonceRepository {
         override suspend fun claim(address: DeviceAddress, nonce: ByteArray, timestamp: Instant, pruneBefore: Instant): Boolean {
             val bytes = nonce.copyOf()
-            return transaction {
-                pruneNonces(pruneBefore.toEpochMilliseconds())
-                insertNonce(address.user, address.device, bytes, timestamp.toEpochMilliseconds()).value == 1L
-            }
+            return transaction { claimNonce(address, bytes, timestamp, pruneBefore) }
         }
     }
 
@@ -774,13 +784,14 @@ class SqlDelightServerStorage private constructor(
 
     companion object {
         /**
-         * Server database schema, version 7. Independent of the client
-         * schema. `Schema.migrate(driver, 1, 7)` migrates a milestone 13
-         * database, `Schema.migrate(driver, 2, 7)` a milestone 14/15 one,
-         * `Schema.migrate(driver, 3, 7)` a milestone 16 one,
-         * `Schema.migrate(driver, 4, 7)` a milestone 17 one,
-         * `Schema.migrate(driver, 5, 7)` a milestone 18 one and
-         * `Schema.migrate(driver, 6, 7)` a milestone 19–22 one
+         * Server database schema, version 8. Independent of the client
+         * schema. `Schema.migrate(driver, 1, 8)` migrates a milestone 13
+         * database, `Schema.migrate(driver, 2, 8)` a milestone 14/15 one,
+         * `Schema.migrate(driver, 3, 8)` a milestone 16 one,
+         * `Schema.migrate(driver, 4, 8)` a milestone 17 one,
+         * `Schema.migrate(driver, 5, 8)` a milestone 18 one,
+         * `Schema.migrate(driver, 6, 8)` a milestone 19–22 one and
+         * `Schema.migrate(driver, 7, 8)` a milestone 23–25 one
          * (docs/server-storage.md).
          */
         val Schema: SqlSchema<QueryResult.Value<Unit>> get() = ServerDatabase.Schema
@@ -792,13 +803,14 @@ class SqlDelightServerStorage private constructor(
         private const val FORMAT_V5 = 5L
         private const val FORMAT_V6 = 6L
         private const val FORMAT_V7 = 7L
+        private const val FORMAT_V8 = 8L
 
         /**
          * Opens the server storage on [driver], whose database must already
          * have the current schema ([Schema]). Creates and migrates no schema
          * and never closes [driver]: the caller keeps owning it. Throws
          * [IllegalStateException] if the database was not created with this
-         * schema, or is still at schema version 1, 2, 3, 4, 5 or 6 (migrate it with
+         * schema, or is still at schema version 1, 2, 3, 4, 5, 6 or 7 (migrate it with
          * [Schema] first). Blocking database calls run on [dispatcher].
          *
          * Registrations that a migration from schema version 3 or older left
@@ -827,7 +839,8 @@ class SqlDelightServerStorage private constructor(
             check(format != FORMAT_V4) { "Database has server storage schema version 4; migrate it with SqlDelightServerStorage.Schema" }
             check(format != FORMAT_V5) { "Database has server storage schema version 5; migrate it with SqlDelightServerStorage.Schema" }
             check(format != FORMAT_V6) { "Database has server storage schema version 6; migrate it with SqlDelightServerStorage.Schema" }
-            check(format == FORMAT_V7) { "Database has no supported server storage schema" }
+            check(format != FORMAT_V7) { "Database has server storage schema version 7; migrate it with SqlDelightServerStorage.Schema" }
+            check(format == FORMAT_V8) { "Database has no supported server storage schema" }
             return SqlDelightServerStorage(driver, dispatcher).also { it.stampMissingInstallationTimes(clock) }
         }
     }

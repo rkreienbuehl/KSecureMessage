@@ -7,10 +7,12 @@ import dev.kreienbuehl.ksecuremessage.model.RecoveryKeyResetStatus
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.RequestAuthentication
 import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
+import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
 import dev.kreienbuehl.ksecuremessage.server.DeviceAuthenticationException
 import dev.kreienbuehl.ksecuremessage.server.DeviceAuthenticationRotationException
 import dev.kreienbuehl.ksecuremessage.server.DeviceRecoveryException
+import dev.kreienbuehl.ksecuremessage.server.EnvelopeSenderMismatchException
 import dev.kreienbuehl.ksecuremessage.server.LastDeviceRecoveryException
 import dev.kreienbuehl.ksecuremessage.server.ProtectedEndpoint
 import dev.kreienbuehl.ksecuremessage.server.RecoveryKeyLifecycleException
@@ -50,12 +52,17 @@ import kotlin.time.Instant
  * recovery key's signature in the body instead, for a holder of the offline
  * key without a working device.
  *
- * Registration, prekey publication and mailbox drain are authenticated by
- * the device: the signature covers the exact body bytes, so those routes read
- * the raw body and authenticate it before parsing anything that is acted on.
- * A request that fails authentication gets 401 and changes nothing. Prekey
- * bundle fetch and message submission are public. Unexpected failures of
- * the server or its storage get 500 with `internal_error` and no details.
+ * Registration, prekey publication, message submission and mailbox drain
+ * are authenticated by the device: the signature covers the exact body
+ * bytes, so those routes read the raw body and authenticate it before
+ * parsing anything that is acted on. A request that fails authentication
+ * gets 401 and changes nothing. Registration additionally needs the host
+ * application's authorization (403 `registration_not_authorized`), and a
+ * submitted envelope's sender must be the authenticated device (403
+ * `sender_mismatch`). Only prekey bundle fetch is public. Unexpected
+ * failures of the server or its storage get 500 with `internal_error` and no
+ * details. Request-supplied identifiers are logged only escaped
+ * ([logSafe]).
  */
 fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
     put("/v1/devices/{user}/{device}/registration") {
@@ -76,6 +83,8 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
             when (e) {
                 is DeviceRegistrationException.InvalidRegistration -> call.respondError(HttpStatusCode.BadRequest, INVALID_REGISTRATION)
                 is DeviceRegistrationException.Conflict -> call.respondError(HttpStatusCode.Conflict, "device_registration_conflict")
+                // Authentication passed; the host application did not allow this membership.
+                is DeviceRegistrationException.NotAuthorized -> call.respondError(HttpStatusCode.Forbidden, "registration_not_authorized")
             }
         } catch (e: Exception) {
             call.respondInternalError(e)
@@ -97,7 +106,7 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
         val authorizer = authorization.request.authorizer
         try {
             val outcome = server.recoverDevice(authorization)
-            call.application.log.info("Device recovery of $target authorized by $authorizer: ${outcome.name.lowercase()}")
+            call.application.log.info("Device recovery of ${target.forLog()} authorized by ${authorizer.forLog()}: ${outcome.name.lowercase()}")
             call.respond(HttpStatusCode.NoContent)
         } catch (e: DeviceRecoveryException) {
             val (status, error) = when (e) {
@@ -113,7 +122,7 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
                 is DeviceRecoveryException.EpochExhausted -> HttpStatusCode.Conflict to EPOCH_EXHAUSTED
             }
             // Addresses and the failure category only: never keys, signatures or the body.
-            call.application.log.info("Device recovery of $target authorized by $authorizer rejected: $error")
+            call.application.log.info("Device recovery of ${target.forLog()} authorized by ${authorizer.forLog()} rejected: $error")
             call.respondError(status, error)
         } catch (e: Exception) {
             call.respondInternalError(e)
@@ -156,7 +165,7 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
         }
         try {
             val outcome = server.rotateDeviceAuthenticationKey(address, authorization)
-            call.application.log.info("Device authentication rotation of $address: ${outcome.name.lowercase()}")
+            call.application.log.info("Device authentication rotation of ${address.forLog()}: ${outcome.name.lowercase()}")
             call.respond(HttpStatusCode.NoContent)
         } catch (e: DeviceAuthenticationRotationException) {
             val (status, error) = when (e) {
@@ -169,7 +178,7 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
                 is DeviceAuthenticationRotationException.EpochExhausted -> HttpStatusCode.Conflict to EPOCH_EXHAUSTED
             }
             // Address and the failure category only: never keys, signatures or the body.
-            call.application.log.info("Device authentication rotation of $address rejected: $error")
+            call.application.log.info("Device authentication rotation of ${address.forLog()} rejected: $error")
             call.respondError(status, error)
         } catch (e: Exception) {
             call.respondInternalError(e)
@@ -196,15 +205,15 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
         }
         try {
             val created = server.registerLastDeviceRecoveryKey(device, registration)
-            call.application.log.info("Last-device recovery key of ${address.userId} registered by $address: ${if (created) "created" else "unchanged"}")
+            call.application.log.info("Last-device recovery key of ${address.userId.forLog()} registered by ${address.forLog()}: ${if (created) "created" else "unchanged"}")
             call.respond(if (created) HttpStatusCode.Created else HttpStatusCode.NoContent)
         } catch (e: LastDeviceRecoveryException.InvalidKeyRegistration) {
             call.respondError(HttpStatusCode.BadRequest, INVALID_RECOVERY_KEY)
         } catch (e: LastDeviceRecoveryKeyException.Conflict) {
-            call.application.log.info("Last-device recovery key of ${address.userId} rejected: conflict")
+            call.application.log.info("Last-device recovery key of ${address.userId.forLog()} rejected: conflict")
             call.respondError(HttpStatusCode.Conflict, "last_device_recovery_key_conflict")
         } catch (e: LastDeviceRecoveryKeyException.EpochExhausted) {
-            call.application.log.info("Last-device recovery key of ${address.userId} rejected: epoch exhausted")
+            call.application.log.info("Last-device recovery key of ${address.userId.forLog()} rejected: epoch exhausted")
             call.respondError(HttpStatusCode.Conflict, RECOVERY_KEY_EPOCH_EXHAUSTED)
         } catch (e: Exception) {
             call.respondInternalError(e)
@@ -254,7 +263,7 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
         }
         try {
             val outcome = server.rotateLastDeviceRecoveryKey(device, authorization)
-            call.application.log.info("Recovery key rotation of ${address.userId} authorized by $address: ${outcome.name.lowercase()}")
+            call.application.log.info("Recovery key rotation of ${address.userId.forLog()} authorized by ${address.forLog()}: ${outcome.name.lowercase()}")
             call.respond(HttpStatusCode.NoContent)
         } catch (e: RecoveryKeyLifecycleException) {
             call.respondRecoveryKeyLifecycleError(address, "rotation", e)
@@ -282,7 +291,7 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
         }
         try {
             val outcome = server.revokeLastDeviceRecoveryKey(device, authorization)
-            call.application.log.info("Recovery key revocation of ${address.userId} authorized by $address: ${outcome.name.lowercase()}")
+            call.application.log.info("Recovery key revocation of ${address.userId.forLog()} authorized by ${address.forLog()}: ${outcome.name.lowercase()}")
             call.respond(HttpStatusCode.NoContent)
         } catch (e: RecoveryKeyLifecycleException) {
             call.respondRecoveryKeyLifecycleError(address, "revocation", e)
@@ -307,7 +316,7 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
         }
         try {
             val outcome = server.requestLastDeviceRecoveryKeyReset(device)
-            call.application.log.info("Recovery key reset of ${address.userId} requested by $address: ${if (outcome.created) "created" else "existing"}")
+            call.application.log.info("Recovery key reset of ${address.userId.forLog()} requested by ${address.forLog()}: ${if (outcome.created) "created" else "existing"}")
             call.respond(if (outcome.created) HttpStatusCode.Created else HttpStatusCode.OK, (outcome.reset as RecoveryKeyResetStatus).toResponse())
         } catch (e: RecoveryKeyResetException) {
             call.respondRecoveryKeyResetError(address.userId, e)
@@ -355,7 +364,7 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
         }
         try {
             val outcome = server.completeLastDeviceRecoveryKeyReset(device, authorization)
-            call.application.log.info("Recovery key reset of ${address.userId} completed by $address: ${outcome.name.lowercase()}")
+            call.application.log.info("Recovery key reset of ${address.userId.forLog()} completed by ${address.forLog()}: ${outcome.name.lowercase()}")
             call.respond(HttpStatusCode.NoContent)
         } catch (e: RecoveryKeyResetException) {
             call.respondRecoveryKeyResetError(address.userId, e)
@@ -382,7 +391,7 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
         }
         try {
             server.cancelLastDeviceRecoveryKeyReset(device, resetId)
-            call.application.log.info("Recovery key reset of ${address.userId} cancelled by $address")
+            call.application.log.info("Recovery key reset of ${address.userId.forLog()} cancelled by ${address.forLog()}")
             call.respond(HttpStatusCode.NoContent)
         } catch (e: RecoveryKeyResetException) {
             call.respondRecoveryKeyResetError(address.userId, e)
@@ -419,7 +428,7 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
         }
         try {
             server.cancelLastDeviceRecoveryKeyResetByRecoveryKey(authorization)
-            call.application.log.info("Recovery key reset of $userId cancelled by the recovery key")
+            call.application.log.info("Recovery key reset of ${userId.forLog()} cancelled by the recovery key")
             call.respond(HttpStatusCode.NoContent)
         } catch (e: RecoveryKeyResetException) {
             call.respondRecoveryKeyResetError(userId, e)
@@ -458,7 +467,7 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
         }
         try {
             val outcome = server.recoverLastDevice(target, authorization)
-            call.application.log.info("Last-device recovery of $target: ${outcome.name.lowercase()}")
+            call.application.log.info("Last-device recovery of ${target.forLog()}: ${outcome.name.lowercase()}")
             call.respond(HttpStatusCode.NoContent)
         } catch (e: LastDeviceRecoveryException) {
             call.respondLastDeviceRecoveryError(target, e)
@@ -509,11 +518,30 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
         else call.respond(bundle.toResponse())
     }
 
+    // Signed by the sending device (S1, docs/server-authentication.md): the
+    // device header names the signer, the request is authenticated with its
+    // registered key before the body is parsed, and the envelope's sender
+    // must be exactly that device.
     post("/v1/messages") {
-        val envelope = call.receive<EncryptedEnvelope>()
+        val body = call.receive<ByteArray>()
+        val device = try {
+            val address = call.submittingDevice() ?: throw DeviceAuthenticationException.MissingAuthentication()
+            server.authenticate(address, ProtectedEndpoint.SEND_MESSAGE, body, call.authentication())
+        } catch (e: DeviceAuthenticationException) {
+            return@post call.respondAuthenticationError(e)
+        } catch (e: Exception) {
+            return@post call.respondInternalError(e)
+        }
+        val envelope = try {
+            Json.decodeFromString<EncryptedEnvelope>(body.decodeToString())
+        } catch (e: IllegalArgumentException) {
+            return@post call.respondError(HttpStatusCode.BadRequest, "invalid_envelope")
+        }
         try {
             // Returns once the envelope is stored, so 202 is never sent for an envelope that was not.
-            server.relay(envelope)
+            server.relay(device, envelope)
+        } catch (e: EnvelopeSenderMismatchException) {
+            return@post call.respondError(HttpStatusCode.Forbidden, "sender_mismatch")
         } catch (e: Exception) {
             return@post call.respondInternalError(e)
         }
@@ -564,7 +592,7 @@ private suspend fun ApplicationCall.respondRecoveryKeyResetError(userId: UserId,
         is RecoveryKeyResetException.Expired -> HttpStatusCode.Unauthorized to "recovery_key_reset_expired"
         is RecoveryKeyResetException.EpochExhausted -> HttpStatusCode.Conflict to RECOVERY_KEY_EPOCH_EXHAUSTED
     }
-    application.log.info("Recovery key reset operation of $userId rejected: $error")
+    application.log.info("Recovery key reset operation of ${userId.forLog()} rejected: $error")
     respondError(status, error)
 }
 
@@ -582,7 +610,7 @@ private suspend fun ApplicationCall.respondRecoveryKeyLifecycleError(authorizer:
         is RecoveryKeyLifecycleException.Conflict -> HttpStatusCode.Conflict to "recovery_key_${kind}_conflict"
         is RecoveryKeyLifecycleException.EpochExhausted -> HttpStatusCode.Conflict to RECOVERY_KEY_EPOCH_EXHAUSTED
     }
-    application.log.info("Recovery key $kind of ${authorizer.userId} authorized by $authorizer rejected: $error")
+    application.log.info("Recovery key $kind of ${authorizer.userId.forLog()} authorized by ${authorizer.forLog()} rejected: $error")
     respondError(status, error)
 }
 
@@ -599,7 +627,7 @@ private suspend fun ApplicationCall.respondLastDeviceRecoveryError(target: Devic
         is LastDeviceRecoveryException.Conflict -> HttpStatusCode.Conflict to "last_device_recovery_conflict"
         is LastDeviceRecoveryException.EpochExhausted -> HttpStatusCode.Conflict to EPOCH_EXHAUSTED
     }
-    application.log.info("Last-device recovery of $target rejected: $error")
+    application.log.info("Last-device recovery of ${target.forLog()} rejected: $error")
     respondError(status, error)
 }
 
@@ -629,6 +657,18 @@ private suspend fun ApplicationCall.respondAuthenticationError(e: DeviceAuthenti
             is DeviceAuthenticationException.AuthenticationReplay -> "authentication_replay"
         },
     )
+
+/**
+ * The device named by [AuthHeaders.DEVICE] on a message submission, or
+ * `null` if the header is absent. Throws
+ * [DeviceAuthenticationException.InvalidAuthentication] if it is repeated or
+ * not a canonical encoding ([ServerApiPaths.decodeDevice]).
+ */
+private fun ApplicationCall.submittingDevice(): DeviceAddress? {
+    val values = request.headers.getAll(AuthHeaders.DEVICE) ?: return null
+    val value = values.singleOrNull() ?: throw DeviceAuthenticationException.InvalidAuthentication()
+    return ServerApiPaths.decodeDevice(value) ?: throw DeviceAuthenticationException.InvalidAuthentication()
+}
 
 private fun ApplicationCall.deviceAddress(): DeviceAddress = DeviceAddress(
     userId = UserId(requireNotNull(parameters["user"])),

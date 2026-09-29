@@ -17,7 +17,7 @@ import kotlin.time.Instant
  * authentication. Each one fixes the HTTP method and the canonical path the
  * signature must cover (docs/server-authentication.md).
  */
-enum class ProtectedEndpoint(val method: String, val endpoint: String) {
+enum class ProtectedEndpoint(val method: String, val endpoint: String, private val deviceScoped: Boolean = true) {
     /** `PUT /v1/devices/{user}/{device}/prekeys` */
     PUBLISH_PRE_KEYS("PUT", ServerApiPaths.PRE_KEYS),
 
@@ -50,6 +50,19 @@ enum class ProtectedEndpoint(val method: String, val endpoint: String) {
 
     /** `PUT /v1/devices/{user}/{device}/last-device-recovery/key/reset/cancellation`: cancels the pending reset. */
     CANCEL_LAST_DEVICE_RECOVERY_KEY_RESET("PUT", ServerApiPaths.LAST_DEVICE_RECOVERY_KEY_RESET_CANCELLATION),
+
+    /**
+     * `POST /v1/messages`: submits an envelope whose sender is the
+     * authenticated device (S1, docs/server-authentication.md). Not
+     * device-scoped in its path: the signed path is exactly
+     * [ServerApiPaths.SUBMIT_MESSAGE], the device comes from the signed
+     * request's address.
+     */
+    SEND_MESSAGE("POST", ServerApiPaths.SUBMIT_MESSAGE, deviceScoped = false),
+    ;
+
+    /** The canonical path a request of [address] for this endpoint signs. */
+    fun path(address: DeviceAddress): String = if (deviceScoped) ServerApiPaths.device(address, endpoint) else endpoint
 }
 
 /**
@@ -118,7 +131,7 @@ class DeviceAuthenticator(
         authentication ?: throw DeviceAuthenticationException.MissingAuthentication()
         // Always the registered key; never one the request supplies.
         val state = devices.registrationState(address) ?: throw DeviceAuthenticationException.DeviceNotRegistered()
-        val request = ServerRequest(address, endpoint.method, ServerApiPaths.device(address, endpoint.endpoint), body)
+        val request = ServerRequest(address, endpoint.method, endpoint.path(address), body)
         verify(state.registration.publicKey, request, authentication)
         return AuthenticatedDevice(address, endpoint, state)
     }

@@ -287,8 +287,8 @@ class LastDeviceRecoveryStorageTest {
         val storage = lost()
         val alice = alice(storage)
         alice.markRemoteIdentityVerified(alice.safetyNumber(BOB))
-        alice.send(BOB, "pending".encodeToByteArray())
-        server.mailboxes.remove(BOB) // lost: stays pending
+        // Without its device key the device cannot sign the submission (S1): the message stays pending.
+        assertFailsWith<SecureMessageClientException.MessageNotSent> { alice.send(BOB, "pending".encodeToByteArray()) }
         val before = driver.dump()
 
         alice.recoverLastDevice(recoveryKey)
@@ -335,9 +335,9 @@ class LastDeviceRecoveryStorageTest {
         val before = driver.dump()
 
         val migrated = reopen()
-        assertEquals(listOf(15L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(16L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
-        assertEquals(before.withLegacyProcessedMessages(), after - TABLE, "no existing row changes")
+        assertEquals(before.withLegacyProcessedMessages().withEmptyMigrationIntent(), after - TABLE, "no existing row changes")
         assertEquals(emptyList(), after.getValue(TABLE))
         assertContentEquals(identity.privateKey, migrated.identity.identity()?.privateKey)
         assertContentEquals(deviceKey.privateKey, migrated.deviceAuthentication.keyPair()?.privateKey)
@@ -510,7 +510,7 @@ class LastDeviceRecoveryStorageTest {
 
         override suspend fun fetchPreKeyBundle(address: DeviceAddress): PreKeyBundle = bundles.getValue(address)
 
-        override suspend fun send(envelope: EncryptedEnvelope) {
+        override suspend fun send(envelope: EncryptedEnvelope, signer: ServerRequestSigner) {
             mailboxes.getOrPut(envelope.recipient) { mutableListOf() }.add(envelope)
         }
 

@@ -217,6 +217,9 @@ internal object AuthHeaders {
     const val TIMESTAMP = "X-KSecureMessage-Timestamp"
     const val NONCE = "X-KSecureMessage-Nonce"
     const val SIGNATURE = "X-KSecureMessage-Signature"
+
+    /** The submitting device of `POST /v1/messages` (`ServerApiPaths.encodeDevice`); S1. */
+    const val DEVICE = "X-KSecureMessage-Device"
     const val CURRENT_VERSION = "1"
 }
 

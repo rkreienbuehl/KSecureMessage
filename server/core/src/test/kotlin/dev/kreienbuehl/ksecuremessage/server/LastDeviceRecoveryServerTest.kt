@@ -91,7 +91,7 @@ class LastDeviceRecoveryServerTest {
         storage: ServerStorage = InMemoryServerStorage(),
         withRecoveryKey: Boolean = true,
     ): Pair<ServerStorage, SecureMessageServer> {
-        val server = SecureMessageServer(storage, clock)
+        val server = SecureMessageServer(storage, clock, TestDeviceRegistrationAuthorizer.allowAll())
         for ((address, key) in listOf(phone to phoneKey, laptop to laptopKey, bob to bobKey)) {
             val body = key.publicKey
             val request = ServerRequest(address, "PUT", ServerApiPaths.device(address, ServerApiPaths.REGISTRATION), body)
@@ -211,7 +211,7 @@ class LastDeviceRecoveryServerTest {
         val (storage, server) = setUp()
         storage.preKeys.publish(preKeyPublication())
         server.fetchPreKeyBundle(phone)
-        server.relay(EncryptedEnvelope(MessageId("m1"), bob, phone, payload = byteArrayOf(1)))
+        storage.mailboxes.enqueue(EncryptedEnvelope(MessageId("m1"), bob, phone, payload = byteArrayOf(1)))
         val k2 = newKey()
         val authorization = server.recovery(k2)
         clock.now += 1.minutes
@@ -252,7 +252,7 @@ class LastDeviceRecoveryServerTest {
     @Test
     fun lastRemainingDeviceOfAUserIsRecovered() = runTest {
         val storage = InMemoryServerStorage()
-        val server = SecureMessageServer(storage, clock)
+        val server = SecureMessageServer(storage, clock, TestDeviceRegistrationAuthorizer.allowAll())
         val body = phoneKey.publicKey
         val request = ServerRequest(phone, "PUT", ServerApiPaths.device(phone, ServerApiPaths.REGISTRATION), body)
         server.registerDevice(DeviceRegistration(phone, phoneKey.publicKey), body, ServerRequestAuthentication.sign(phoneKey, request, clock.now()))

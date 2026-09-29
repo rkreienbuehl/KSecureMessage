@@ -4,6 +4,7 @@ public final class dev/kreienbuehl/ksecuremessage/storage/keyprovider/android/An
 	public fun <init> (Landroid/content/Context;Ljava/lang/String;)V
 	public synthetic fun <init> (Landroid/content/Context;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun createKey-vFH2tSs (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun hasKeys (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun key-vFH2tSs (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun loadOrCreateKey (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun removeKey-vFH2tSs (ILkotlin/coroutines/Continuation;)Ljava/lang/Object;

@@ -4,6 +4,12 @@ Material for an external security reviewer. **R1 is not an independent
 security audit, and KSecureMessage has not been audited.** Nothing here
 claims otherwise.
 
+A first review produced nine findings (F1–F9); S1 addresses them. The
+re-review packet with root causes, changed files, invariants and test names
+is [security-review-remediation.md](security-review-remediation.md). Every
+finding stays **FIXED — PENDING RE-REVIEW** until an independent reviewer
+has checked it.
+
 KSecureMessage is Signal-style secure messaging: it uses the X3DH and Double
 Ratchet primitives of [Kodium](https://github.com/LivotovLabs/kodium), with
 KSecureMessage-specific wire, storage, authentication and recovery protocols.
@@ -37,14 +43,18 @@ Assumptions and non-goals, collected from the specifications in `docs/`:
   number verification** ([identity-verification.md](identity-verification.md)).
   A changed key fails closed (`IdentityChanged`) until the user accepts it.
 - **Server authentication** ([server-authentication.md](server-authentication.md))
-  is trust on first registration of a dedicated Ed25519 device key, not
-  account authentication. Whoever registers an address first owns it.
-  Requests are signed over a canonical binary description (domain
+  binds a dedicated Ed25519 device key to a device address. It is not
+  account authentication: since S1 every first registration needs the host
+  application's `DeviceRegistrationAuthorizer`, and all "same-user device"
+  authority (device recovery, offline recovery key and reset) rests on that
+  host decision. Message submission is signed by the sender (the server
+  vouches for the envelope's sender). Requests are signed over a canonical binary description (domain
   `KSecureMessage-ServerAuth-v1`), fresh within ±5 minutes, single-use per
   nonce and device. It authenticates requests, not responses; TLS is the
   host's job.
 - **Replay** of signed requests is prevented by atomic nonce claims within
-  the freshness window; recovery and rotation statements carry their own
+  the freshness window, with a monotonic prune watermark so no interleaving
+  of callers can prune a nonce that is still acceptable (S1); recovery and rotation statements carry their own
   nonces or single-use challenges. Restoring an old server database reopens
   replay and rollback ([operating-the-server.md](operating-the-server.md#backups-of-the-server-database)).
 - **Device authentication recovery**: another registered device of the same
@@ -63,9 +73,15 @@ Assumptions and non-goals, collected from the specifications in `docs/`:
   the delay wins. There is no push notification, quorum or second factor.
 - **Client storage** ([storage-encryption.md](storage-encryption.md)):
   record-level AES-256-GCM protects a copied database without the storage
-  key. It does not protect against database **and** key, a compromised
-  running process, metadata analysis, rollback of the database file, or
+  key. Since S1 an encrypted database cannot be pushed back through the
+  plaintext migration by editing its format marker. It does not protect
+  against database **and** key, a compromised running process, metadata
+  analysis, rollback of the database file to an older encrypted copy, or
   plaintext remnants from before milestone 9 in SQLite pages.
+- **Session initiation** ([session-lifecycle.md](session-lifecycle.md)):
+  since S1 every new initiation is version 2; its transcript authenticates
+  both addresses and every header field before anything is pinned or
+  retired. Sessions from before S1 keep their version 1 associated data.
 - **Application commit semantics** ([application-delivery.md](application-delivery.md),
   [message-discard.md](message-discard.md)): an ACK means the receiving
   application durably committed or discarded the message. Delivery is at
@@ -84,11 +100,11 @@ Assumptions and non-goals, collected from the specifications in `docs/`:
 | Domain separation (every signature/hash has its own domain string) | `P/DeviceAuthentication.kt`, `P/DeviceRecovery.kt`, `P/DeviceAuthenticationRotation.kt`, `P/LastDeviceRecovery.kt`, `P/RecoveryKeyLifecycle.kt`, `P/RecoveryKeyReset.kt`, `P/SafetyNumber.kt`, `P/SessionInitiationId.kt`, `P/ApplicationMessageDigest.kt` | `*domainsAreDistinct*` in `RecoveryKeyLifecycleTest`, `RecoveryKeyResetTest`; frozen vectors in each protocol test | per-feature docs |
 | Signature verification (registered key, never a request-supplied key; PoP) | `S/DeviceAuthenticator.kt`, `S/DeviceRecoveryService.kt`, `S/DeviceAuthenticationRotationService.kt`, `S/LastDeviceRecoveryService.kt`, `S/RecoveryKeyLifecycleService.kt`, `S/RecoveryKeyResetService.kt` | `DeviceAuthenticationServerTest`, `*ServerTest` | [server-authentication.md](server-authentication.md) |
 | Associated data (storage AD, ratchet AD) | `E/EncryptedRecordFormat.kt`, `E/ClientRecordCipher.kt` | `StorageCipherTest`, `ClientRecordCipherTest` | [storage-encryption.md](storage-encryption.md) |
-| Session initiation, collision, replacement, stale initiations | `C/SecureMessageClient.kt` (`receivePreKeyMessage`), `P/SessionInitiationId.kt` | `SessionLifecycleTest`, `SessionReplacementAtomicityTest`, `SessionInitiationIdTest`, `MessageCollisionRecoveryTest` | [session-lifecycle.md](session-lifecycle.md) |
+| Session initiation (v2 transcript, S1), collision, replacement, stale initiations | `C/SecureMessageClient.kt` (`receivePreKeyMessage`), `P/SessionInitiationId.kt`, `P/KodiumProtocolEngine.kt` | `SessionLifecycleTest`, `SessionReplacementAtomicityTest`, `SessionInitiationIdTest`, `SessionInitiationV2Test`, `SecurityReviewRegressionTest`, `MessageCollisionRecoveryTest` | [session-lifecycle.md](session-lifecycle.md) |
 | TOFU transitions (pin after accept, never replace from messages) | `C/RemoteIdentityTrust.kt`, `C/SecureMessageClient.kt` (`acceptRemoteIdentityChange`) | `RemoteIdentityTrustTest`, `IdentityChangeAcceptanceTest` | [identity-trust.md](identity-trust.md) |
 | Safety number construction | `P/SafetyNumber.kt` | `SafetyNumberTest` (frozen vectors), `IdentityVerificationTest` | [identity-verification.md](identity-verification.md) |
 | ServerAuth canonicalization (exact body bytes, canonical paths) | `P/DeviceAuthentication.kt` (`ServerRequestAuthentication`, `ServerApiPaths`), `server/ktor/.../KSecureMessageRoutes.kt` | `ServerRequestAuthenticationTest`, `AuthenticatedRoutesTest` | [server-authentication.md](server-authentication.md) |
-| Nonce and replay handling | `S/DeviceAuthenticator.kt`, `storage/server/sqldelight/.../SqlDelightServerStorage.kt` | `AuthenticationNonceRepositoryContractTest`, `SqlDelightServerPersistenceTest` | [server-authentication.md](server-authentication.md) |
+| Nonce and replay handling (prune watermark, S1) | `S/DeviceAuthenticator.kt`, `storage/server/sqldelight/.../SqlDelightServerStorage.kt`, `storage/server/inmemory/.../InMemoryServerStorage.kt` | `AuthenticationNonceRepositoryContractTest`, `NonceLifetimeServerTest`, `SqlDelightServerPersistenceTest` | [server-authentication.md](server-authentication.md) |
 | Device auth recovery | `S/DeviceRecoveryService.kt`, `C/SecureMessageClient.kt` (`prepare/complete…Recovery`) | `DeviceRecoveryTest`, `DeviceRecoveryServerTest`, `DeviceAuthenticationRecoveryTest`, `DeviceRecoveryRepositoryContractTest` | [device-recovery.md](device-recovery.md) |
 | Device auth rotation | `S/DeviceAuthenticationRotationService.kt`, `C/DeviceAuthenticationRotationPolicy.kt` | `DeviceAuthenticationRotationTest`, `DeviceAuthenticationRotationServerTest`, `DeviceAuthenticationRotationRepositoryContractTest` | [device-authentication-rotation.md](device-authentication-rotation.md) |
 | Last-device recovery | `S/LastDeviceRecoveryService.kt`, `P/LastDeviceRecovery.kt` | `LastDeviceRecoveryTest` (both), `LastDeviceRecoveryServerTest`, `LastDeviceRecoveryRepositoryContractTest` | [last-device-recovery.md](last-device-recovery.md) |
@@ -97,8 +113,11 @@ Assumptions and non-goals, collected from the specifications in `docs/`:
 | Storage encryption (AES-GCM, fresh nonces, fail closed, no trial decryption) | `E/AesGcm.kt`, `E/EncryptedRecordFormat.kt`, `Q/SqlDelightClientStorage.kt` | `StorageCipherTest`, `SqlDelightEncryptionTest` | [storage-encryption.md](storage-encryption.md) |
 | Platform key providers | `storage/keyprovider/android/...`, `storage/keyprovider/apple/...` | `StorageKeyProviderContractTest`, `AndroidStorageKeyProviderTest`, `DataProtection*Test` (keychain host) | [storage-key-providers.md](storage-key-providers.md) |
 | Storage key rotation | `storage/rotation/core/.../StorageKeyRotationManager.kt`, `Q/SqlDelightStorageKeyRotationBackend.kt` | `StorageKeyRotationManagerTest`, `StorageKeyRotationTest` | [storage-key-rotation.md](storage-key-rotation.md) |
-| SQL migrations (client v15, server v7) | `storage/client/sqldelight/src/commonMain/sqldelight/`, `storage/server/sqldelight/src/main/sqldelight/`, `Q/LegacyPlaintextMigration.kt` | `SqlDelightMigrationTest`, `SqlDelightServerMigrationTest` (frozen schema fixtures) | [storage.md](storage.md), [server-storage.md](server-storage.md) |
+| SQL migrations (client v16, server v8) | `storage/client/sqldelight/src/commonMain/sqldelight/`, `storage/server/sqldelight/src/main/sqldelight/`, `Q/LegacyPlaintextMigration.kt` | `SqlDelightMigrationTest`, `SqlDelightServerMigrationTest` (frozen schema fixtures) | [storage.md](storage.md), [server-storage.md](server-storage.md) |
 | Transaction boundaries (no network I/O inside transactions) | `C/SecureMessageClient.kt`, `Q/SqlDelightClientStorage.kt` | `*AtomicityTest`, `SqlDelightServerRollbackTest` | [storage.md](storage.md) |
+| Registration authorization and signed submission (S1) | `S/DeviceRegistrationAuthorizer.kt`, `S/SecureMessageServer.kt` (`registerDevice`, `relay`), `server/ktor/.../KSecureMessageRoutes.kt` | `DeviceRegistrationAuthorizationTest`, `SecurityRemediationRoutesTest`, `DeviceAuthenticationServerTest` | [server-authentication.md](server-authentication.md) |
+| Storage downgrade (S1) | `Q/SqlDelightClientStorage.kt` (`openLegacyPlaintext`), `Q/LegacyPlaintextMigration.kt` | `StorageDowngradeTest`, `SqlDelightMigrationTest` | [storage-encryption.md](storage-encryption.md#downgrade-protection) |
+| Log injection (S1) | `server/ktor/.../LogSanitizer.kt` | `LogInjectionTest` | [operating-the-server.md](operating-the-server.md) |
 | Secret logging / `toString` (redacted keys) | `P/LocalKeys.kt`, `P/LastDeviceRecovery.kt`, `E/StorageKeys.kt`, `C/RecoveryKeyLifecycle.kt` | — (manual review) | — |
 | Constant-time comparisons | `C/SecureMessageClient.kt` (`constantTimeEquals`); signature checks inside Kodium | `ApplicationDeliveryTest` | [application-delivery.md](application-delivery.md) |
 | Failure rollback | `ClientStorage.transaction` implementations | `ClientStorageContractTest`, `*AtomicityTest`, `SqlDelightServerRollbackTest` | [storage.md](storage.md) |

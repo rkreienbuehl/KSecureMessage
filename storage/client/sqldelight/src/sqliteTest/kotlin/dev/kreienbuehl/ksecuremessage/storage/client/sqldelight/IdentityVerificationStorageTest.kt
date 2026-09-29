@@ -142,9 +142,9 @@ class IdentityVerificationStorageTest {
         val before = driver.dump()
 
         val migrated = reopenAlice()
-        assertEquals(listOf(15L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(16L), driver.longs("PRAGMA user_version"))
         assertEquals(
-            before.withUnverifiedPins().withLegacyProcessedMessages(),
+            before.withUnverifiedPins().withLegacyProcessedMessages().withEmptyMigrationIntent(),
             driver.dump() - "device_authentication_rotation_key" - "device_authentication_last_device_recovery_key",
             "only the verification column and the empty rotation and last-device recovery key tables are new",
         )
@@ -177,7 +177,7 @@ class IdentityVerificationStorageTest {
         aliceDatabase.closeOpenDrivers()
 
         val storage = reopenAlice()
-        assertEquals(listOf(15L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(16L), driver.longs("PRAGMA user_version"))
         val record = assertNotNull(storage.remoteIdentities.record(BOB))
         assertContentEquals(ByteArray(64) { 5 }, record.identityKey)
         assertEquals(VerificationState.UNVERIFIED, record.verification)

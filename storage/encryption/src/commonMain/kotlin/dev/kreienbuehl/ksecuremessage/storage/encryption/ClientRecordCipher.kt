@@ -103,6 +103,22 @@ interface ClientRecordCipher {
 
     /** Throws [StorageEncryptionException] unless [sealed] is a key check sealed with this key. */
     suspend fun verifyKeyCheck(sealed: ByteArray)
+
+    /**
+     * Seals the legacy plaintext migration intent (record type 13, S1): proof,
+     * under the storage key created for it, that this key was created for an
+     * interrupted plaintext → encrypted migration of a database from before
+     * record encryption. Its only content is a fixed marker.
+     */
+    suspend fun sealMigrationIntent(): ByteArray
+
+    /**
+     * Opens a migration intent sealed by [sealMigrationIntent]. Throws
+     * [StorageEncryptionException] if it was not sealed with this cipher's
+     * key as a migration intent (a key check or any other record does not
+     * count).
+     */
+    suspend fun verifyMigrationIntent(sealed: ByteArray)
 }
 
 /**
@@ -263,6 +279,16 @@ internal class AeadClientRecordCipher(private val cipher: StorageCipher) : Clien
         if (content.isNotEmpty()) throw StorageEncryptionException.MalformedRecord("Invalid key check record")
     }
 
+    override suspend fun sealMigrationIntent(): ByteArray =
+        cipher.seal(StorageRecordType.MIGRATION_INTENT, MIGRATION_INTENT_FIELDS, MIGRATION_INTENT_MARKER.encodeToByteArray())
+
+    override suspend fun verifyMigrationIntent(sealed: ByteArray) {
+        val content = cipher.open(StorageRecordType.MIGRATION_INTENT, MIGRATION_INTENT_FIELDS, sealed)
+        if (!content.contentEquals(MIGRATION_INTENT_MARKER.encodeToByteArray())) {
+            throw StorageEncryptionException.MalformedRecord("Invalid migration intent record")
+        }
+    }
+
     private suspend fun sealEncoded(type: StorageRecordType, fields: List<ByteArray>, encode: RecordWriter.() -> Unit): ByteArray {
         val plaintext = RecordWriter().apply { byte(RECORD_VERSION) }.apply(encode).toByteArray()
         return try {
@@ -297,5 +323,10 @@ internal class AeadClientRecordCipher(private val cipher: StorageCipher) : Clien
     private companion object {
         const val RECORD_VERSION: Byte = 1
         const val DIGEST_SIZE = 32
+
+        /** Row key field and content of the migration intent record (type 13); never change them. */
+        const val MIGRATION_INTENT_ROW = "legacy-plaintext-migration"
+        const val MIGRATION_INTENT_MARKER = "KSecureMessage-LegacyPlaintextMigration-v1"
+        val MIGRATION_INTENT_FIELDS = listOf(MIGRATION_INTENT_ROW.encodeToByteArray())
     }
 }

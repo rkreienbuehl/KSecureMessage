@@ -146,7 +146,7 @@ class SecurePayloadCodecTest {
         val frame = SecurePayloadCodec.encode(
             SecurePayload.ApplicationMessage(id(sequentialId), ByteArray(SecurePayloadCodec.MAX_BODY_SIZE)),
         )
-        val session = engine.initiateSession(alice.identity, bob.bundle())
+        val session = engine.initiateSession(alice.identity, alice.address, bob.bundle())
         val encrypted = engine.encrypt(session, frame)
         val wire = CiphertextMessageCodec.encode(encrypted.message)
         val decoded = assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(wire))

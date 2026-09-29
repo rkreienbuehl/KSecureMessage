@@ -33,7 +33,12 @@ control and abuse protection, not as a horizontally scalable service.
 ```kotlin
 val driver = JdbcSqliteDriver("jdbc:sqlite:/var/lib/ksm/server.db", Properties(), SqlDelightServerStorage.Schema)
 val storage = SqlDelightServerStorage.open(driver)
-val server = SecureMessageServer(storage, Clock.System, recoveryKeyResetPolicy = null)
+// The host decides which device may become one of a user's devices (S1).
+val registrationAuthorizer = DeviceRegistrationAuthorizer { request ->
+    if (myAccounts.mayAddDevice(request.address, request.userState)) DeviceRegistrationAuthorizationResult.Authorized
+    else DeviceRegistrationAuthorizationResult.Denied
+}
+val server = SecureMessageServer(storage, Clock.System, registrationAuthorizer, recoveryKeyResetPolicy = null)
 embeddedServer(CIO, port = 8080) {
     install(ContentNegotiation) { json() }
     routing { kSecureMessageRoutes(server) }
@@ -50,7 +55,7 @@ The complete, compiled version is
   in a new database and migrates an older one (tracked in
   `PRAGMA user_version`). A host that manages schemas itself calls
   `Schema.create` / `Schema.migrate`. `open` never migrates: it refuses a
-  database that is not at the current server schema (version 7) with an
+  database that is not at the current server schema (version 8) with an
   `IllegalStateException`, and stamps key installation times of rows
   migrated from schema 3 or older exactly once. Details:
   [server-storage.md](server-storage.md).
@@ -58,6 +63,11 @@ The complete, compiled version is
   writers; several processes or instances on one file are not supported.
 - Unexpected failures are answered with `500 internal_error`; the exception
   text is logged, never returned.
+- Identifiers from requests (user and device IDs) can contain any UTF-8,
+  including line breaks. The routes log them only escaped and quoted
+  (`user="a\nb" device="c"`; CR, LF, TAB, other controls, U+2028/U+2029
+  escaped), so a request cannot forge log lines (S1, findings F5/F6). A
+  log pipeline that unescapes these fields reopens that.
 
 ### Shutdown
 
@@ -89,12 +99,37 @@ Run the server with reliable time synchronization (NTP or the platform
 equivalent) and keep clients synchronized too: a skew above 5 minutes makes
 signed requests fail. These are wall-clock comparisons, not monotonic
 timers. A server clock set far forward makes pending resets eligible early;
-a clock set backward delays them and can reopen replay windows for pruned
-nonces. Protect the clock like any other security input.
+a clock set backward delays them; since S1 it can no longer reopen replay
+windows (the nonce prune watermark never moves back), but requests are
+refused as replays until the clock has caught up again. Protect the clock
+like any other security input.
+
+## DeviceRegistrationAuthorizer
+
+Required since S1 (docs/security-review-remediation.md, findings F1/F2).
+Every first registration of a device address, including a user's first
+device, is passed to the host's `DeviceRegistrationAuthorizer` after the
+request proved possession of the device key and before anything is stored.
+KSecureMessage has no account system; the authorizer is where the host ties
+a `UserId` to its own account authentication (for example: the request
+arrives on a route behind the host's login, an enrollment code the user
+confirmed on an existing device, an administrator's device list).
+
+- `Denied` answers `403 registration_not_authorized`; the reason is not
+  sent. An exception answers `500 internal_error` and is logged.
+- A retry with the already registered key never asks the authorizer; a
+  different key for a registered address is a conflict and never asks it.
+- Everything that treats "a registered device of the same user" as an
+  authority (device recovery, the offline recovery key, its rotation,
+  revocation and reset) trusts exactly the membership the authorizer
+  approved. An authorizer that says yes to everyone brings back findings
+  F1/F2.
+- The sample's fixed allow-list is a demonstration, not a production policy.
+- There is no allow-all default; tests pass an explicit test authorizer.
 
 ## RecoveryKeyResetPolicy
 
-`SecureMessageServer(storage, clock, recoveryKeyResetPolicy)` controls the
+`SecureMessageServer(storage, clock, deviceRegistrationAuthorizer, recoveryKeyResetPolicy)` controls the
 delayed reset of a **lost** offline recovery key
 ([recovery-key-reset.md](recovery-key-reset.md)):
 

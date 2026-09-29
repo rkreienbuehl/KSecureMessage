@@ -138,6 +138,8 @@ class RecordingKeyProvider(private val log: MutableList<String>) : StorageKeyPro
 
     override suspend fun loadOrCreateKey(): StorageEncryptionKey = error("not used by rotation")
 
+    override suspend fun hasKeys(): Boolean = keys.isNotEmpty()
+
     override suspend fun key(id: StorageKeyId): StorageEncryptionKey? {
         log += "key ${id.value}"
         if (loseOnRead) return null

@@ -105,10 +105,31 @@ succeeds. The X3DH secret and the associated data depend on it, so a message
 with a swapped or forged key fails to decrypt. Then nothing is pinned, no
 session is stored and the one-time prekey stays available.
 
+**Sender address (S1, finding F4).** The pin is stored under the envelope's
+sender address, so that address must be authenticated too, before the pin
+is written:
+
+- the server queues an envelope only if its sender is the device that signed
+  the submission (docs/server-authentication.md, "Message submission"), so a
+  malicious client cannot claim `alice/phone` with its own identity key;
+- a new first contact is always a session initiation version 2, whose
+  associated data binds sender and recipient address, so a relay that
+  rewrites either address makes the first message fail to decrypt
+  ([session-lifecycle.md](session-lifecycle.md#session-initiation-version-2-s1));
+- a version 1 `PreKeyMessage` never writes a first pin.
+
+Order: pin check (refusal only) → authenticate the initiation with the
+address-bound transcript → write the pin in the same transaction as the
+session. A malicious server can still fabricate a first contact with a key
+of its choice, as it can hand out a bundle with a key of its choice; that is
+the TOFU trust in the server that safety numbers
+([identity-verification.md](identity-verification.md)) detect.
+
 `RatchetMessage`s carry no identity key. They rely on the identity binding
-of the session (the associated data is
-`initiatorIdentityKey || responderIdentityKey`) and on the pin made when the
-session was set up. The wire format is unchanged.
+of the session (the associated data is the version 2 transcript with both
+identity keys and addresses, or `initiatorIdentityKey || responderIdentityKey`
+for sessions from before S1) and on the pin made when the session was set
+up.
 
 ## Atomicity and concurrency
 
@@ -139,17 +160,38 @@ a persistent adapter. `storage:client:sqldelight` keeps them in the
 ## Sessions from before pinning
 
 A database written before milestone 5 can hold sessions without a pin. The
-client does not invent a pin from the envelope's sender address, which is
-unauthenticated routing data. Such sessions keep working. The first
-`PreKeyMessage` that decrypts successfully on such a session pins its
-identity key, because the engine has checked it against the session.
+client does not invent a pin from the envelope's sender address. Such
+sessions keep working.
 
-A session whose peer already sends `RatchetMessage`s stays unpinned. Such a
-session is never replaced by a new initiation: without a pin there is no
-identity to check the new initiation against
-([session-lifecycle.md](session-lifecycle.md)). A stronger migration is possible later: the stored
-session state contains both identity keys as associated data, so a narrow
-`ProtocolEngine` method could return the remote one. It is not implemented.
+**S1, finding F9.** Before S1 the first `PreKeyMessage` that decrypted on such
+a session pinned the message's identity key. The engine only checked that
+the key was the *first* half of the session's associated data, which is the
+initiator's key. In a session this device had initiated, that is the
+**local** identity key: a relay could wrap the peer's genuine ratchet
+message in a `PreKeyMessage` naming the victim's own key, it decrypted, and
+the victim pinned its own identity key as the peer's (later `IdentityChanged`
+denial of service, wrong safety number).
+
+Since S1:
+
+- a `PreKeyMessage` on an existing session is accepted only if this device
+  is the session's **responder** (the responder slot is the local key and
+  the initiator slot is not) and the message names the initiator key;
+  otherwise `InvalidMessage` and nothing changes;
+- a legacy session is pinned only with
+  `ProtocolEngine.sessionRemoteIdentityKey(session, localIdentityKey)`: the
+  one of the session's two identity keys that is not the local one, and only
+  if exactly one slot is the local key and it equals the message's key.
+  Otherwise (both or neither slot is local) nothing is pinned; no pin is
+  ever guessed;
+- a session this device initiated before pinning stays unpinned until an
+  authenticated new initiation replaces it; ratchet messages never pin.
+
+A session without a pin is never replaced by a new initiation: without a pin
+there is no identity to check the new initiation against
+([session-lifecycle.md](session-lifecycle.md)). Tests:
+`SecurityReviewRegressionTest` (`client:core`), `SessionInitiationV2Test`
+(`core:protocol`).
 
 ## Limitations
 

@@ -69,7 +69,7 @@ class AuthenticatedRoutesTest {
         ).encodeToByteArray()
 
     @Test
-    fun registrationStatuses() = testServer { storage, http ->
+    fun registrationStatuses() = testServer(TestDeviceRegistrationAuthorizer.allowAll()) { storage, http ->
         val device = TestDevice(alice)
         val first = http.register(device)
         assertEquals(HttpStatusCode.Created, first.status)
@@ -100,7 +100,7 @@ class AuthenticatedRoutesTest {
     }
 
     @Test
-    fun everyPublicationFieldIsCoveredBySignature() = testServer { storage, http ->
+    fun everyPublicationFieldIsCoveredBySignature() = testServer(TestDeviceRegistrationAuthorizer.allowAll()) { storage, http ->
         val device = TestDevice(alice)
         http.register(device)
         val signed = preKeyJson()
@@ -128,7 +128,7 @@ class AuthenticatedRoutesTest {
     }
 
     @Test
-    fun signaturesAreBoundToTheDeviceInThePathAndToTheMethod() = testServer { storage, http ->
+    fun signaturesAreBoundToTheDeviceInThePathAndToTheMethod() = testServer(TestDeviceRegistrationAuthorizer.allowAll()) { storage, http ->
         val device = TestDevice(alice)
         val laptop = TestDevice(aliceLaptop)
         val bobDevice = TestDevice(bob)
@@ -142,7 +142,7 @@ class AuthenticatedRoutesTest {
             assertEquals(0, storage.preKeys.oneTimePreKeyCount(target))
         }
 
-        http.raw(HttpMethod.Post, "/v1/messages", Json.encodeToString(envelope("m1", alice)).encodeToByteArray(), null)
+        storage.mailboxes.enqueue(envelope("m1", alice))
         // A PUT signature for the mailbox path does not authenticate a GET of it.
         val asGet = http.drain(device, device.sign("PUT", ServerApiPaths.MESSAGES, ByteArray(0)))
         assertEquals(HttpStatusCode.Unauthorized, asGet.status)
@@ -150,7 +150,7 @@ class AuthenticatedRoutesTest {
     }
 
     @Test
-    fun keysSuppliedWithTheRequestAreNeverUsedForVerification() = testServer { storage, http ->
+    fun keysSuppliedWithTheRequestAreNeverUsedForVerification() = testServer(TestDeviceRegistrationAuthorizer.allowAll()) { storage, http ->
         val device = TestDevice(alice)
         http.register(device)
         storage.mailboxes.enqueue(envelope("m1", alice))
@@ -173,7 +173,7 @@ class AuthenticatedRoutesTest {
     }
 
     @Test
-    fun authenticationHeadersAreStrict() = testServer { _, http ->
+    fun authenticationHeadersAreStrict() = testServer(TestDeviceRegistrationAuthorizer.allowAll()) { _, http ->
         val device = TestDevice(alice)
         http.register(device)
         val path = ServerApiPaths.device(alice, ServerApiPaths.MESSAGES)
@@ -211,7 +211,7 @@ class AuthenticatedRoutesTest {
     @Test
     fun timeWindowReplayAndRegistrationOverHttp() {
         val clock = ManualClock()
-        testServer(clock) { storage, http ->
+        testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
             val device = TestDevice(alice, clock)
             val unregistered = http.drain(device)
             assertEquals(HttpStatusCode.Unauthorized, unregistered.status)
@@ -239,7 +239,7 @@ class AuthenticatedRoutesTest {
     }
 
     @Test
-    fun concurrentIdenticalDrainsOverHttpExecuteOnce() = testServer { storage, http ->
+    fun concurrentIdenticalDrainsOverHttpExecuteOnce() = testServer(TestDeviceRegistrationAuthorizer.allowAll()) { storage, http ->
         val device = TestDevice(alice)
         http.register(device)
         repeat(5) { storage.mailboxes.enqueue(envelope("m$it", alice)) }
@@ -258,7 +258,7 @@ class AuthenticatedRoutesTest {
     @Test
     fun clientAdapterReportsAuthenticationFailures() {
         val clock = ManualClock()
-        testServer(clock) { storage, http ->
+        testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
             val transport = KtorSecureMessageTransport("", http)
             val device = TestDevice(alice, clock)
             val notRegistered = assertFailsWith<SecureMessageTransportException.AuthenticationFailed> { transport.receive(alice, device.signer) }
@@ -279,15 +279,17 @@ class AuthenticatedRoutesTest {
     }
 
     @Test
-    fun bundleFetchAndMessageSubmissionStayPublic() = testServer { storage, http ->
+    fun bundleFetchStaysPublicAndSubmissionIsSignedBySender() = testServer(TestDeviceRegistrationAuthorizer.allowAll()) { storage, http ->
         val device = TestDevice(alice)
         http.register(device)
+        val bobDevice = TestDevice(bob)
+        http.register(bobDevice)
         val body = preKeyJson()
         http.raw(HttpMethod.Put, ServerApiPaths.device(alice, ServerApiPaths.PRE_KEYS), body, device.sign("PUT", ServerApiPaths.PRE_KEYS, body))
 
         val transport = KtorSecureMessageTransport("", http)
         assertEquals(alice, transport.fetchPreKeyBundle(alice).address) // no authentication headers
-        transport.send(envelope("m1", alice))
+        transport.send(envelope("m1", alice), bobDevice.signer)
         assertEquals(listOf("m1"), storage.mailboxes.drain(alice).map { it.id.value })
     }
 }

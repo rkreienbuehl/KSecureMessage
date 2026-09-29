@@ -144,7 +144,11 @@ PUT /v1/devices/{user}/{device}/last-device-recovery/key    (ServerAuth v1, sign
 - **Authentication:** only a registered device can register the key, with
   an ordinary ServerAuth v1 request signed by its registered key. The key is
   registered for the route's user, which is the authenticated device's user
-  (`ProtectedEndpoint.REGISTER_LAST_DEVICE_RECOVERY_KEY`).
+  (`ProtectedEndpoint.REGISTER_LAST_DEVICE_RECOVERY_KEY`). Since S1 a device
+  is registered only with the host application's authorization
+  (docs/server-authentication.md), so a stranger can no longer register a
+  device under the user and provision the user's recovery key first
+  (finding F1/F2).
 - **Proof of possession:** the body carries the recovery key's own signature
   over `u32 len | KSecureMessage-LastDeviceRecoveryKey-PoP-v1 | u32 len |
   userId | public key`. An active key can be replaced only by a rotation

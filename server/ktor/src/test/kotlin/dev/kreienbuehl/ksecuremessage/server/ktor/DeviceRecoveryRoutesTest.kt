@@ -100,7 +100,7 @@ class DeviceRecoveryRoutesTest {
     }
 
     @Test
-    fun successIsNoContentAndSwitchesTheKeyAtOnce() = testServer(clock) { storage, http ->
+    fun successIsNoContentAndSwitchesTheKeyAtOnce() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val (laptopDevice, phoneDevice) = registered(http)
         val replacement = newKey()
         val authorization = authorize(phoneDevice, replacement)
@@ -113,7 +113,7 @@ class DeviceRecoveryRoutesTest {
     }
 
     @Test
-    fun rejectionsAreMappedAndChangeNothing() = testServer(clock) { storage, http ->
+    fun rejectionsAreMappedAndChangeNothing() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val (laptopDevice, phoneDevice, bobDevice) = registered(http)
         http.recover(authorize(bobDevice)).assertError(HttpStatusCode.Forbidden, "recovery_cross_user")
         http.recover(authorize(laptopDevice)).assertError(HttpStatusCode.Forbidden, "recovery_self_authorization")
@@ -141,7 +141,7 @@ class DeviceRecoveryRoutesTest {
     }
 
     @Test
-    fun malformedBodiesAreBadRequests() = testServer(clock) { storage, http ->
+    fun malformedBodiesAreBadRequests() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val (laptopDevice, phoneDevice) = registered(http)
         val authorization = authorize(phoneDevice)
         val valid = json(authorization)
@@ -164,7 +164,7 @@ class DeviceRecoveryRoutesTest {
     }
 
     @Test
-    fun clientsRecoverThroughTheKtorAdapter() = testServer(clock) { storage, http ->
+    fun clientsRecoverThroughTheKtorAdapter() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { storage, http ->
         val transport = KtorSecureMessageTransport("", http)
         val engine = KodiumProtocolEngine()
         val laptopStorage = InMemoryClientStorage()
@@ -204,7 +204,7 @@ class DeviceRecoveryRoutesTest {
 
     @Test
     fun recoveryPersistsAcrossServerRestarts() = ReopenableServerStorage().use { persistent ->
-        testServer(persistent, clock) { server, http ->
+        testServer(TestDeviceRegistrationAuthorizer.allowAll(), persistent, clock) { server, http ->
             val (laptopDevice, phoneDevice) = registered(http)
             val k2 = newKey()
             val first = authorize(phoneDevice, k2)
@@ -226,7 +226,7 @@ class DeviceRecoveryRoutesTest {
 
     @Test
     fun storageFailureIsAGenericServerError() = ReopenableServerStorage().use { persistent ->
-        testServer(persistent, clock) { server, http ->
+        testServer(TestDeviceRegistrationAuthorizer.allowAll(), persistent, clock) { server, http ->
             val (laptopDevice, phoneDevice) = registered(http)
             server.driver.execute(null, "DROP TABLE authentication_nonce", 0)
             http.recover(authorize(phoneDevice)).assertError(HttpStatusCode.InternalServerError, "internal_error")

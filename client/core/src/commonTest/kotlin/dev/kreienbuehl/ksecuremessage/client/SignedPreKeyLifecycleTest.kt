@@ -75,8 +75,10 @@ class SignedPreKeyLifecycleTest {
 
         suspend fun isRetired(remote: Device, id: SessionInitiationId) = storage.sessionInitiations.isRetired(remote.address, id)
 
-        suspend fun initiationOf(envelope: EncryptedEnvelope): SessionInitiationId = SessionInitiationId.of(
+        suspend fun initiationOf(envelope: EncryptedEnvelope): SessionInitiationId = SessionInitiationId.v2Of(
             assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(envelope.payload)),
+            envelope.sender,
+            envelope.recipient,
             assertNotNull(storage.identity.identity()).publicKey,
         )
 

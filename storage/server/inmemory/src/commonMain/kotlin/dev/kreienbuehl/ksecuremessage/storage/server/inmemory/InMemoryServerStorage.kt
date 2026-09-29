@@ -211,9 +211,16 @@ private class AuthenticationState {
 
     enum class KeyReplacement { REPLACED, REPLAY, EPOCH_EXHAUSTED }
 
+    /** Largest prune bound ever applied; never decreases (docs/server-authentication.md, "Nonce lifetime"). */
+    var nonceWatermark: Instant = Instant.DISTANT_PAST
+
     /** Caller holds [mutex]. */
     fun claim(address: DeviceAddress, nonce: ByteArray, timestamp: Instant, pruneBefore: Instant): Boolean {
-        val kept = nonces.filterValues { it >= pruneBefore }
+        if (pruneBefore > nonceWatermark) nonceWatermark = pruneBefore
+        // The nonce of such a request may already have been pruned: refuse it as a possible replay.
+        if (timestamp < nonceWatermark) return false
+        val watermark = nonceWatermark
+        val kept = nonces.filterValues { it >= watermark }
         val key = address to NonceKey(nonce.copyOf())
         if (key in kept) {
             nonces = kept
@@ -240,6 +247,9 @@ private class InMemoryDeviceRegistrationRepository(private val state: Authentica
             )
         }
     }
+
+    override suspend fun hasRegisteredDevices(userId: UserId): Boolean =
+        state.mutex.withLock { state.registrations.keys.any { it.userId == userId } }
 
     // A retry of the registered key changes nothing, also not the installation time.
     override suspend fun register(registration: DeviceRegistration, installedAt: Instant): Boolean = state.mutex.withLock {

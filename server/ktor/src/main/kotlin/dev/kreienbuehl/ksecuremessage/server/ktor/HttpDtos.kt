@@ -280,8 +280,8 @@ internal fun PreKeyPublicationRequest.toPublication(address: DeviceAddress) = Pr
     oneTimePreKeys = oneTimePreKeys.map { PublicOneTimePreKey(OneTimePreKeyId(it.id), Base64.decode(it.publicKey)) },
 )
 
-/** Throws [IllegalArgumentException] for invalid Base64. The key size is checked by the server. */
-internal fun DeviceRegistrationRequest.toRegistration(address: DeviceAddress) = DeviceRegistration(address, Base64.decode(publicKey))
+/** Throws [IllegalArgumentException] for non-canonical Base64. The key size is checked by the server. */
+internal fun DeviceRegistrationRequest.toRegistration(address: DeviceAddress) = DeviceRegistration(address, decodeCanonicalBase64(publicKey))
 
 /**
  * Throws [IllegalArgumentException] for non-canonical Base64, wrong key,
@@ -449,6 +449,9 @@ internal object AuthHeaders {
     const val TIMESTAMP = "X-KSecureMessage-Timestamp"
     const val NONCE = "X-KSecureMessage-Nonce"
     const val SIGNATURE = "X-KSecureMessage-Signature"
+
+    /** The submitting device of `POST /v1/messages` ([ServerApiPaths.encodeDevice]); S1. */
+    const val DEVICE = "X-KSecureMessage-Device"
     const val CURRENT_VERSION = "1"
 }
 

@@ -139,7 +139,7 @@ class RecoveryKeyResetRoutesTest {
     private val none = """{"state":"none","resetId":null,"requestedByDevice":null,"requestedAt":null,"eligibleAt":null,"recoveryKeyEpoch":null,"recoveryPublicKey":null}"""
 
     @Test
-    fun requestAndStatusAreSignedAndVisibleToTheUsersDevicesOnly() = testServer(clock, policy) { storage, http ->
+    fun requestAndStatusAreSignedAndVisibleToTheUsersDevicesOnly() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock, policy) { storage, http ->
         val (phoneDevice, laptopDevice, bobDevice) = registered(http)
         http.request(null, phone).assertError(HttpStatusCode.Unauthorized, "missing_authentication")
         http.resetStatus(null, phone).assertError(HttpStatusCode.Unauthorized, "missing_authentication")
@@ -167,14 +167,14 @@ class RecoveryKeyResetRoutesTest {
     }
 
     @Test
-    fun withoutAPolicyRequestsAreNotAvailable() = testServer(clock) { _, http ->
+    fun withoutAPolicyRequestsAreNotAvailable() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock) { _, http ->
         val (phoneDevice, _, _) = registered(http)
         http.request(phoneDevice).assertError(HttpStatusCode.NotFound, "recovery_key_reset_not_available")
         assertEquals(none, http.resetStatus(phoneDevice).bodyAsText())
     }
 
     @Test
-    fun completionErrorsAndSuccess() = testServer(clock, policy) { storage, http ->
+    fun completionErrorsAndSuccess() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock, policy) { storage, http ->
         val (phoneDevice, laptopDevice, bobDevice) = registered(http)
         http.request(bobDevice).let { assertEquals(HttpStatusCode.NotFound, it.status) } // bob has no recovery key
         http.request(phoneDevice)
@@ -205,7 +205,7 @@ class RecoveryKeyResetRoutesTest {
     }
 
     @Test
-    fun cancellationByADeviceAndByTheRecoveryKey() = testServer(clock, policy) { storage, http ->
+    fun cancellationByADeviceAndByTheRecoveryKey() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock, policy) { storage, http ->
         val (phoneDevice, laptopDevice, bobDevice) = registered(http)
         http.request(laptopDevice)
         val reset = assertIs<RecoveryKeyResetStatus.Pending>(storage.lastDeviceRecovery.pendingRecoveryKeyReset(phone.userId))
@@ -234,7 +234,7 @@ class RecoveryKeyResetRoutesTest {
     }
 
     @Test
-    fun theRecoveryKeyQueriesTheStatusWithoutADevice() = testServer(clock, policy) { storage, http ->
+    fun theRecoveryKeyQueriesTheStatusWithoutADevice() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock, policy) { storage, http ->
         val (phoneDevice, _, _) = registered(http)
         assertEquals(none, http.query(json(RecoveryKeyReset.statusQuery(r1, phone.userId, clock.now))).bodyAsText())
         http.request(phoneDevice)
@@ -254,7 +254,7 @@ class RecoveryKeyResetRoutesTest {
     }
 
     @Test
-    fun malformedBodiesAreBadRequests() = testServer(clock, policy) { storage, http ->
+    fun malformedBodiesAreBadRequests() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock, policy) { storage, http ->
         val (phoneDevice, laptopDevice, _) = registered(http)
         http.request(phoneDevice)
         val reset = assertIs<RecoveryKeyResetStatus.Pending>(storage.lastDeviceRecovery.pendingRecoveryKeyReset(phone.userId))
@@ -277,7 +277,7 @@ class RecoveryKeyResetRoutesTest {
     }
 
     @Test
-    fun rotationRemovesAPendingReset() = testServer(clock, policy) { storage, http ->
+    fun rotationRemovesAPendingReset() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock, policy) { storage, http ->
         val (phoneDevice, _, _) = registered(http)
         http.request(phoneDevice)
         val reset = assertIs<RecoveryKeyResetStatus.Pending>(storage.lastDeviceRecovery.pendingRecoveryKeyReset(phone.userId))
@@ -290,7 +290,7 @@ class RecoveryKeyResetRoutesTest {
     }
 
     @Test
-    fun clientUsesTheRoutesThroughTheKtorAdapter() = testServer(clock, policy) { storage, http ->
+    fun clientUsesTheRoutesThroughTheKtorAdapter() = testServer(TestDeviceRegistrationAuthorizer.allowAll(), clock, policy) { storage, http ->
         val transport = KtorSecureMessageTransport("", http)
         var loseNextCompletion = false
         val losing = object : SecureMessageTransport by transport {
@@ -349,7 +349,7 @@ class RecoveryKeyResetRoutesTest {
 
     @Test
     fun aPendingResetAndItsTimingPersistAcrossServerRestarts() = ReopenableServerStorage().use { persistent ->
-        testServer(persistent, clock, policy) { server, http ->
+        testServer(TestDeviceRegistrationAuthorizer.allowAll(), persistent, clock, policy) { server, http ->
             val (phoneDevice, laptopDevice, _) = registered(http)
             val requested = http.request(phoneDevice).bodyAsText()
             val reset = assertIs<RecoveryKeyResetStatus.Pending>(server.lastDeviceRecovery.pendingRecoveryKeyReset(phone.userId))
@@ -379,7 +379,7 @@ class RecoveryKeyResetRoutesTest {
 
     @Test
     fun storageFailureIsAGenericServerError() = ReopenableServerStorage().use { persistent ->
-        testServer(persistent, clock, policy) { server, http ->
+        testServer(TestDeviceRegistrationAuthorizer.allowAll(), persistent, clock, policy) { server, http ->
             val (phoneDevice, laptopDevice, _) = registered(http)
             http.request(phoneDevice)
             val reset = assertIs<RecoveryKeyResetStatus.Pending>(server.lastDeviceRecovery.pendingRecoveryKeyReset(phone.userId))

@@ -25,7 +25,7 @@ are needed, and each one is enforced or specified at a concrete place:
 | Link | Guarantee | Where |
 |---|---|---|
 | Sender | Envelopes reach the transport in the order they were encrypted | `SecureMessageClient` holds one per-client `Mutex` around encryption and `transport.send` for every hand-off: `send`, `retryPendingMessages` and the acknowledgements `decrypt` sends (milestone 8) |
-| Server | Per (sender, recipient): drained in the order the `enqueue` calls returned; each envelope in exactly one drain | `MailboxRepository` contract; `InMemoryServerStorage` serializes enqueue and drain with a `Mutex`. HTTP: `POST /v1/messages` answers 202 after the enqueue returned |
+| Server | Per (sender, recipient): drained in the order the `enqueue` calls returned; each envelope in exactly one drain | `MailboxRepository` contract; `InMemoryServerStorage` serializes enqueue and drain with a `Mutex`. HTTP: `POST /v1/messages` (signed by the sender since S1) answers 202 after the enqueue returned |
 | Receiver | One sender's envelopes are decrypted one at a time, in drain order | The application's receive loop (documented on `SecureMessageClient.decrypt` and `SecureMessageTransport.receive`) |
 
 Things that are **not** required, and not promised by `MailboxRepository`:

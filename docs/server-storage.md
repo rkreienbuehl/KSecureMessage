@@ -47,7 +47,7 @@ val driver = JdbcSqliteDriver("jdbc:sqlite:/var/lib/myserver/server.db", Propert
 val storage = SqlDelightServerStorage.open(driver)
 embeddedServer(Netty) {
     install(ContentNegotiation) { json() }
-    routing { kSecureMessageRoutes(SecureMessageServer(storage)) }
+    routing { kSecureMessageRoutes(SecureMessageServer(storage, Clock.System, myRegistrationAuthorizer)) }
 }.start(wait = true)
 // on shutdown: driver.close()
 ```
@@ -60,7 +60,7 @@ database on open. A host that manages the schema itself calls
 `open` creates and migrates no schema: it reads the single-row
 `server_storage` marker and throws `IllegalStateException` (without SQL
 details) if the database has no server schema, is still at schema version
-1 to 6 (format 1–6: migrate it first), or has an unknown format.
+1 to 7 (format 1–7: migrate it first), or has an unknown format.
 
 `open(driver, dispatcher, clock)` takes an optional `CoroutineDispatcher`
 (default `Dispatchers.IO`) for the blocking driver calls and an optional
@@ -93,22 +93,23 @@ storage/server/
 or `sqldelight-sqlite` / `sqldelight-postgresql` if SQLDelight dialect
 separation proves useful. None of this exists yet.
 
-## Schema (server schema version 7)
+## Schema (server schema version 8)
 
 Defined in `ServerState.sq`, independent of the client schema (client
 versions do not apply here). Migrations are `.sqm` files with server-own
 numbering: `1.sqm` migrates version 1 (M13) to 2 (M14), `2.sqm` version 2 to
-3 (M16), `3.sqm` version 3 to 4 (M17), `4.sqm` version 4 to 5 (M18), `5.sqm` version 5 to 6 (M19), `6.sqm` version 6 to 7 (M23, below). Timestamps are epoch
+3 (M16), `3.sqm` version 3 to 4 (M17), `4.sqm` version 4 to 5 (M18), `5.sqm` version 5 to 6 (M19), `6.sqm` version 6 to 7 (M23), `7.sqm` version 7 to 8 (S1, below). Timestamps are epoch
 milliseconds. Uniqueness is enforced by the database, not only by Kotlin:
 
 | Table | Key / constraint | Columns |
 |---|---|---|
-| `server_storage` | `id = 0` (single row) | `format` = 7 (1–6 = schema versions 1–6) |
+| `server_storage` | `id = 0` (single row) | `format` = 8 (1–7 = schema versions 1–7) |
 | `device_registration` | PK `(user_id, device_id)` | `auth_public_key`, `auth_epoch` (≥ 1, default 1, never wraps), `recovery_id` (32-byte `DeviceRecoveryId` or `NULL`), `rotation_id` (32-byte `DeviceAuthenticationRotationId` or `NULL`), `auth_key_installed_at` (server time the current key was installed at, epoch ms; nullable only for migrated rows until `open` stamps them), `last_device_recovery_id` (32-byte `LastDeviceRecoveryId` or `NULL`, M18); at most one of the three IDs is set: the transition that installed the current key |
 | `last_device_recovery_key_state` | PK `user_id`; CHECKs tie key and installation time to the state | `state` (1 ACTIVE, 2 REVOKED; no row = never configured), `epoch` (recovery key epoch ≥ 1, never reset or wrapped), `public_key` (Ed25519, 32 bytes, only while ACTIVE; never a private key), `installed_at` (only while ACTIVE), `transitioned_at`, `rotation_id` / `revocation_id` / `reset_completion_id` (at most one; no reset ID when revoked) (M18/M19/M23, docs/recovery-key-lifecycle.md, docs/recovery-key-reset.md) |
 | `last_device_recovery_key_reset` | PK `user_id` (one pending reset per user), `reset_id` UNIQUE; CHECKs: 16-byte ID, 32-byte key, `eligible_at > requested_at` | `requested_by_device`, `expected_epoch` and `expected_public_key` (the ACTIVE state it replaces; public key only), `requested_at` / `eligible_at` (server clock and policy); deleted by a cancellation, the completion and every other recovery key transition of the user (M23, docs/recovery-key-reset.md) |
 | `last_device_recovery_challenge` | PK `(user_id, device_id)` (one per device), `challenge_id` UNIQUE, index on `expires_at` | `challenge_nonce`, `auth_epoch` and `auth_public_key` it was issued for, `issued_at`, `expires_at`, `recovery_key_epoch` (M19); deleted when consumed, replaced when outdated, deleted for the whole user by a recovery key rotation or revocation, pruned after expiry |
 | `authentication_nonce` | PK `(user_id, device_id, nonce)`, index on `request_timestamp` | `request_timestamp` |
+| `authentication_nonce_watermark` | `id = 0` (single row) | `prune_before`: the largest prune bound any nonce claim applied, never decreases (S1, docs/server-authentication.md "Nonce lifetime") |
 | `device_prekey_state` | PK `(user_id, device_id)` | `identity_key`, `signed_pre_key_id`, `signed_pre_key`, `signed_pre_key_signature` |
 | `available_one_time_prekey` | PK `(user_id, device_id, pre_key_id)` | `public_key` |
 | `consumed_one_time_prekey` | PK `(user_id, device_id, pre_key_id)` | (tombstone) |
@@ -220,6 +221,15 @@ checks v6 → v7 (and v1–v5 → v7) against the frozen fixture
 shape), that the rebuilt table's DDL equals a new one, and the CHECK
 constraints of both tables in fresh and migrated databases.
 
+### Migration from schema version 7 (M23–M25)
+
+`7.sqm` (S1, finding F8) creates `authentication_nonce_watermark` with one
+row at the lowest possible value (`-9223372036854775808`), so every stored
+nonce keeps being honored until an ordinary claim advances the watermark,
+and sets `server_storage.format = 8`. No other table changes. `open`
+refuses format 7 until the host migrated it. `SqlDelightServerMigrationTest`
+checks v7 → v8 against the frozen fixture `ServerVersion7Schema`.
+
 ## Transaction semantics
 
 Every repository call is exactly one SQLite transaction. If it throws, all of
@@ -284,10 +294,13 @@ mutex.
   registration and the user's recovery key, returns the device's existing
   challenge if it is still for the current key and epoch, and otherwise
   deletes it and inserts the new one.
-- **Nonce claim**: `DELETE ... WHERE request_timestamp < pruneBefore`, then
-  `INSERT OR IGNORE` of the nonce, in one transaction. `true` only if the row
-  was inserted. The prune commits also when the claim returns `false`, like
-  the in-memory repository. The ±5 minute window and `pruneBefore` stay
+- **Nonce claim** (S1): in one transaction, raise the watermark to
+  `pruneBefore` (`max`), refuse a request timestamp below the watermark,
+  `DELETE ... WHERE request_timestamp < watermark`, then `INSERT OR IGNORE`
+  of the nonce. `true` only if the row was inserted. The watermark and the
+  prune commit also when the claim returns `false`, like the in-memory
+  repository. The compare-and-set steps of recovery, rotation and recovery
+  key transitions use the same claim. The ±5 minute window and `pruneBefore` stay
   `DeviceAuthenticator` policy (server clock outside the repository).
 - **Nonce claim vs. protected operation**: separate transactions, on purpose.
   The claim commits first; the publication or drain runs afterwards in its own
@@ -385,7 +398,7 @@ is not encrypted; that is out of scope, like backups.
 - `SqlDelightServerRollbackTest`: failure injection through a delegating
   driver (`TestDriver`), one test per operation.
 - `SqlDelightServerStorageOpenTest`: driver injection, schema marker (refuses
-  formats 1–6), driver ownership, database-level uniqueness, open never
+  formats 1–7), driver ownership, database-level uniqueness, open never
   rewrites a stored installation time, a missing one fails closed.
 - `SqlDelight*DeviceRecoveryRepositoryTest` / `FileBackedDeviceRecoveryRepositoryTest`:
   the recovery contract (`DeviceRecoveryRepositoryContractTest`).

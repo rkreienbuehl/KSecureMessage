@@ -9,6 +9,7 @@ public final class dev/kreienbuehl/ksecuremessage/protocol/CiphertextMessageCode
 	public static final field MAX_ENCODED_SIZE I
 	public static final field MAX_RATCHET_PAYLOAD_SIZE I
 	public static final field TYPE_PREKEY_MESSAGE I
+	public static final field TYPE_PREKEY_MESSAGE_V2 I
 	public static final field TYPE_RATCHET_MESSAGE I
 	public static final field WIRE_VERSION I
 	public final fun decode ([B)Ldev/kreienbuehl/ksecuremessage/model/CiphertextMessage;
@@ -150,16 +151,17 @@ public final class dev/kreienbuehl/ksecuremessage/protocol/EncryptionResult {
 
 public final class dev/kreienbuehl/ksecuremessage/protocol/KodiumProtocolEngine : dev/kreienbuehl/ksecuremessage/protocol/ProtocolEngine {
 	public fun <init> ()V
-	public fun acceptSession (Ldev/kreienbuehl/ksecuremessage/protocol/LocalIdentity;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/protocol/SignedPreKeyPair;Ldev/kreienbuehl/ksecuremessage/protocol/OneTimePreKeyPair;Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun acceptSession (Ldev/kreienbuehl/ksecuremessage/protocol/LocalIdentity;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/protocol/SignedPreKeyPair;Ldev/kreienbuehl/ksecuremessage/protocol/OneTimePreKeyPair;Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun createDeviceAuthenticationKey (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun createIdentity (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun createLastDeviceRecoveryKey (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun createOneTimePreKeys-ddS9unE (IILkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun createSignedPreKey-oRYEkKA (Ldev/kreienbuehl/ksecuremessage/protocol/LocalIdentity;ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public fun decrypt (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;Ldev/kreienbuehl/ksecuremessage/model/CiphertextMessage;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun decrypt (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;Ldev/kreienbuehl/ksecuremessage/model/CiphertextMessage;[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun encrypt (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public fun initiateSession (Ldev/kreienbuehl/ksecuremessage/protocol/LocalIdentity;Ldev/kreienbuehl/ksecuremessage/model/PreKeyBundle;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun initiateSession (Ldev/kreienbuehl/ksecuremessage/protocol/LocalIdentity;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/model/PreKeyBundle;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun sessionInfo (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;)Ldev/kreienbuehl/ksecuremessage/protocol/SessionInfo;
+	public fun sessionRemoteIdentityKey (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;[B)[B
 }
 
 public final class dev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecovery {
@@ -283,16 +285,17 @@ public final class dev/kreienbuehl/ksecuremessage/protocol/PreKeyFormat {
 }
 
 public abstract interface class dev/kreienbuehl/ksecuremessage/protocol/ProtocolEngine {
-	public abstract fun acceptSession (Ldev/kreienbuehl/ksecuremessage/protocol/LocalIdentity;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/protocol/SignedPreKeyPair;Ldev/kreienbuehl/ksecuremessage/protocol/OneTimePreKeyPair;Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun acceptSession (Ldev/kreienbuehl/ksecuremessage/protocol/LocalIdentity;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/protocol/SignedPreKeyPair;Ldev/kreienbuehl/ksecuremessage/protocol/OneTimePreKeyPair;Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun createDeviceAuthenticationKey (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun createIdentity (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun createLastDeviceRecoveryKey (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun createOneTimePreKeys-ddS9unE (IILkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun createSignedPreKey-oRYEkKA (Ldev/kreienbuehl/ksecuremessage/protocol/LocalIdentity;ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public abstract fun decrypt (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;Ldev/kreienbuehl/ksecuremessage/model/CiphertextMessage;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun decrypt (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;Ldev/kreienbuehl/ksecuremessage/model/CiphertextMessage;[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun encrypt (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;[BLkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public abstract fun initiateSession (Ldev/kreienbuehl/ksecuremessage/protocol/LocalIdentity;Ldev/kreienbuehl/ksecuremessage/model/PreKeyBundle;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun initiateSession (Ldev/kreienbuehl/ksecuremessage/protocol/LocalIdentity;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/model/PreKeyBundle;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun sessionInfo (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;)Ldev/kreienbuehl/ksecuremessage/protocol/SessionInfo;
+	public abstract fun sessionRemoteIdentityKey (Ldev/kreienbuehl/ksecuremessage/protocol/SecureSession;[B)[B
 }
 
 public abstract class dev/kreienbuehl/ksecuremessage/protocol/ProtocolException : java/lang/Exception {
@@ -673,7 +676,10 @@ public final class dev/kreienbuehl/ksecuremessage/protocol/ServerApiPaths {
 	public static final field REGISTRATION Ljava/lang/String;
 	public static final field REGISTRATION_RECOVERY Ljava/lang/String;
 	public static final field REGISTRATION_ROTATION Ljava/lang/String;
+	public static final field SUBMIT_MESSAGE Ljava/lang/String;
+	public final fun decodeDevice (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
 	public final fun device (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ljava/lang/String;)Ljava/lang/String;
+	public final fun encodeDevice (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;)Ljava/lang/String;
 	public final fun encodeSegment (Ljava/lang/String;)Ljava/lang/String;
 	public final fun user-vKr61vg (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
 }
@@ -713,11 +719,12 @@ public final class dev/kreienbuehl/ksecuremessage/protocol/SessionAcceptanceResu
 }
 
 public final class dev/kreienbuehl/ksecuremessage/protocol/SessionInfo {
-	public synthetic fun <init> (Ldev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId;ZLdev/kreienbuehl/ksecuremessage/model/SignedPreKeyId;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public synthetic fun <init> (Ldev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId;ZLdev/kreienbuehl/ksecuremessage/model/SignedPreKeyId;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ldev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId;ZLdev/kreienbuehl/ksecuremessage/model/SignedPreKeyId;Ldev/kreienbuehl/ksecuremessage/model/SessionInitiationVersion;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ldev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId;ZLdev/kreienbuehl/ksecuremessage/model/SignedPreKeyId;Ldev/kreienbuehl/ksecuremessage/model/SessionInitiationVersion;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun getAcceptedSignedPreKeyId-gA00e7A ()Ldev/kreienbuehl/ksecuremessage/model/SignedPreKeyId;
 	public final fun getAwaitingReply ()Z
 	public final fun getInitiationId ()Ldev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId;
+	public final fun getInitiationVersion ()Ldev/kreienbuehl/ksecuremessage/model/SessionInitiationVersion;
 }
 
 public final class dev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId : java/lang/Comparable {
@@ -734,6 +741,7 @@ public final class dev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId :
 
 public final class dev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId$Companion {
 	public final fun of (Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;[B)Ldev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId;
+	public final fun v2Of (Ldev/kreienbuehl/ksecuremessage/model/PreKeyMessage;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[B)Ldev/kreienbuehl/ksecuremessage/protocol/SessionInitiationId;
 }
 
 public final class dev/kreienbuehl/ksecuremessage/protocol/SignedPreKeyPair {

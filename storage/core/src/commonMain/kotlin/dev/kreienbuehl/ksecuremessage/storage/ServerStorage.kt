@@ -236,6 +236,13 @@ interface DeviceRegistrationRepository {
      * registering the registered key again changes neither.
      */
     suspend fun register(registration: DeviceRegistration, installedAt: Instant): Boolean
+
+    /**
+     * Whether any device of [userId] is registered. Read-only. The server
+     * passes it to the host's registration authorizer (docs/server-authentication.md,
+     * "Registration authorization"); it never decides membership itself.
+     */
+    suspend fun hasRegisteredDevices(userId: UserId): Boolean
 }
 
 /**
@@ -433,20 +440,38 @@ sealed class DeviceRegistrationException(message: String) : Exception(message) {
 
     /** The address is registered with a different key. Only a recovery or a rotation replaces it. */
     class Conflict : DeviceRegistrationException("Device is registered with a different authentication key")
+
+    /**
+     * The host application's registration authorizer did not allow this
+     * device to become a device of its user (docs/server-authentication.md,
+     * "Registration authorization"). Carries no host-specific reason.
+     */
+    class NotAuthorized : DeviceRegistrationException("Device registration is not authorized")
 }
 
 /**
  * Nonces of accepted authenticated requests, per device, for replay
  * protection (docs/server-authentication.md). Entries only need to live as
  * long as their request timestamp is inside the server's validity window.
+ *
+ * The repository keeps a monotonic prune watermark (S1, finding F8): the
+ * largest [claim] `pruneBefore` it has ever applied. Every entry whose
+ * timestamp is at or after the watermark is retained, and every claim whose
+ * timestamp is before it is refused, because its nonce may already have been
+ * pruned. So no interleaving of claims whose callers read their clocks at
+ * different times can prune a nonce and then accept it again.
  */
 interface AuthenticationNonceRepository {
     /**
-     * In one atomic step: removes every entry (of any device) whose request
-     * timestamp is before [pruneBefore], then records [nonce] for [address]
-     * with [timestamp]. Returns `false`, and records nothing, if [nonce] is
-     * already recorded for [address]. Of concurrent claims of the same
-     * nonce for the same address, exactly one returns `true`.
+     * In one atomic step:
+     * 1. raises the prune watermark to [pruneBefore] if that is larger (it never decreases);
+     * 2. refuses the claim (returns `false`, records nothing) if [timestamp] is before the watermark;
+     * 3. removes every entry (of any device) whose request timestamp is before the watermark;
+     * 4. records [nonce] for [address] with [timestamp], or returns `false`
+     *    and records nothing if [nonce] is already recorded for [address].
+     *
+     * Of concurrent claims of the same nonce for the same address, at most
+     * one returns `true`.
      */
     suspend fun claim(address: DeviceAddress, nonce: ByteArray, timestamp: Instant, pruneBefore: Instant): Boolean
 }

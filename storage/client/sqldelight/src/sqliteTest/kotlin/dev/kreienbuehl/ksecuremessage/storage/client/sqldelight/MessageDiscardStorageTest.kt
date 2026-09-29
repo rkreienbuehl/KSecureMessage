@@ -325,8 +325,8 @@ class MessageDiscardStorageTest {
         val before = driver.dump()
 
         val migrated = reopen()
-        assertEquals(listOf(15L), driver.longs("PRAGMA user_version"))
-        assertEquals(before.withCommittedFinalization(), driver.dump(), "no existing row changes")
+        assertEquals(listOf(16L), driver.longs("PRAGMA user_version"))
+        assertEquals(before.withCommittedFinalization().withEmptyMigrationIntent(), driver.dump(), "no existing row changes")
         assertEquals(listOf(0L, 0L), driver.longs("SELECT finalization FROM processed_inbound_message"))
         assertEquals(listOf(null, null), driver.longs("SELECT discard_reason FROM processed_inbound_message"))
         for (id in listOf(committed, laterCommitted)) {

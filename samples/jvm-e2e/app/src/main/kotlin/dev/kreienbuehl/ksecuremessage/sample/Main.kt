@@ -5,11 +5,14 @@ import dev.kreienbuehl.ksecuremessage.client.CommitStatus
 import dev.kreienbuehl.ksecuremessage.client.DeviceAuthenticationHealth
 import dev.kreienbuehl.ksecuremessage.client.ReceiveResult
 import dev.kreienbuehl.ksecuremessage.client.SecureMessageClient
+import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException
 import dev.kreienbuehl.ksecuremessage.client.ktor.KtorSecureMessageTransport
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.KodiumProtocolEngine
+import dev.kreienbuehl.ksecuremessage.server.DeviceRegistrationAuthorizationResult
+import dev.kreienbuehl.ksecuremessage.server.DeviceRegistrationAuthorizer
 import dev.kreienbuehl.ksecuremessage.server.SecureMessageServer
 import dev.kreienbuehl.ksecuremessage.server.ktor.kSecureMessageRoutes
 import dev.kreienbuehl.ksecuremessage.storage.client.inmemory.InMemoryClientStorage
@@ -37,8 +40,19 @@ fun main() = runBlocking {
     val databaseFile = Files.createTempDirectory("ksecuremessage-sample").resolve("server.db")
     val driver = JdbcSqliteDriver("jdbc:sqlite:$databaseFile", Properties(), SqlDelightServerStorage.Schema)
     val serverStorage = SqlDelightServerStorage.open(driver)
+    // Which device may become one of a user's devices is the host's decision
+    // (docs/server-authentication.md, "Registration authorization"). This
+    // sample only knows two fixed devices; a real host checks its own
+    // account authentication here. Not a production policy.
+    val knownDevices = setOf(
+        DeviceAddress(UserId("alice"), DeviceId("phone")),
+        DeviceAddress(UserId("bob"), DeviceId("laptop")),
+    )
+    val registrationAuthorizer = DeviceRegistrationAuthorizer { request ->
+        if (request.address in knownDevices) DeviceRegistrationAuthorizationResult.Authorized else DeviceRegistrationAuthorizationResult.Denied
+    }
     // No RecoveryKeyResetPolicy: delayed recovery key resets are disabled on this server.
-    val server = SecureMessageServer(serverStorage, Clock.System, recoveryKeyResetPolicy = null)
+    val server = SecureMessageServer(serverStorage, Clock.System, registrationAuthorizer, recoveryKeyResetPolicy = null)
     val http = embeddedServer(CIO, port = 0, host = "127.0.0.1") {
         install(ContentNegotiation) { json() }
         routing { kSecureMessageRoutes(server) }
@@ -67,6 +81,15 @@ fun main() = runBlocking {
         }
         // --8<-- [end:first-launch]
         step("alice and bob initialized, registered and published prekeys")
+
+        // A device the host does not know cannot join alice's devices, even with a valid key (S1).
+        val unknown = SecureMessageClient(
+            DeviceAddress(UserId("alice"), DeviceId("unknown")), InMemoryClientStorage(), KodiumProtocolEngine(), KtorSecureMessageTransport(baseUrl),
+        )
+        unknown.initialize()
+        val refused = runCatching { unknown.registerDevice() }.exceptionOrNull()
+        check(refused is SecureMessageTransportException.DeviceRegistrationNotAuthorized) { "an unknown device must be refused, got $refused" }
+        step("an unknown device of alice was refused: registration_not_authorized")
 
         // Send: the message stays pending on Alice's side until Bob's ACK.
         // --8<-- [start:send]

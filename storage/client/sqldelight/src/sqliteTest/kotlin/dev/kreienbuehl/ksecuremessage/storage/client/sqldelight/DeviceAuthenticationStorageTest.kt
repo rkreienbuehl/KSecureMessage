@@ -134,9 +134,9 @@ class DeviceAuthenticationStorageTest {
         database.closeOpenDrivers()
 
         val storage = reopen()
-        assertEquals(listOf(15L), driver.longs("PRAGMA user_version"))
+        assertEquals(listOf(16L), driver.longs("PRAGMA user_version"))
         val after = driver.dump()
-        assertEquals(before.withUnverifiedPins().withLegacyProcessedMessages(), after - AUTH_TABLES, "no existing row changes")
+        assertEquals(before.withUnverifiedPins().withLegacyProcessedMessages().withEmptyMigrationIntent(), after - AUTH_TABLES, "no existing row changes")
         assertEquals(emptyList(), after.getValue("device_authentication_key"), "SQL creates no key material")
         assertEquals(1L, awaitsUpgradeKeyColumn())
         assertTrue(storage.deviceAuthentication.awaitsUpgradeKey())
@@ -191,7 +191,7 @@ class DeviceAuthenticationStorageTest {
 
         // Opening migrates the schema; nothing but the new tables changes, and no key is created yet.
         val migrated = reopen()
-        assertEquals(before.withUnverifiedPins().withLegacyProcessedMessages(), driver.dump() - AUTH_TABLES)
+        assertEquals(before.withUnverifiedPins().withLegacyProcessedMessages().withEmptyMigrationIntent(), driver.dump() - AUTH_TABLES)
         assertTrue(migrated.deviceAuthentication.awaitsUpgradeKey())
         assertNull(migrated.deviceAuthentication.keyPair())
 
@@ -201,7 +201,7 @@ class DeviceAuthenticationStorageTest {
         assertEquals(0L, awaitsUpgradeKeyColumn())
         assertContentEquals(identity.privateKey, migrated.identity.identity()?.privateKey, "the identity is kept")
         assertEquals(
-            before.withUnverifiedPins().withLegacyProcessedMessages() - "one_time_pre_key" - "pre_key_state" - "processed_inbound_message",
+            before.withUnverifiedPins().withLegacyProcessedMessages().withEmptyMigrationIntent() - "one_time_pre_key" - "pre_key_state" - "processed_inbound_message",
             driver.dump() - AUTH_TABLES - "one_time_pre_key" - "pre_key_state" - "processed_inbound_message",
         )
         // initialize() stamped the legacy processed ID's commit time once; its digest stays unknown.

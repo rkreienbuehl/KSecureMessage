@@ -4,6 +4,7 @@ import dev.kreienbuehl.ksecuremessage.model.CiphertextMessage
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyMessage
 import dev.kreienbuehl.ksecuremessage.model.RatchetMessage
+import dev.kreienbuehl.ksecuremessage.model.SessionInitiationVersion
 import dev.kreienbuehl.ksecuremessage.model.SignedPreKeyId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -24,12 +25,14 @@ private fun preKeyMessage(
     identityKey: ByteArray = key(0x11),
     ephemeralKey: ByteArray = key(0x22),
     ratchet: ByteArray = hex("cafe"),
+    initiationVersion: SessionInitiationVersion = SessionInitiationVersion.V1,
 ) = PreKeyMessage(
     identityKey = identityKey,
     ephemeralKey = ephemeralKey,
     signedPreKeyId = SignedPreKeyId(signedPreKeyId),
     oneTimePreKeyId = oneTimePreKeyId?.let(::OneTimePreKeyId),
     message = RatchetMessage(ratchet),
+    initiationVersion = initiationVersion,
 )
 
 private fun assertPreKeyMessageEquals(expected: PreKeyMessage, actual: CiphertextMessage) {
@@ -39,6 +42,7 @@ private fun assertPreKeyMessageEquals(expected: PreKeyMessage, actual: Ciphertex
     assertEquals(expected.signedPreKeyId, message.signedPreKeyId)
     assertEquals(expected.oneTimePreKeyId, message.oneTimePreKeyId)
     assertContentEquals(expected.message.bytes, message.message.bytes)
+    assertEquals(expected.initiationVersion, message.initiationVersion)
 }
 
 class CiphertextMessageCodecTest {
@@ -63,6 +67,53 @@ class CiphertextMessageCodecTest {
             + "2222222222222222222222222222222222222222222222222222222222222222"
             + "00000003" + "abcdef",
     )
+
+    // Session initiation v2 (S1): the same layout under type 0x03. Written out
+    // by hand from docs/wire-format.md; never regenerate them with the codec.
+    private val preKeyV2VectorWithOneTimePreKey = hex(
+        "0103" + "00000007" + "01" + "0000002a"
+            + "1111111111111111111111111111111111111111111111111111111111111111"
+            + "1111111111111111111111111111111111111111111111111111111111111111"
+            + "2222222222222222222222222222222222222222222222222222222222222222"
+            + "2222222222222222222222222222222222222222222222222222222222222222"
+            + "00000002" + "cafe",
+    )
+
+    private val preKeyV2VectorWithoutOneTimePreKey = hex(
+        "0103" + "01020304" + "00"
+            + "1111111111111111111111111111111111111111111111111111111111111111"
+            + "1111111111111111111111111111111111111111111111111111111111111111"
+            + "2222222222222222222222222222222222222222222222222222222222222222"
+            + "2222222222222222222222222222222222222222222222222222222222222222"
+            + "00000003" + "abcdef",
+    )
+
+    @Test
+    fun preKeyMessageV2MatchesVectors() {
+        val with = preKeyMessage(initiationVersion = SessionInitiationVersion.V2)
+        assertContentEquals(preKeyV2VectorWithOneTimePreKey, CiphertextMessageCodec.encode(with))
+        assertPreKeyMessageEquals(with, CiphertextMessageCodec.decode(preKeyV2VectorWithOneTimePreKey))
+
+        val without = preKeyMessage(
+            signedPreKeyId = 0x01020304,
+            oneTimePreKeyId = null,
+            ratchet = hex("abcdef"),
+            initiationVersion = SessionInitiationVersion.V2,
+        )
+        assertContentEquals(preKeyV2VectorWithoutOneTimePreKey, CiphertextMessageCodec.encode(without))
+        assertPreKeyMessageEquals(without, CiphertextMessageCodec.decode(preKeyV2VectorWithoutOneTimePreKey))
+    }
+
+    @Test
+    fun theTypeByteSelectsTheInitiationVersion() {
+        // Only the type byte differs between the two versions.
+        val v1 = CiphertextMessageCodec.encode(preKeyMessage())
+        val v2 = CiphertextMessageCodec.encode(preKeyMessage(initiationVersion = SessionInitiationVersion.V2))
+        assertEquals(v1.size, v2.size)
+        assertEquals(listOf(1), v1.indices.filter { v1[it] != v2[it] })
+        assertEquals(SessionInitiationVersion.V1, assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(v1)).initiationVersion)
+        assertEquals(SessionInitiationVersion.V2, assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(v2)).initiationVersion)
+    }
 
     private inline fun <reified T : ProtocolException> assertRejected(bytes: ByteArray) {
         assertFailsWith<T> { CiphertextMessageCodec.decode(bytes) }
@@ -263,7 +314,7 @@ class CiphertextMessageCodecTest {
 
     @Test
     fun unknownMessageTypeIsRejected() {
-        for (type in listOf(0x00, 0x03, 0xff)) {
+        for (type in listOf(0x00, 0x04, 0xff)) {
             val exception = assertFailsWith<ProtocolException.UnknownMessageType> {
                 CiphertextMessageCodec.decode(ratchetVector.copyOf().also { it[1] = type.toByte() })
             }
@@ -276,6 +327,7 @@ class CiphertextMessageCodecTest {
         assertEquals(1, CiphertextMessageCodec.WIRE_VERSION)
         assertEquals(1, CiphertextMessageCodec.TYPE_RATCHET_MESSAGE)
         assertEquals(2, CiphertextMessageCodec.TYPE_PREKEY_MESSAGE)
+        assertEquals(3, CiphertextMessageCodec.TYPE_PREKEY_MESSAGE_V2)
         assertEquals(262_144, CiphertextMessageCodec.MAX_RATCHET_PAYLOAD_SIZE)
         assertEquals(262_144 + 143, CiphertextMessageCodec.MAX_ENCODED_SIZE)
     }
@@ -295,14 +347,14 @@ class CiphertextMessageCodecTest {
         val bob = engine.party(BOB)
         fun wire(message: CiphertextMessage) = CiphertextMessageCodec.decode(CiphertextMessageCodec.encode(message))
 
-        val aliceSession = engine.initiateSession(alice.identity, bob.bundle())
+        val aliceSession = engine.initiateSession(alice.identity, alice.address, bob.bundle())
         val first = engine.encrypt(aliceSession, "Hello Bob".encodeToByteArray())
         val preKeyMessage = assertIs<PreKeyMessage>(wire(first.message))
         val accepted = engine.accept(bob, ALICE, preKeyMessage)
         assertEquals("Hello Bob", accepted.plaintext.decodeToString())
 
         val reply = engine.encrypt(accepted.session, "Hello Alice".encodeToByteArray())
-        val decrypted = engine.decrypt(first.updatedSession, assertIs<RatchetMessage>(wire(reply.message)))
+        val decrypted = engine.decrypt(first.updatedSession, assertIs<RatchetMessage>(wire(reply.message)), alice.identity.publicKey)
         assertEquals("Hello Alice", decrypted.plaintext.decodeToString())
     }
 }

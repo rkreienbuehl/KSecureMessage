@@ -62,7 +62,7 @@ class KSecureMessageRoutesTest {
     """.trimIndent()
 
     @Test
-    fun publishedKeysAreServedAsBase64AndConsumed() = testServer { storage, http ->
+    fun publishedKeysAreServedAsBase64AndConsumed() = testServer(TestDeviceRegistrationAuthorizer.allowAll()) { storage, http ->
         val transport = registered(http)
         val published = publication()
         transport.publishPreKeys(published, bobDevice.signer)
@@ -85,13 +85,13 @@ class KSecureMessageRoutesTest {
     }
 
     @Test
-    fun publishReturnsNoContent() = testServer { _, http ->
+    fun publishReturnsNoContent() = testServer(TestDeviceRegistrationAuthorizer.allowAll()) { _, http ->
         registered(http)
         assertEquals(HttpStatusCode.NoContent, http.putPreKeys(validJson()).status)
     }
 
     @Test
-    fun exhaustedInventoryReturnsBundleWithoutOneTimePreKey() = testServer { _, http ->
+    fun exhaustedInventoryReturnsBundleWithoutOneTimePreKey() = testServer(TestDeviceRegistrationAuthorizer.allowAll()) { _, http ->
         val transport = registered(http)
         transport.publishPreKeys(publication(oneTimePreKeys = IntRange.EMPTY), bobDevice.signer)
         val raw = Json.parseToJsonElement(http.get("/v1/devices/bob/laptop/prekey-bundle").bodyAsText()).jsonObject
@@ -100,7 +100,7 @@ class KSecureMessageRoutesTest {
     }
 
     @Test
-    fun unknownDeviceIsNotFound() = testServer { _, http ->
+    fun unknownDeviceIsNotFound() = testServer(TestDeviceRegistrationAuthorizer.allowAll()) { _, http ->
         assertEquals(HttpStatusCode.NotFound, http.get("/v1/devices/bob/laptop/prekey-bundle").status)
         assertFailsWith<SecureMessageTransportException.DeviceNotFound> {
             KtorSecureMessageTransport("", http).fetchPreKeyBundle(bob)
@@ -108,7 +108,7 @@ class KSecureMessageRoutesTest {
     }
 
     @Test
-    fun malformedRequestsAreBadRequestsAndChangeNothing() = testServer { storage, http ->
+    fun malformedRequestsAreBadRequestsAndChangeNothing() = testServer(TestDeviceRegistrationAuthorizer.allowAll()) { storage, http ->
         val transport = registered(http)
         transport.publishPreKeys(publication(oneTimePreKeys = 0..0), bobDevice.signer)
         val bodies = listOf(
@@ -132,7 +132,7 @@ class KSecureMessageRoutesTest {
     }
 
     @Test
-    fun conflictsAreReportedAndChangeNothing() = testServer { storage, http ->
+    fun conflictsAreReportedAndChangeNothing() = testServer(TestDeviceRegistrationAuthorizer.allowAll()) { storage, http ->
         val transport = registered(http)
         transport.publishPreKeys(publication(oneTimePreKeys = 0..2, signedPreKeyId = 5), bobDevice.signer)
 
@@ -155,7 +155,7 @@ class KSecureMessageRoutesTest {
     }
 
     @Test
-    fun concurrentHttpFetchesNeverShareAOneTimePreKey() = testServer { _, http ->
+    fun concurrentHttpFetchesNeverShareAOneTimePreKey() = testServer(TestDeviceRegistrationAuthorizer.allowAll()) { _, http ->
         val transport = registered(http)
         transport.publishPreKeys(publication(oneTimePreKeys = 0..9), bobDevice.signer)
 
@@ -168,7 +168,7 @@ class KSecureMessageRoutesTest {
     }
 
     @Test
-    fun pathSegmentsAreEncoded() = testServer { storage, http ->
+    fun pathSegmentsAreEncoded() = testServer(TestDeviceRegistrationAuthorizer.allowAll()) { storage, http ->
         val odd = DeviceAddress(UserId("bob/with slash"), DeviceId("dev?ice#1"))
         val oddDevice = TestDevice(odd)
         val transport = registered(http)
@@ -180,16 +180,18 @@ class KSecureMessageRoutesTest {
     }
 
     @Test
-    fun eachSendersEnvelopesArriveInSendOrderOverHttp() = testServer { _, http ->
+    fun eachSendersEnvelopesArriveInSendOrderOverHttp() = testServer(TestDeviceRegistrationAuthorizer.allowAll()) { _, http ->
         val transport = registered(http)
-        val senders = List(4) { DeviceAddress(UserId("sender-$it"), DeviceId("phone")) }
+        val senderDevices = List(4) { TestDevice(DeviceAddress(UserId("sender-$it"), DeviceId("phone"))).also { device -> device.register(transport) } }
+        val senders = senderDevices.map { it.address }
         val carol = DeviceAddress(UserId("carol"), DeviceId("tablet"))
         val devices = listOf(bobDevice, TestDevice(carol)).onEach { it.register(transport) }.associateBy { it.address }
 
         // Each sender sends sequentially (as SecureMessageClient.send does);
         // the senders run concurrently, to two recipients.
         coroutineScope {
-            senders.map { sender ->
+            senderDevices.map { senderDevice ->
+                val sender = senderDevice.address
                 async {
                     repeat(25) { sequence ->
                         for (recipient in listOf(bob, carol)) {
@@ -200,6 +202,7 @@ class KSecureMessageRoutesTest {
                                     recipient = recipient,
                                     payload = byteArrayOf(sequence.toByte()),
                                 ),
+                                senderDevice.signer,
                             )
                         }
                     }
