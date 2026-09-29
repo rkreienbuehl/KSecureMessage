@@ -3,6 +3,7 @@
 # and git-ignored. The gate is `mkdocs build --strict`: every warning below,
 # including broken links, anchors and pages missing from the nav, fails it.
 site_name: KSecureMessage
+site_url: https://rkreienbuehl.github.io/KSecureMessage/
 site_description: Kotlin Multiplatform secure messaging library built on Kodium (X3DH, Double Ratchet)
 repo_url: https://github.com/rkreienbuehl/KSecureMessage
 repo_name: rkreienbuehl/KSecureMessage
