@@ -4,7 +4,7 @@ KSecureMessage is an early-stage (pre-1.0) Kotlin Multiplatform library for Sign
 
 It is not Signal, not compatible with Signal/libsignal, not formally verified and **not independently audited**. There is no sealed sender: the server sees routing metadata. Delivery is at least once, not exactly once.
 
-**Documentation:** [docs/](docs/index.md) (source of the documentation site; start with [Getting started](docs/getting-started.md)).
+**Documentation:** <https://rkreienbuehl.github.io/KSecureMessage/> (start with [Getting started](https://rkreienbuehl.github.io/KSecureMessage/getting-started/), API reference under [/api/](https://rkreienbuehl.github.io/KSecureMessage/api/)). Source: [docs/](docs/index.md).
 
 ## Status
 
@@ -57,7 +57,7 @@ Details: [docs/supported-platforms.md](docs/supported-platforms.md).
 
 ## Security
 
-Read [docs/security-review.md](docs/security-review.md) (threat model and known limitations) before depending on KSecureMessage. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), never in a public issue.
+Read [docs/security-review.md](docs/security-review.md) (threat model and known limitations) before depending on KSecureMessage. Report vulnerabilities privately through [GitHub private vulnerability reporting](https://github.com/rkreienbuehl/KSecureMessage/security/advisories/new) as described in [SECURITY.md](SECURITY.md), never in a public issue.
 
 ## Building
 

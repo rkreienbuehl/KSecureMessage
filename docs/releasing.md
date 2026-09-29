@@ -139,6 +139,9 @@ publishing enabled.
 
 ## Documentation site
 
+Live site: <https://rkreienbuehl.github.io/KSecureMessage/> (API reference
+under `/api/`), deployed by `docs.yml` from `main`.
+
 The site is MkDocs (Material theme) over `docs/` (the only documentation
 source; `SECURITY.md` is included, not copied) plus the Dokka API reference
 of the published modules. Tools are pinned with hashes in
