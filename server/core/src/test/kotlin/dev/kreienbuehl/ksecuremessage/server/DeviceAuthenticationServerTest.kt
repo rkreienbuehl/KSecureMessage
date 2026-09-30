@@ -90,7 +90,7 @@ class DeviceAuthenticationServerTest {
 
     private suspend fun register(address: DeviceAddress, keyPair: DeviceAuthenticationKeyPair, nonce: RequestNonce = RequestNonce.random()): Boolean {
         val body = registrationBody(keyPair)
-        return server.registerDevice(registration(address, keyPair), body, sign(keyPair, address, "PUT", ServerApiPaths.REGISTRATION, body, nonce = nonce))
+        return server.registerDeviceAsUserOwner(registration(address, keyPair), body, sign(keyPair, address, "PUT", ServerApiPaths.REGISTRATION, body, nonce = nonce))
     }
 
     private fun drainAuthentication(keyPair: DeviceAuthenticationKeyPair = aliceKey, address: DeviceAddress = alice, offset: Duration = Duration.ZERO) =
@@ -125,13 +125,13 @@ class DeviceAuthenticationServerTest {
         for (size in listOf(0, 31, 33, 64)) {
             val keyPair = DeviceAuthenticationKeyPair(ByteArray(size) { 7 }, aliceKey.privateKey)
             assertFailsWith<DeviceRegistrationException.InvalidRegistration> {
-                server.registerDevice(registration(alice, keyPair), body, sign(aliceKey, alice, "PUT", ServerApiPaths.REGISTRATION, body))
+                server.registerDeviceAsUserOwner(registration(alice, keyPair), body, sign(aliceKey, alice, "PUT", ServerApiPaths.REGISTRATION, body))
             }
         }
         // 32 bytes that are not a usable Ed25519 key never verify.
         val bogus = DeviceAuthenticationKeyPair(ByteArray(32) { 0xFF.toByte() }, aliceKey.privateKey)
         assertFailsWith<DeviceAuthenticationException.InvalidAuthentication> {
-            server.registerDevice(registration(alice, bogus), body, sign(aliceKey, alice, "PUT", ServerApiPaths.REGISTRATION, body))
+            server.registerDeviceAsUserOwner(registration(alice, bogus), body, sign(aliceKey, alice, "PUT", ServerApiPaths.REGISTRATION, body))
         }
         assertNull(storage.devices.registration(alice))
     }
@@ -139,7 +139,7 @@ class DeviceAuthenticationServerTest {
     @Test
     fun registrationNeedsProofOfPossession() = runTest {
         val body = registrationBody(aliceKey)
-        suspend fun attempt(authentication: RequestAuthentication?) = server.registerDevice(registration(alice, aliceKey), body, authentication)
+        suspend fun attempt(authentication: RequestAuthentication?) = server.registerDeviceAsUserOwner(registration(alice, aliceKey), body, authentication)
 
         assertFailsWith<DeviceAuthenticationException.MissingAuthentication> { attempt(null) }
         // Signed by someone else than the holder of the key being registered.

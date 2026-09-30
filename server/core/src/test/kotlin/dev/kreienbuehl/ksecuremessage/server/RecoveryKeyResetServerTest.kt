@@ -108,19 +108,19 @@ class RecoveryKeyResetServerTest {
     private suspend fun setUp(
         storage: ServerStorage = InMemoryServerStorage(),
         policy: RecoveryKeyResetPolicy? = RecoveryKeyResetPolicy(delay),
-    ): Pair<ServerStorage, SecureMessageServer> {
+    ): Pair<ServerStorage, SecureMessageServer<TestRegistrationPrincipal>> {
         val server = SecureMessageServer(storage, clock, TestDeviceRegistrationAuthorizer.allowAll(), policy)
         for ((address, key) in keys) {
             val body = key.publicKey
             val request = ServerRequest(address, "PUT", ServerApiPaths.device(address, ServerApiPaths.REGISTRATION), body)
-            server.registerDevice(DeviceRegistration(address, key.publicKey), body, ServerRequestAuthentication.sign(key, request, clock.now()))
+            server.registerDeviceAsUserOwner(DeviceRegistration(address, key.publicKey), body, ServerRequestAuthentication.sign(key, request, clock.now()))
         }
         assertTrue(server.registerLastDeviceRecoveryKey(server.signed(laptop, ProtectedEndpoint.REGISTER_LAST_DEVICE_RECOVERY_KEY), LastDeviceRecovery.registerKey(r1, phone.userId)))
         assertTrue(server.registerLastDeviceRecoveryKey(server.signed(bob, ProtectedEndpoint.REGISTER_LAST_DEVICE_RECOVERY_KEY), LastDeviceRecovery.registerKey(bobRecovery, bob.userId)))
         return storage to server
     }
 
-    private suspend fun SecureMessageServer.signed(
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.signed(
         address: DeviceAddress,
         endpoint: ProtectedEndpoint,
         key: DeviceAuthenticationKeyPair = keys.getValue(address),
@@ -129,30 +129,30 @@ class RecoveryKeyResetServerTest {
         return authenticate(address, endpoint, ByteArray(0), ServerRequestAuthentication.sign(key, request, clock.now()))
     }
 
-    private suspend fun SecureMessageServer.request(by: DeviceAddress = phone) =
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.request(by: DeviceAddress = phone) =
         requestLastDeviceRecoveryKeyReset(signed(by, ProtectedEndpoint.REQUEST_LAST_DEVICE_RECOVERY_KEY_RESET))
 
-    private suspend fun SecureMessageServer.pending(by: DeviceAddress = phone): RecoveryKeyResetStatus.Pending = request(by).reset
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.pending(by: DeviceAddress = phone): RecoveryKeyResetStatus.Pending = request(by).reset
 
-    private suspend fun SecureMessageServer.resetStatus(by: DeviceAddress = laptop) =
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.resetStatus(by: DeviceAddress = laptop) =
         lastDeviceRecoveryKeyResetStatus(signed(by, ProtectedEndpoint.READ_LAST_DEVICE_RECOVERY_KEY_RESET))
 
-    private suspend fun SecureMessageServer.complete(
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.complete(
         reset: RecoveryKeyResetStatus.Pending,
         new: LastDeviceRecoveryKey = r2,
         by: DeviceAddress = laptop,
     ) = complete(RecoveryKeyReset.complete(new, reset, by), by)
 
-    private suspend fun SecureMessageServer.complete(authorization: RecoveryKeyResetCompletionAuthorization, by: DeviceAddress = authorization.statement.completer) =
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.complete(authorization: RecoveryKeyResetCompletionAuthorization, by: DeviceAddress = authorization.statement.completer) =
         completeLastDeviceRecoveryKeyReset(signed(by, ProtectedEndpoint.COMPLETE_LAST_DEVICE_RECOVERY_KEY_RESET), authorization)
 
-    private suspend fun SecureMessageServer.cancel(reset: RecoveryKeyResetStatus.Pending, by: DeviceAddress = laptop) =
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.cancel(reset: RecoveryKeyResetStatus.Pending, by: DeviceAddress = laptop) =
         cancelLastDeviceRecoveryKeyReset(signed(by, ProtectedEndpoint.CANCEL_LAST_DEVICE_RECOVERY_KEY_RESET), reset.resetId)
 
-    private suspend fun SecureMessageServer.keyStatus(by: DeviceAddress = laptop) =
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.keyStatus(by: DeviceAddress = laptop) =
         lastDeviceRecoveryKeyStatus(signed(by, ProtectedEndpoint.READ_LAST_DEVICE_RECOVERY_KEY))
 
-    private suspend fun SecureMessageServer.assertActive(key: LastDeviceRecoveryKey, epoch: Long) {
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.assertActive(key: LastDeviceRecoveryKey, epoch: Long) {
         val status = assertIs<LastDeviceRecoveryKeyStatus.Active>(keyStatus())
         assertEquals(epoch, status.epoch)
         assertTrue(status.isKey(key.publicKey))

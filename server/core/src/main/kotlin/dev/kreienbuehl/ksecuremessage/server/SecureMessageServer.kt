@@ -26,6 +26,7 @@ import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryKeyException
 import dev.kreienbuehl.ksecuremessage.storage.MailboxRepository
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyPublicationException
 import dev.kreienbuehl.ksecuremessage.storage.ServerStorage
+import kotlinx.coroutines.CancellationException
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -46,17 +47,19 @@ import kotlin.time.Instant
  * [deviceRegistrationAuthorizer] is required and has no allow-all default:
  * KSecureMessage does not know who owns a user ID, so the host decides
  * which device may become one of a user's devices (S1,
- * docs/security-review-remediation.md).
+ * docs/security-review-remediation.md). [C] is the host's request
+ * authentication context the authorizer decides with (S1.1, finding N1);
+ * [registerDevice] takes it per request.
  *
  * [recoveryKeyResetPolicy] enables delayed recovery key resets
  * (docs/recovery-key-reset.md) with the host's delay; `null` (the default)
  * disables them: requests are refused, while an already pending reset can
  * still be read, cancelled and completed.
  */
-class SecureMessageServer(
+class SecureMessageServer<C : Any>(
     private val storage: ServerStorage,
     private val clock: Clock,
-    private val deviceRegistrationAuthorizer: DeviceRegistrationAuthorizer,
+    private val deviceRegistrationAuthorizer: DeviceRegistrationAuthorizer<C>,
     recoveryKeyResetPolicy: RecoveryKeyResetPolicy? = null,
 ) {
     private val preKeys = PreKeyService(storage.preKeys)
@@ -69,9 +72,12 @@ class SecureMessageServer(
 
     /**
      * Registers the device authentication key of [registration]'s address.
-     * [body] is the exact HTTP body the request carried and [authentication]
-     * must be signed with the key being registered. Returns `true` for a
-     * first registration, `false` if exactly this key was registered before.
+     * [context] is the host's authentication context of this request (for
+     * example the authenticated account principal), `null` if the host could
+     * not establish one. [body] is the exact HTTP body the request carried
+     * and [authentication] must be signed with the key being registered.
+     * Returns `true` for a first registration, `false` if exactly this key
+     * was registered before.
      *
      * A first registration records [clock]'s time as the key's installation
      * time; a repeated registration of the same key keeps the recorded one.
@@ -80,21 +86,25 @@ class SecureMessageServer(
      * the wrong size, [DeviceAuthenticationException] if the request is not
      * authenticated with that key (nothing is registered),
      * [DeviceRegistrationException.Conflict] if another key is registered (a
-     * registered key is never replaced) and
-     * [DeviceRegistrationException.NotAuthorized] if the host's
-     * [DeviceRegistrationAuthorizer] denied it. An exception the authorizer
-     * throws propagates unchanged. In every failure nothing is registered;
-     * only the request's nonce is claimed.
+     * registered key is never replaced),
+     * [DeviceRegistrationException.NotAuthorized] if [context] is `null` or
+     * the host's [DeviceRegistrationAuthorizer] denied it, and
+     * [DeviceRegistrationAuthorizationFailedException] if the authorizer
+     * threw. In every failure nothing is registered; only the request's
+     * nonce is claimed.
      *
      * Order: size → authentication (key possession, window, nonce) →
-     * existing registration (same key: `false` without asking the host;
-     * other key: conflict) → host authorization → store. Every first
-     * registration of an address, including a user's first device, needs
-     * the host's authorization. There is no reset; only [recoverDevice],
-     * [rotateDeviceAuthenticationKey] and [recoverLastDevice] replace a
-     * registered key.
+     * existing registration (same key: `false` without asking the host, so
+     * lost-response retries and the recovery/rotation probes need no
+     * context; other key: conflict) → context present → host authorization
+     * with [context] (outside every storage transaction) → atomic store.
+     * Every first registration of an address, including a user's first
+     * device, needs the host's authorization. There is no reset; only
+     * [recoverDevice], [rotateDeviceAuthenticationKey] and [recoverLastDevice]
+     * replace a registered key.
      */
     suspend fun registerDevice(
+        context: C?,
         registration: DeviceRegistration,
         body: ByteArray,
         authentication: RequestAuthentication?,
@@ -109,18 +119,24 @@ class SecureMessageServer(
             if (existing.publicKey.contentEquals(registration.publicKey)) return false
             throw DeviceRegistrationException.Conflict()
         }
-        val userState = if (storage.devices.hasRegisteredDevices(registration.address.userId)) {
-            DeviceRegistrationUserState.USER_HAS_REGISTERED_DEVICES
-        } else {
-            DeviceRegistrationUserState.USER_HAS_NO_REGISTERED_DEVICES
+        // No context, no membership: never an anonymous allow path (S1.1, N1).
+        context ?: throw DeviceRegistrationException.NotAuthorized()
+        val request = DeviceRegistrationAuthorizationRequest(registration.address, registration.publicKey)
+        val decision = try {
+            deviceRegistrationAuthorizer.authorize(context, request)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw DeviceRegistrationAuthorizationFailedException(e)
         }
-        val request = DeviceRegistrationAuthorizationRequest(registration.address, registration.publicKey, userState)
-        when (deviceRegistrationAuthorizer.authorize(request)) {
+        when (decision) {
             DeviceRegistrationAuthorizationResult.Authorized -> Unit
             DeviceRegistrationAuthorizationResult.Denied -> throw DeviceRegistrationException.NotAuthorized()
         }
-        // A concurrent registration of the same address may have won meanwhile: register() still
-        // returns false for the same key and throws Conflict for another one.
+        // The decision depends on no KSecureMessage state (S1.1, N2); the only state
+        // precondition, "address not registered", is enforced by the atomic register():
+        // a concurrent registration that won meanwhile gives false for the same key and
+        // Conflict for another one.
         return storage.devices.register(registration, installedAt = Instant.fromEpochMilliseconds(clock.now().toEpochMilliseconds()))
     }
 

@@ -142,10 +142,6 @@ class SqlDelightServerStorage private constructor(
             false
         }
 
-        override suspend fun hasRegisteredDevices(userId: UserId): Boolean = transaction {
-            countRegisteredDevicesOfUser(userId.value).executeAsOne() > 0
-        }
-
         override suspend fun registrationState(address: DeviceAddress): DeviceRegistrationState? = transaction {
             loadState(address)
         }

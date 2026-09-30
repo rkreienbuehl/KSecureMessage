@@ -6,8 +6,13 @@ fixes their trust roots. Where the vulnerable behavior was part of a format
 or an API, S1 versions or breaks it on purpose: security takes precedence
 over compatibility with the vulnerable behavior.
 
-**Status of every finding: FIXED — PENDING RE-REVIEW.** Nothing here is
-closed until an independent reviewer has checked it. S1 is not an audit.
+**S1 re-review result:** passed with residual risks (F1/F2, F3, F4, F5/F6,
+F8, F9 closed; F7 partially fixed), plus new findings N1–N3 and
+documentation findings D1–D7. **S1.1** (section [S1.1 follow-up](#s11-follow-up))
+addresses exactly those. Status of N1–N3: **FIXED — PENDING RE-REVIEW**;
+F7: **PARTIALLY FIXED — RESIDUAL RISK DOCUMENTED**. Nothing here is closed
+until an independent reviewer has checked it. Neither S1 nor S1.1 is an
+audit.
 
 Path prefixes: `P` = `core/protocol/src/commonMain/kotlin/dev/kreienbuehl/ksecuremessage/protocol`,
 `C` = `client/core/src/commonMain/kotlin/dev/kreienbuehl/ksecuremessage/client`,
@@ -21,13 +26,17 @@ Path prefixes: `P` = `core/protocol/src/commonMain/kotlin/dev/kreienbuehl/ksecur
 
 | ID | Severity | Root cause | Fix | Status |
 |---|---|---|---|---|
-| F1/F2 | HIGH | Registration was trust on first registration: anyone could register a device under an existing `UserId` and then act as one of the user's devices | Host-provided `DeviceRegistrationAuthorizer`, required for every first registration, including a user's first device | FIXED — PENDING RE-REVIEW |
-| F3 | MEDIUM | `SessionInitiationId` v1 hashed ephemeral-key bytes (Ed25519 half) and prekey IDs that X3DH and the v1 associated data do not authenticate | Session initiation v2: ID = SHA-256 of a canonical transcript that is also the session's associated data | FIXED — PENDING RE-REVIEW |
-| F4 | MEDIUM | The sender `DeviceAddress` of a first contact came from the unauthenticated envelope; submission was public | Signed message submission (server checks sender = signer) **and** addresses in the v2 transcript | FIXED — PENDING RE-REVIEW |
-| F5/F6 | LOW | Request-supplied identifiers (possibly with CR/LF) were interpolated into log lines | Log-only escaping (`logSafe`, `forLog`) of every request-supplied identifier | FIXED — PENDING RE-REVIEW |
-| F7 | LOW | A plaintext `storage_encryption.format = 0` marker sent an encrypted database back through the plaintext migration | Structural checks, `StorageKeyProvider.hasKeys()` and an authenticated migration intent (record type 13) | FIXED — PENDING RE-REVIEW |
-| F8 | LOW | Freshness check and nonce prune used different callers' clocks; a nonce could be pruned while its request was still fresh | Monotonic prune watermark inside the atomic claim | FIXED — PENDING RE-REVIEW |
-| F9 | LOW | A `PreKeyMessage` on a locally initiated legacy session was checked against the initiator slot, which is the local key, and then pinned | Responder-role check in the engine; legacy pins only from `sessionRemoteIdentityKey` | FIXED — PENDING RE-REVIEW |
+| F1/F2 | HIGH | Registration was trust on first registration: anyone could register a device under an existing `UserId` and then act as one of the user's devices | Host-provided `DeviceRegistrationAuthorizer`, required for every first registration, including a user's first device | CLOSED (re-review) |
+| F3 | MEDIUM | `SessionInitiationId` v1 hashed ephemeral-key bytes (Ed25519 half) and prekey IDs that X3DH and the v1 associated data do not authenticate | Session initiation v2: ID = SHA-256 of a canonical transcript that is also the session's associated data | CLOSED (re-review) |
+| F4 | MEDIUM | The sender `DeviceAddress` of a first contact came from the unauthenticated envelope; submission was public | Signed message submission (server checks sender = signer) **and** addresses in the v2 transcript | CLOSED (re-review) |
+| F5/F6 | LOW | Request-supplied identifiers (possibly with CR/LF) were interpolated into log lines | Log-only escaping (`logSafe`, `forLog`) of every request-supplied identifier | CLOSED (re-review) |
+| F7 | LOW | A plaintext `storage_encryption.format = 0` marker sent an encrypted database back through the plaintext migration | Structural checks, `StorageKeyProvider.hasKeys()` and an authenticated migration intent (record type 13); S1.1: residual risks documented (intent replay, provider state trust, Android `hasKeys`) | PARTIALLY FIXED — RESIDUAL RISK DOCUMENTED |
+| F8 | LOW | Freshness check and nonce prune used different callers' clocks; a nonce could be pruned while its request was still fresh | Monotonic prune watermark inside the atomic claim | CLOSED (re-review) |
+| F9 | LOW | A `PreKeyMessage` on a locally initiated legacy session was checked against the initiator slot, which is the local key, and then pinned | Responder-role check in the engine; legacy pins only from `sessionRemoteIdentityKey` | CLOSED (re-review) |
+| N1 | MEDIUM | The registration authorizer received no host authentication context, so "may *this caller* register for this `UserId`?" was not expressible | Generic `DeviceRegistrationAuthorizer<C>` with the host's context; required `DeviceRegistrationContextExtractor<C>` in the Ktor routes; no context = denied | FIXED — PENDING RE-REVIEW |
+| N2 | LOW | `userState` ("user has no devices") was read outside the atomic registration write and presented as a fact | `DeviceRegistrationUserState` and `hasRegisteredDevices` removed; no authorization input depends on KSecureMessage's registrations | FIXED — PENDING RE-REVIEW |
+| N3 | LOW | An unanswered v1 initiation could win the collision comparison against a v2 initiation that the upgraded peer needs, deadlocking both sides | Unanswered v1 initiations never win, are never sent again and are replaced by v2 on receive and on send | FIXED — PENDING RE-REVIEW |
+| D1–D7 | DOC | Documentation described unreachable authorizer inputs, a racy value as authoritative, and understated legacy and storage residuals | Corrected, see [S1.1 follow-up](#s11-follow-up) | FIXED — PENDING RE-REVIEW |
 
 ## F1/F2 — Unauthenticated user membership at registration
 
@@ -49,8 +58,8 @@ its reset. E2EE plaintext stayed encrypted.
   no allow-all class in production code.
 - `registerDevice` order: size → proof of possession (ServerAuth with the
   key in the body, window, nonce) → existing registration (same key → `204`
-  without asking; other key → `409`) → host authorization (`USER_HAS_NO_…` /
-  `USER_HAS_REGISTERED_DEVICES`) → atomic `register`. Nothing is stored
+  without asking; other key → `409`) → host authorization (S1: with `USER_HAS_NO_…` /
+  `USER_HAS_REGISTERED_DEVICES`; S1.1: with the host context instead) → atomic `register`. Nothing is stored
   before `Authorized`.
 - `DeviceRegistrationException.NotAuthorized` → `403
   registration_not_authorized`; an authorizer exception → `500
@@ -89,11 +98,16 @@ prekeys and mailbox unchanged), `f1FakeFirstDeviceOfAUserIsDenied`,
 `f1ClientTransportReportsTheDenial`, `sameKeyRetryIs204WithoutAskingTheHost`,
 `authorizerFailureIsAGeneric500`, `registrationKeyMustBeCanonicalBase64`.
 `storage:testing` `DeviceRegistrationRepositoryContractTest.hasRegisteredDevicesComparesTheExactUserIdAndChangesNothing`
-(in-memory, SQLDelight, file-backed).
+(in-memory, SQLDelight, file-backed; removed with `hasRegisteredDevices` in S1.1).
 
 **Remaining limitations.** KSecureMessage still does not authenticate human
 or account ownership: the host's authorizer does. A host that authorizes
 everyone reopens F1/F2. A denied request consumes its own nonce.
+
+**S1.1 changes to this fix:** the authorizer now receives the host's
+authentication context and no longer a `DeviceRegistrationUserState`;
+`hasRegisteredDevices` and its contract test are removed (findings N1, N2).
+The S1 test names above were kept and adapted.
 
 ## F3 — Unauthenticated bytes in `SessionInitiationId`
 
@@ -278,11 +292,32 @@ with the intent). `storage:encryption` `StorageCipherTest.migrationIntentVector`
 (independently computed), `migrationIntentIsNoKeyCheckAndNeedsItsKey`.
 `storage:testing` `StorageKeyProviderContractTest.hasKeys*`.
 
-**Remaining limitations.** Not whole-database rollback protection. A crash
-between key creation and the intent commit fails closed (manual recovery).
-A copy of the file taken while a genuine first migration was interrupted
-could be replayed later. `StaticStorageKeyProvider` cannot migrate a
-milestone 8 database (deliberate).
+**Remaining limitations (S1.1: stated precisely, finding D6/D7).**
+
+- **What S1 protects:** a database whose provider holds its key cannot be
+  pushed back through the plaintext migration by editing the database file
+  alone, unless the attacker holds a valid migration intent.
+- **Intent replay across time:** an intent captured while a genuine first
+  migration was interrupted stays valid as long as that storage key exists.
+  Completing the migration clears it in that database only, not in the
+  attacker's copy.
+- **Intent replay across databases:** the intent is bound to the provider
+  key, not to a database; under the same provider (namespace and key) it
+  opens in any reconstructed database. The window closes when that storage
+  key is rotated out and removed. A per-database random ID was not added: it
+  would sit in the same attacker-writable file.
+- **Provider state is trusted:** the check assumes the provider's backing
+  state is intact. `AndroidStorageKeyProvider.hasKeys()` reads the wrapped
+  key file, not the Keystore alias: an attacker who can delete that file in
+  the app sandbox makes the provider look empty, and a downgraded database
+  then passes as a first migration. No protection against modification of
+  both database and provider state.
+- Not whole-database or provider rollback protection. A crash between key
+  creation and the intent commit fails closed (manual recovery).
+  `StaticStorageKeyProvider` cannot migrate a milestone 8 database
+  (deliberate).
+
+**Status:** PARTIALLY FIXED — RESIDUAL RISK DOCUMENTED (accepted for v0.x).
 
 ## F8 — Nonce pruned while its request is still fresh
 
@@ -349,8 +384,256 @@ fixture), `f9ResponderLegacySessionPinsTheAuthenticatedInitiatorKey`,
 `f9LegacyInitiatorSessionRejectsARewrappedMessageNamingItsOwnIdentity`,
 `sessionRemoteIdentityKeyNeverReturnsTheLocalKey`.
 
-**Remaining limitations.** A locally initiated session from before pinning
-stays unpinned until an authenticated new initiation replaces it.
+**Remaining limitations (corrected in S1.1, finding D4).** The S1 text said
+a locally initiated session from before pinning "stays unpinned until an
+authenticated new initiation replaces it", but the S1 code refused every
+replacement of an unpinned session. Since S1.1: an unpinned session is
+replaced only by a v2 initiation naming exactly the identity it was
+established with as remote (`sessionRemoteIdentityKey`), which is then
+pinned; any other key, or an undeterminable one, is still refused
+(`InvalidMessage`) and only the application can remove such a session. An
+unanswered v1 initiation is replaced by any authenticated v2 initiation
+(finding N3).
+
+## S1.1 follow-up
+
+The S1 re-review passed with residual risks and reported N1–N3 and D1–D7.
+S1.1 addresses only those. No new wire, cryptographic or record format, no
+client or server schema change.
+
+### N1 — Registration authorizer without the host's request context
+
+**Severity:** MEDIUM.
+
+**Root cause.** `DeviceRegistrationAuthorizer.authorize(request)` saw only
+the address, the proposed key and `userState`. The docs suggested account
+tokens, sessions or enrollment codes, but nothing carried them from the
+HTTP call to the authorizer, so a host could not answer "may *this caller*
+register this device for this `UserId`?" without side channels
+(thread-locals, global request state).
+
+**Fix.**
+
+- `S/DeviceRegistrationAuthorizer.kt`: `fun interface
+  DeviceRegistrationAuthorizer<in C : Any> { suspend fun authorize(context: C,
+  request): DeviceRegistrationAuthorizationResult }`. `C` is opaque host
+  state (principal, session, OAuth subject, enrollment grant); never logged,
+  serialized, stored, returned or put into a signed or hashed input.
+- `SecureMessageServer<C : Any>(storage, clock, deviceRegistrationAuthorizer:
+  DeviceRegistrationAuthorizer<C>, recoveryKeyResetPolicy = null)`;
+  `registerDevice(context: C?, registration, body, authentication)`. Order:
+  size → proof of possession → existing registration (same key `false`,
+  other key `Conflict`, no host call, no context needed) → `context == null`
+  → `NotAuthorized` → authorizer (outside every storage transaction) →
+  atomic `register`. An authorizer exception becomes
+  `DeviceRegistrationAuthorizationFailedException` (fixed message, host
+  exception as `cause`).
+- `K/DeviceRegistrationContextExtractor.kt`: `fun interface
+  DeviceRegistrationContextExtractor<out C : Any> { suspend fun
+  extract(call: ApplicationCall): C? }`; `fun <C : Any>
+  Route.kSecureMessageRoutes(server: SecureMessageServer<C>,
+  registrationContext: DeviceRegistrationContextExtractor<C>)`: both
+  required, no default, the type parameter ties extractor and authorizer
+  together. `server:core` has no Ktor dependency.
+- HTTP: no context or `Denied` → `403 registration_not_authorized`;
+  extractor or authorizer exception → `500 internal_error`, logged only as
+  `Registration authorization failed (<exception class>)` (no message,
+  stack, cause or context); same key → `204`; other key → `409`.
+- Sample (`samples/jvm-e2e`): DEMO ONLY bearer-token table → `DemoPrincipal`
+  → authorizer `request.address.userId == principal.userId`; the clients
+  send the token through their own `HttpClient`; the sample checks that
+  Mallory's principal and no principal cannot register `alice/tablet` and
+  Alice's principal can.
+
+A normal host wires it like this: its own authentication (Ktor
+`Authentication`, a session, a bearer token) establishes a principal for the
+call → the extractor returns that principal, `null` if the call is not
+authenticated → the authorizer allows the registration iff the principal
+owns `request.address.userId` (and the host's device policy agrees).
+
+**Changed files:** `S/DeviceRegistrationAuthorizer.kt`,
+`S/SecureMessageServer.kt`, `K/DeviceRegistrationContextExtractor.kt` (new),
+`K/KSecureMessageRoutes.kt`, `samples/jvm-e2e/app/build.gradle.kts`,
+`samples/jvm-e2e/app/.../Main.kt`; test support
+`TestDeviceRegistrationAuthorizer`/`TestRegistrationPrincipal` (server:core,
+server:ktor), `TestServer.kt`, `RecordingLogger.kt`.
+
+**Invariant.** Every new registration decision receives the host
+application's authenticated request context; without one no registration is
+created.
+
+**Adversarial tests.** `server:core` `DeviceRegistrationAuthorizationTest`:
+`n1RegistrationAuthorizationReceivesTheAuthenticatedApplicationPrincipal`
+(the exact context object reaches the authorizer),
+`n1WrongPrincipalCannotRegisterAnotherUsersDevice`,
+`n1MissingContextIsDeniedAndRegistersNothing` (even an allow-all authorizer
+is not called), `n1MalloryCannotBecomeAlicesRecoveryAuthority` (denied
+registration → `AuthorizerNotRegistered`; her own user's device →
+`CrossUser`), `sameKeyRetryIsIdempotentWithoutAskingTheHost` (also without
+context), `authorizerFailureRegistersNothing`. `server:ktor`
+`SecurityRemediationRoutesTest`: `n1RegistrationAuthorizationReceivesTheAuthenticatedApplicationPrincipal`,
+`n1WrongPrincipalCannotRegisterAnotherUsersDevice`,
+`n1MissingContextIsDeniedAndRegistersNothing` (403, then 201 with the
+principal, 204 retry without it, 409 other key),
+`n1HostFailuresLeakNoContext` (authorizer and extractor throwing with
+secret text: `500 internal_error`, secret in neither body nor log, nothing
+stored), `n1ClientWithTheHostsAuthenticationRegistersThroughTheKtorAdapter`.
+Sample E2E (`verifyPublication`).
+
+**Remaining assumptions.** The host's extractor and authorizer are correct:
+an extractor that returns a shared principal for unauthenticated calls or
+an authorizer that ignores the principal reopens F1/F2.
+
+**Status:** FIXED — PENDING RE-REVIEW.
+
+### N2 — Non-atomic `userState`
+
+**Severity:** LOW.
+
+**Root cause.** `registerDevice` read `hasRegisteredDevices(userId)` before
+the authorizer and wrote with a separate atomic `register`. Two concurrent
+first registrations of one user could both be told
+`USER_HAS_NO_REGISTERED_DEVICES`; a policy "the first device may enroll
+itself" would admit both, while the value was documented as a fact.
+
+**Fix (design: remove, not make atomic).** `DeviceRegistrationUserState`,
+`DeviceRegistrationAuthorizationRequest.userState` and
+`DeviceRegistrationRepository.hasRegisteredDevices` are removed (in-memory,
+SQLDelight, the `countRegisteredDevicesOfUser` query; no schema change).
+The authorizer decides only from the host context, the address, the
+proposed key and host-owned state. "The user has no devices yet" is not
+ownership. The only storage precondition of a registration, "this address
+is not registered", is enforced by the atomic `register` (primary key plus
+`INSERT OR IGNORE`, or the in-memory mutex).
+
+**Invariant.** No authorization decision depends on a KSecureMessage read
+outside the registration's atomic write.
+
+**Adversarial tests.** `server:core` `RegistrationRaceTest` (in-memory,
+SQLDelight in-memory, file-backed SQLite; every host decision held open by
+a barrier until all racing requests are inside the authorizer; gates, no
+sleeps): `n2ConcurrentFirstDeviceClaimsCannotBothWin` (32 concurrent claims
+on 32 device IDs of a user with no devices, 16 by Alice's principal, 16 by
+Mallory's: exactly Alice's 16 registered, none of Mallory's),
+`n2LegitimateAndAttackerFirstDeviceRaceOnlyThePrincipalWins` (a new user's
+legitimate first device vs an attacker's, both decisions open at once, in
+both completion orders: the legitimate one registered, the loser not),
+`n2SameAddressConflictingKeysHaveExactlyOneWinner` (32 authorized keys for
+one address: one registered, 31 conflicts).
+`DeviceRegistrationAuthorizationTest.n2NoAuthorizationInputDependsOnExistingDevices`
+(the request type carries only address and key; the same principal gets
+the same decision for a user with and without devices).
+`storage:testing` `DeviceRegistrationRepositoryContractTest.concurrentRegistrationsOfOneNewUsersDevicesAreAllStored`.
+
+**Remaining assumptions.** A host that wants a "first device only" policy
+must enforce it with its own atomic state (for example a single-use
+enrollment grant in its account database), not with KSecureMessage's
+registrations.
+
+**Status:** FIXED — PENDING RE-REVIEW.
+
+### N3 — Unanswered v1 initiation deadlocks v2 after the upgrade
+
+**Severity:** LOW.
+
+**Root cause.** A device could hold a pending (never answered) v1 initiation
+from before S1. The collision rule compared its v1 ID with an incoming v2
+ID; if v1 was smaller, the v2 initiation lost and was retired, while the
+upgraded peer refuses every v1 initiation. The device also kept sending the
+v1 initiation. Neither side could make progress, and there was no reset
+path. An unpinned pending v1 session additionally refused every v2
+initiation (`!pinned`).
+
+**Fix** (`C/SecureMessageClient.kt`, session collision policy only):
+
+- *receive:* a v2 initiation always replaces an own v1 session awaiting a
+  reply (`isUnansweredVersion1Initiation`), before the pin and collision
+  rules: no ID comparison, also without a pin (nothing was ever
+  established on it; a pin that exists is still checked first). The v1
+  origin is retired in the same transaction.
+- *send:* `usableSession` never returns such a session. `send`,
+  `retryPendingMessages`, `encryptRaw` and session setup fetch a bundle
+  (outside transactions) and `initiateReplacingUnanswered` starts a v2
+  session, retires the v1 origin and stores the new session with the
+  encryption in one transaction. A pending logical message keeps its ID and
+  sequence and is re-encrypted on v2.
+- *acknowledge:* never on such a session (`ackSent = false`, nothing
+  written); the sender's retry on the v2 session triggers a new ACK.
+- Consequence: an unpinned *established* legacy session whose peer now
+  sends v2 instead of the v1 repetition that used to pin it is replaced only
+  by a v2 initiation naming the identity it was established with
+  (`isLegacySessionIdentity`, the F9 check), which is then pinned (D4).
+- Established v1 sessions (`awaitingReply` false) are unchanged. A peer's
+  reply on a v1 initiation it accepted before upgrading still completes it.
+
+**Invariant.** After the upgrade an unanswered, locally initiated v1
+initiation can never block a v2 initiation and is never retransmitted;
+accepted established v1 sessions continue.
+
+**Adversarial tests.** `client:core` `SessionLifecycleTest`:
+`n3PendingV1CanNeverBlockIncomingV2AfterUpgrade` (v2 ID larger than the v1
+origin — the old deadlock order — and smaller, precondition asserted;
+converges, bidirectional), `n3UnpinnedPendingV1IsReplacedByV2`,
+`n3PinnedPendingV1StillRefusesAnotherIdentity`,
+`n3BothPeersPendingV1ConvergeAfterUpgrade` (new frozen fixture
+`LegacySessionFixture.bobPendingV3`; sequential and simultaneous),
+`n3PendingV1IsNeverRetransmittedAndItsLogicalMessageMovesToV2` (peer never
+accepted / accepted before upgrading; same logical ID, one delivery, ACK
+clears pending), `n3AckIsNeverSentOverPendingV1`,
+`n3DiscardedV1InitiationCannotRevive`,
+`sessionWithoutPinIsNeverReplacedByAnotherIdentity`, and
+`preS1EstablishedSessionsKeepRatchetingAfterTheUpgrade`,
+`preS1InitiationTheResponderNeverAcceptedIsRejected`,
+`preS1InitiationNeverReplacesAVersion2Session` (now asserts the exact
+error), `preS1PendingInitiationContinuesWhenTheResponderAcceptedItBefore`
+(continuation by the responder's reply). Legacy v1 repetitions in tests are
+made with the engine directly (`legacyV1Repetition`), since the client no
+longer sends them; `SecurityReviewRegressionTest` `f9*` use the same helper.
+
+**Remaining assumptions.** Replacing an unanswered v1 initiation that the
+peer did accept before upgrading drops that peer's in-flight v1 replies
+(they no longer decrypt); its reliability layer resends them. Peers must
+still be upgraded together.
+
+**Status:** FIXED — PENDING RE-REVIEW.
+
+### D1–D7 — Documentation
+
+| Finding | Correction |
+|---|---|
+| D1 authorizer mechanisms not reachable | Real host-context API documented with an integration pattern: [server-authentication.md](server-authentication.md#registration-authorization-s1-findings-f1f2), [operating-the-server.md](operating-the-server.md#deviceregistrationauthorizer), README, sample |
+| D2 `userState` presented as authoritative | Removed from API and docs (N2); the docs say why no KSecureMessage state is passed |
+| D3 pre-S1 registrations never host-authorized | [operating-the-server.md](operating-the-server.md#registrations-from-before-s1): impact, read-only audit SQL, offline removal guidance, upgrade checklist; limitation in server-authentication.md |
+| D4 identity-trust legacy wording | [identity-trust.md](identity-trust.md#sessions-from-before-pinning) and F9 above describe the actual behavior (now: replaced only by its own remote identity; otherwise refused) |
+| D5 obsolete session-lifecycle limitations | [session-lifecycle.md](session-lifecycle.md#limitations): stale "no safety numbers / authenticated API / persistent mailbox / encryption at rest" removed; N3 rules and step table updated |
+| D6 F7 intent replay understated | [storage-encryption.md](storage-encryption.md#downgrade-protection) and F7 above: replay across time and across databases under the same provider key, window closed only by key rotation, no rollback protection |
+| D7 Android `hasKeys()` limitation | [storage-key-providers.md](storage-key-providers.md#haskeys-s1): reads the wrapped key file, not the Keystore alias; F7 assumes intact provider state |
+
+### S1.1 mutation testing
+
+Each mutation was applied temporarily, the named suites run, the source
+restored; the working tree diff was compared byte for byte with a snapshot
+afterwards.
+
+| # | Mutation | Caught by |
+|---|---|---|
+| S1.1-1 | route drops the host context (passes `null` / an anonymous context) | `SecurityRemediationRoutesTest.n1*` and every route test that registers (76 `server:ktor` tests) |
+| S1.1-2 | sample extractor derives the principal from the target `UserId` in the path | sample E2E: `alice/tablet with mallory's principal must be refused` |
+| S1.1-3 | missing context treated as authorized | `DeviceRegistrationAuthorizationTest.n1MissingContextIsDeniedAndRegistersNothing`, `SecurityRemediationRoutesTest.n1MissingContextIsDeniedAndRegistersNothing` |
+| S1.1-4 | sample authorizer ignores the principal | sample E2E: `alice/tablet with mallory's principal must be refused` |
+| S1.1-5 | host denial ignored, first writer wins | `RegistrationRaceTest.n2ConcurrentFirstDeviceClaimsCannotBothWin`, `n2LegitimateAndAttackerFirstDeviceRaceOnlyThePrincipalWins` (in-memory, SQLDelight, file-backed) |
+| S1.1-6a | in-memory conditional insert made unconditional | `InMemoryRegistrationRaceTest.n2SameAddressConflictingKeysHaveExactlyOneWinner` |
+| S1.1-6b | SQLDelight `INSERT OR IGNORE` → `INSERT OR REPLACE` | `SqlDelight/FileBackedRegistrationRaceTest.n2SameAddressConflictingKeysHaveExactlyOneWinner` |
+| S1.1-7 | v1 collision uses ordinary ID ordering against v2 | `SessionLifecycleTest.n3PendingV1CanNeverBlockIncomingV2AfterUpgrade`, `n3UnpinnedPendingV1IsReplacedByV2` |
+| S1.1-8 | unanswered v1 session reused on send, retry and ACK | `n3PendingV1IsNeverRetransmittedAndItsLogicalMessageMovesToV2`, `n3BothPeersPendingV1ConvergeAfterUpgrade`, `n3AckIsNeverSentOverPendingV1`, `n3DiscardedV1InitiationCannotRevive` |
+| S1.1-9 | established v1 sessions dropped as well | `preS1EstablishedSessionsKeepRatchetingAfterTheUpgrade`, `preS1PendingInitiationContinuesWhenTheResponderAcceptedItBefore`, `SecurityReviewRegressionTest.f9LocallyInitiatedLegacySessionNeverPinsTheLocalIdentity` |
+| S1.1-10 | unpinned legacy session replaced by any identity | `sessionWithoutPinIsNeverReplacedByAnotherIdentity` |
+| S1.1-11 | host failure logged with message and stack | `SecurityRemediationRoutesTest.n1HostFailuresLeakNoContext` |
+| S1.1-12 | docs claim F7 closed | documentation check only (no docs test suite): an ad-hoc grep over the F7 row and status, run during review; not part of `build` |
+| S1.1-13 | Android `hasKeys()` limitation removed from the docs | same ad-hoc documentation check |
+| S1.1-14 | pre-S1 registration audit warning removed | same ad-hoc documentation check |
+
+Mutations 12–14 are guarded only by review, not by an automated test.
 
 ## Version changes
 
@@ -385,27 +668,48 @@ nonce retention, plaintext migration eligibility.
 ## Upgrade behavior
 
 - Established sessions survive and keep ratcheting; no new X3DH.
-- A pending v1 initiation the peer accepted before upgrading continues. A v1
-  initiation the peer never accepted is rejected; the initiator must start a
-  new (v2) session.
+- A v1 initiation the peer never accepted is rejected. Since S1.1 the
+  initiator never sends its unanswered v1 initiation again: the next send
+  or retry starts a v2 session, and an incoming v2 initiation always
+  replaces it (finding N3). A peer's reply on a v1 initiation it accepted
+  before upgrading still completes it.
 - A pre-S1 peer cannot decode type `0x03`, and a pre-S1 client cannot submit
   to an S1 server. **Upgrade servers and clients together.** There is no
   automatic v1 fallback that a relay could force.
-- Servers: construct `SecureMessageServer` with a `DeviceRegistrationAuthorizer`;
-  migrate the server database to schema 8 before `open`.
+- Servers: construct `SecureMessageServer` with a `DeviceRegistrationAuthorizer<C>`
+  and pass a `DeviceRegistrationContextExtractor<C>` to `kSecureMessageRoutes`
+  (S1.1); migrate the server database to schema 8 before `open`; audit
+  registrations from before S1 (see the checklist in
+  [operating-the-server.md](operating-the-server.md#upgrade-checklist-s1-s11)).
 - Clients: pending messages of a device without its device authentication
   key cannot be submitted (they stay pending).
 
 ## Public API changes
 
+S1.1 (deliberate, breaking; `checkKotlinAbi` baselines updated):
+
+- `server:core`: `DeviceRegistrationAuthorizer` → `DeviceRegistrationAuthorizer<in C : Any>`
+  with `authorize(context: C, request)`; `SecureMessageServer` →
+  `SecureMessageServer<C : Any>`; `registerDevice(context: C?, registration,
+  body, authentication)`; `DeviceRegistrationAuthorizationRequest(address,
+  proposedAuthenticationPublicKey)` (no `userState`);
+  `DeviceRegistrationUserState` removed; new
+  `DeviceRegistrationAuthorizationFailedException`.
+- `server:ktor`: new `DeviceRegistrationContextExtractor<out C : Any>`;
+  `kSecureMessageRoutes(server: SecureMessageServer<C>, registrationContext)`.
+- `storage:core`: `DeviceRegistrationRepository.hasRegisteredDevices` removed.
+- `client:core`: no public API change (N3 is internal session policy).
+
+S1:
+
 - `server:core`: new `DeviceRegistrationAuthorizer`,
-  `DeviceRegistrationAuthorizationRequest`, `DeviceRegistrationUserState`,
+  `DeviceRegistrationAuthorizationRequest`, `DeviceRegistrationUserState` (removed in S1.1),
   `DeviceRegistrationAuthorizationResult`, `EnvelopeSenderMismatchException`;
   `SecureMessageServer(storage, clock, deviceRegistrationAuthorizer,
   recoveryKeyResetPolicy = null)` (clock no longer defaulted);
   `relay(device, envelope)`; `ProtectedEndpoint.SEND_MESSAGE`,
   `ProtectedEndpoint.path(address)`.
-- `storage:core`: `DeviceRegistrationRepository.hasRegisteredDevices`,
+- `storage:core`: `DeviceRegistrationRepository.hasRegisteredDevices` (removed in S1.1),
   `DeviceRegistrationException.NotAuthorized`; `AuthenticationNonceRepository.claim`
   contract (watermark).
 - `core:model`: `SessionInitiationVersion`, `PreKeyMessage.initiationVersion`.
@@ -460,6 +764,11 @@ reason); the fixture now includes them and the test checks the exact error.
   substitution.
 - No formal verification; Kodium is a dependency with its own review status.
 - No finding is closed until the independent reviewer re-runs the review.
-- Legacy: v1 initiations not accepted before the upgrade are lost; peers and
-  servers must be upgraded together; `StaticStorageKeyProvider` cannot
-  migrate milestone 8 databases.
+- Legacy: v1 initiations not answered before the upgrade are replaced by v2
+  (their messages resent by the reliability layer); peers and servers must
+  be upgraded together; `StaticStorageKeyProvider` cannot migrate milestone
+  8 databases.
+- Registrations from before S1 were never host-authorized and keep their
+  authority until the operator audits them (D3).
+- F7: intent replay and provider-state trust (see F7), accepted for v0.x.
+- The correctness of the host's context extractor and authorizer (N1).

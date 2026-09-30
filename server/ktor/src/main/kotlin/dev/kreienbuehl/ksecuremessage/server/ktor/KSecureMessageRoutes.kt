@@ -12,6 +12,7 @@ import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
 import dev.kreienbuehl.ksecuremessage.server.DeviceAuthenticationException
 import dev.kreienbuehl.ksecuremessage.server.DeviceAuthenticationRotationException
 import dev.kreienbuehl.ksecuremessage.server.DeviceRecoveryException
+import dev.kreienbuehl.ksecuremessage.server.DeviceRegistrationAuthorizationFailedException
 import dev.kreienbuehl.ksecuremessage.server.EnvelopeSenderMismatchException
 import dev.kreienbuehl.ksecuremessage.server.LastDeviceRecoveryException
 import dev.kreienbuehl.ksecuremessage.server.ProtectedEndpoint
@@ -63,8 +64,14 @@ import kotlin.time.Instant
  * failures of the server or its storage get 500 with `internal_error` and no
  * details. Request-supplied identifiers are logged only escaped
  * ([logSafe]).
+ *
+ * [registrationContext] is required: it gives the registration route the
+ * host's authentication context of the call (for example the principal the
+ * host's own authentication established), which [server] passes to its
+ * [dev.kreienbuehl.ksecuremessage.server.DeviceRegistrationAuthorizer]
+ * (S1.1, finding N1). The routes never read, log or return the context.
  */
-fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
+fun <C : Any> Route.kSecureMessageRoutes(server: SecureMessageServer<C>, registrationContext: DeviceRegistrationContextExtractor<C>) {
     put("/v1/devices/{user}/{device}/registration") {
         val address = call.deviceAddress()
         val body = call.receive<ByteArray>()
@@ -75,15 +82,25 @@ fun Route.kSecureMessageRoutes(server: SecureMessageServer) {
             return@put call.respondError(HttpStatusCode.BadRequest, INVALID_REGISTRATION)
         }
         try {
-            val created = server.registerDevice(registration, body, call.authentication())
+            // Host code: its failures are reported without message or context.
+            val context = try {
+                registrationContext.extract(call)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                return@put call.respondRegistrationAuthorizationFailure(e)
+            }
+            val created = server.registerDevice(context, registration, body, call.authentication())
             call.respond(if (created) HttpStatusCode.Created else HttpStatusCode.NoContent)
+        } catch (e: DeviceRegistrationAuthorizationFailedException) {
+            call.respondRegistrationAuthorizationFailure(e.cause)
         } catch (e: DeviceAuthenticationException) {
             call.respondAuthenticationError(e)
         } catch (e: DeviceRegistrationException) {
             when (e) {
                 is DeviceRegistrationException.InvalidRegistration -> call.respondError(HttpStatusCode.BadRequest, INVALID_REGISTRATION)
                 is DeviceRegistrationException.Conflict -> call.respondError(HttpStatusCode.Conflict, "device_registration_conflict")
-                // Authentication passed; the host application did not allow this membership.
+                // Authentication passed; the host established no context or did not allow this membership.
                 is DeviceRegistrationException.NotAuthorized -> call.respondError(HttpStatusCode.Forbidden, "registration_not_authorized")
             }
         } catch (e: Exception) {
@@ -643,6 +660,18 @@ private suspend fun ApplicationCall.respondError(status: HttpStatusCode, error: 
 private suspend fun ApplicationCall.respondInternalError(e: Exception) {
     if (e is CancellationException) throw e
     application.log.error("Unexpected server failure", e)
+    respondError(HttpStatusCode.InternalServerError, "internal_error")
+}
+
+/**
+ * The host's context extractor or registration authorizer threw: a generic
+ * 500. The log names only the exception class, never its message, stack or
+ * cause, because host exceptions may carry the request's authentication
+ * context (account names, tokens).
+ */
+private suspend fun ApplicationCall.respondRegistrationAuthorizationFailure(hostFailure: Throwable?) {
+    if (hostFailure is CancellationException) throw hostFailure
+    application.log.error("Registration authorization failed (${hostFailure?.let { it::class.qualifiedName }})")
     respondError(HttpStatusCode.InternalServerError, "internal_error")
 }
 

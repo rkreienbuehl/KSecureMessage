@@ -46,7 +46,7 @@ class DeviceRegistrationStatusServerTest {
     private suspend fun register(address: DeviceAddress, key: DeviceAuthenticationKeyPair): Boolean {
         val body = key.publicKey
         val request = ServerRequest(address, "PUT", ServerApiPaths.device(address, ServerApiPaths.REGISTRATION), body)
-        return server.registerDevice(DeviceRegistration(address, key.publicKey), body, ServerRequestAuthentication.sign(key, request, clock.now()))
+        return server.registerDeviceAsUserOwner(DeviceRegistration(address, key.publicKey), body, ServerRequestAuthentication.sign(key, request, clock.now()))
     }
 
     private suspend fun status(address: DeviceAddress, key: DeviceAuthenticationKeyPair): DeviceAuthenticationRegistrationStatus {

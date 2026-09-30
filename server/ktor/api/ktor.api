@@ -1,4 +1,8 @@
+public abstract interface class dev/kreienbuehl/ksecuremessage/server/ktor/DeviceRegistrationContextExtractor {
+	public abstract fun extract (Lio/ktor/server/application/ApplicationCall;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
 public final class dev/kreienbuehl/ksecuremessage/server/ktor/KSecureMessageRoutesKt {
-	public static final fun kSecureMessageRoutes (Lio/ktor/server/routing/Route;Ldev/kreienbuehl/ksecuremessage/server/SecureMessageServer;)V
+	public static final fun kSecureMessageRoutes (Lio/ktor/server/routing/Route;Ldev/kreienbuehl/ksecuremessage/server/SecureMessageServer;Ldev/kreienbuehl/ksecuremessage/server/ktor/DeviceRegistrationContextExtractor;)V
 }
 

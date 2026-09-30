@@ -8,10 +8,12 @@ import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.MessageId
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
+import io.ktor.client.plugins.DefaultRequest
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import kotlin.io.encoding.Base64
 import kotlin.test.Test
@@ -20,6 +22,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation as ClientContentNegotiation
 
 /**
  * HTTP behavior of the S1 fixes (docs/security-review-remediation.md):
@@ -33,9 +36,10 @@ class SecurityRemediationRoutesTest {
 
     private fun registrationBody(device: TestDevice) = """{"publicKey":"${Base64.encode(device.keyPair.publicKey)}"}""".encodeToByteArray()
 
-    private suspend fun io.ktor.client.HttpClient.register(device: TestDevice): HttpResponse {
+    private suspend fun io.ktor.client.HttpClient.register(device: TestDevice, principal: String? = null): HttpResponse {
         val body = registrationBody(device)
-        return raw(HttpMethod.Put, ServerApiPaths.device(device.address, ServerApiPaths.REGISTRATION), body, device.sign("PUT", ServerApiPaths.REGISTRATION, body))
+        val headers = principal?.let { mapOf(TestRegistrationContexts.PRINCIPAL_HEADER to it) } ?: emptyMap()
+        return raw(HttpMethod.Put, ServerApiPaths.device(device.address, ServerApiPaths.REGISTRATION), body, device.sign("PUT", ServerApiPaths.REGISTRATION, body), headers)
     }
 
     private suspend fun io.ktor.client.HttpClient.submit(
@@ -78,7 +82,7 @@ class SecurityRemediationRoutesTest {
     fun f1ClientTransportReportsTheDenial() = testServer(TestDeviceRegistrationAuthorizer.denyAll()) { storage, http ->
         val transport = KtorSecureMessageTransport("", http)
         assertFailsWith<SecureMessageTransportException.DeviceRegistrationNotAuthorized> { TestDevice(alice).register(transport) }
-        assertFalse(storage.devices.hasRegisteredDevices(alice.userId))
+        assertNull(storage.devices.registration(alice))
     }
 
     @Test
@@ -110,6 +114,96 @@ class SecurityRemediationRoutesTest {
         http.raw(HttpMethod.Put, ServerApiPaths.device(alice, ServerApiPaths.REGISTRATION), body, device.sign("PUT", ServerApiPaths.REGISTRATION, body))
             .assertError(HttpStatusCode.BadRequest, "invalid_registration")
         assertNull(storage.devices.registration(alice))
+    }
+
+    // N1: the host's authenticated principal reaches the authorizer; nothing else stands in for it.
+
+    @Test
+    fun n1RegistrationAuthorizationReceivesTheAuthenticatedApplicationPrincipal() {
+        val authorizer = TestDeviceRegistrationAuthorizer.principalOwnsUser()
+        testServer(authorizer, registrationContext = TestRegistrationContexts.header) { storage, http ->
+            assertEquals(HttpStatusCode.Created, http.register(TestDevice(alice), principal = "alice").status)
+            val tablet = DeviceAddress(UserId("alice"), DeviceId("tablet"))
+            assertEquals(HttpStatusCode.Created, http.register(TestDevice(tablet), principal = "alice").status)
+            assertEquals(listOf(TestRegistrationPrincipal(UserId("alice")), TestRegistrationPrincipal(UserId("alice"))), authorizer.contexts)
+            assertEquals(listOf(alice, tablet), authorizer.requests.map { it.address })
+            assertTrue(storage.devices.registration(tablet) != null)
+        }
+    }
+
+    @Test
+    fun n1WrongPrincipalCannotRegisterAnotherUsersDevice() {
+        val authorizer = TestDeviceRegistrationAuthorizer.principalOwnsUser()
+        testServer(authorizer, registrationContext = TestRegistrationContexts.header) { storage, http ->
+            // Mallory is properly authenticated by the host, as Mallory.
+            http.register(TestDevice(alice), principal = "mallory").assertError(HttpStatusCode.Forbidden, "registration_not_authorized")
+            assertNull(storage.devices.registration(alice))
+            assertEquals(listOf(TestRegistrationPrincipal(UserId("mallory"))), authorizer.contexts, "decided with Mallory's principal, not the target user")
+            // Alice's own device is still free for Alice.
+            assertEquals(HttpStatusCode.Created, http.register(TestDevice(alice), principal = "alice").status)
+        }
+    }
+
+    @Test
+    fun n1MissingContextIsDeniedAndRegistersNothing() {
+        val authorizer = TestDeviceRegistrationAuthorizer.allowAll()
+        testServer(authorizer, registrationContext = TestRegistrationContexts.header) { storage, http ->
+            val device = TestDevice(alice)
+            http.register(device).assertError(HttpStatusCode.Forbidden, "registration_not_authorized")
+            assertNull(storage.devices.registration(alice))
+            assertTrue(authorizer.requests.isEmpty(), "no anonymous path reaches even an allow-all authorizer")
+            // With the host's authentication it registers; a later retry of the same key needs none.
+            assertEquals(HttpStatusCode.Created, http.register(device, principal = "alice").status)
+            assertEquals(HttpStatusCode.NoContent, http.register(device).status)
+            http.register(TestDevice(alice)).assertError(HttpStatusCode.Conflict, "device_registration_conflict")
+            assertEquals(1, authorizer.requests.size)
+        }
+    }
+
+    @Test
+    fun n1HostFailuresLeakNoContext() {
+        val secret = "principal alice session=SECRET-CONTEXT-7f3a"
+        // The authorizer throws with context text.
+        val logger = RecordingLogger()
+        testServer(
+            TestDeviceRegistrationAuthorizer.throwing(IllegalStateException(secret)),
+            registrationContext = TestRegistrationContexts.header,
+            logger = logger,
+        ) { storage, http ->
+            val response = http.register(TestDevice(alice), principal = "alice")
+            response.assertError(HttpStatusCode.InternalServerError, "internal_error")
+            assertNull(storage.devices.registration(alice), "nothing written")
+        }
+        // The extractor throws with context text.
+        testServer(
+            TestDeviceRegistrationAuthorizer.allowAll(),
+            registrationContext = DeviceRegistrationContextExtractor { throw IllegalStateException(secret) },
+            logger = logger,
+        ) { storage, http ->
+            http.register(TestDevice(alice)).assertError(HttpStatusCode.InternalServerError, "internal_error")
+            assertNull(storage.devices.registration(alice), "nothing written")
+        }
+        val logged = logger.everything()
+        assertTrue(logged.contains("Registration authorization failed"), "the failure is logged")
+        assertFalse(logged.contains("SECRET-CONTEXT"), "no host exception text, stack or context in the log")
+    }
+
+    @Test
+    fun n1ClientWithTheHostsAuthenticationRegistersThroughTheKtorAdapter() {
+        val authorizer = TestDeviceRegistrationAuthorizer.principalOwnsUser()
+        testServer(authorizer, registrationContext = TestRegistrationContexts.header) { storage, _ ->
+            // The application's HTTP client carries its own authentication; KSecureMessage passes it through.
+            fun clientAs(user: String) = createClient {
+                install(ClientContentNegotiation) { json() }
+                install(DefaultRequest) { headers.append(TestRegistrationContexts.PRINCIPAL_HEADER, user) }
+            }
+            TestDevice(alice).register(KtorSecureMessageTransport("", clientAs("alice")))
+            assertTrue(storage.devices.registration(alice) != null)
+            assertFailsWith<SecureMessageTransportException.DeviceRegistrationNotAuthorized> {
+                TestDevice(aliceLaptop).register(KtorSecureMessageTransport("", clientAs("mallory")))
+            }
+            assertNull(storage.devices.registration(aliceLaptop))
+        }
     }
 
     // F4

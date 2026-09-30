@@ -4,6 +4,7 @@ import dev.kreienbuehl.ksecuremessage.model.SessionInitiationVersion
 import dev.kreienbuehl.ksecuremessage.protocol.LocalIdentity
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
+import dev.kreienbuehl.ksecuremessage.model.LogicalMessageId
 import dev.kreienbuehl.ksecuremessage.model.OneTimePreKeyId
 import dev.kreienbuehl.ksecuremessage.model.PreKeyMessage
 import dev.kreienbuehl.ksecuremessage.model.RatchetMessage
@@ -12,6 +13,8 @@ import dev.kreienbuehl.ksecuremessage.protocol.CiphertextMessageCodec
 import dev.kreienbuehl.ksecuremessage.protocol.KodiumProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolEngine
 import dev.kreienbuehl.ksecuremessage.protocol.ProtocolException
+import dev.kreienbuehl.ksecuremessage.protocol.SecurePayload
+import dev.kreienbuehl.ksecuremessage.protocol.SecurePayloadCodec
 import dev.kreienbuehl.ksecuremessage.protocol.SecureSession
 import dev.kreienbuehl.ksecuremessage.protocol.SessionInitiationId
 import dev.kreienbuehl.ksecuremessage.storage.ClientStorage
@@ -55,6 +58,10 @@ class SessionLifecycleTest {
         suspend fun identityKey(): ByteArray = assertNotNull(storage.identity.identity()).publicKey
 
         suspend fun send(to: Device, text: String) = client.sendRaw(to.address, text.encodeToByteArray())
+
+        /** A version 1 repetition this device sent before its S1.1 upgrade (still in flight). */
+        suspend fun legacyRepetition(to: Device, text: String) =
+            legacyV1Repetition(engine, storage, address, to.address, text.encodeToByteArray())
 
         suspend fun receiveAll(): List<EncryptedEnvelope> = network.receive(address)
 
@@ -470,14 +477,15 @@ class SessionLifecycleTest {
     fun preS1PendingInitiationContinuesWhenTheResponderAcceptedItBefore() = runTest {
         val (alice, bob) = legacyPair(LegacySessionFixture.alicePendingV3, LegacySessionFixture.bobAcceptedV3)
         val origin = assertNotNull(bob.origin(alice))
-        // Alice has not seen a reply: she repeats her version 1 PreKeyMessage header.
-        alice.send(bob, "still pending")
-        val envelope = bob.receiveOne()
+        // A version 1 repetition Alice sent before upgrading is still accepted as that repetition.
+        val envelope = alice.legacyRepetition(bob, "still pending")
         assertEquals(SessionInitiationVersion.V1, assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(envelope.payload)).initiationVersion)
         assertEquals("still pending", bob.decryptText(envelope))
         assertEquals(origin, bob.origin(alice))
+        // Bob's reply completes Alice's initiation: the version 1 session continues, no new X3DH.
         assertBidirectional(bob, alice, 0)
         assertEquals(origin, alice.origin(bob))
+        assertEquals(SessionInitiationVersion.V1, engine.sessionInfo(alice.sessionWith(bob)).initiationVersion)
     }
 
     @Test
@@ -489,9 +497,9 @@ class SessionLifecycleTest {
             preKeys.storeCurrentSignedPreKey(LegacySessionFixture.bobSignedPreKey, Clock.System.now())
             preKeys.storeOneTimePreKeys(listOf(LegacySessionFixture.bobOneTimePreKey))
         }
-        alice.send(bob, "too late")
+        val envelope = alice.legacyRepetition(bob, "too late")
         val before = bob.snapshot(alice)
-        val error = assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decryptRaw(bob.receiveOne()) }
+        val error = assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decryptRaw(envelope) }
         assertEquals("Version 1 session initiations are not accepted", error.message)
         assertUnchanged(before, bob.snapshot(alice))
         assertNull(bob.storage.sessions.load(ALICE), "no session")
@@ -506,9 +514,10 @@ class SessionLifecycleTest {
         establish(newAlice, bob)
         val v2Origin = assertNotNull(bob.origin(alice))
         // The old pending version 1 initiation arrives later.
-        alice.send(bob, "old initiation")
+        val envelope = alice.legacyRepetition(bob, "old initiation")
         val before = bob.snapshot(alice)
-        assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decryptRaw(bob.receiveOne()) }
+        val error = assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decryptRaw(envelope) }
+        assertEquals("Version 1 session initiations are not accepted", error.message)
         assertUnchanged(before, bob.snapshot(alice))
         assertEquals(v2Origin, bob.origin(alice))
         assertFalse(bob.storage.sessionInitiations.isRetired(ALICE, v2Origin))
@@ -527,14 +536,16 @@ class SessionLifecycleTest {
     }
 
     @Test
-    fun sessionWithoutPinIsNeverReplaced() = runTest {
+    fun sessionWithoutPinIsNeverReplacedByAnotherIdentity() = runTest {
         val alice = device(ALICE)
         val bob = device(BOB)
         establish(alice, bob)
         // A session whose pin is missing, as stored before milestone 5.
         val unpinned = InMemoryClientStorage()
+        val deviceKey = engine.createDeviceAuthenticationKey()
         unpinned.transaction {
             identity.store(assertNotNull(bob.storage.identity.identity()))
+            deviceAuthentication.store(deviceKey)
             sessions.store(bob.sessionWith(alice))
             val signedPreKey = assertNotNull(bob.storage.preKeys.currentSignedPreKey())
             preKeys.storeCurrentSignedPreKey(signedPreKey, Clock.System.now())
@@ -543,12 +554,21 @@ class SessionLifecycleTest {
         val legacyBob = Device(BOB, unpinned)
         network.publish(legacyBob.client)
 
-        alice.storage.sessions.remove(BOB)
-        alice.send(legacyBob, "new")
+        // Another identity key at Alice's address: nothing to hold it against, refused.
+        val otherAlice = device(ALICE)
+        otherAlice.send(legacyBob, "new")
         val before = legacyBob.snapshot(alice)
-        assertFailsWith<ProtocolException.InvalidMessage> { legacyBob.client.decryptRaw(legacyBob.receiveOne()) }
+        val error = assertFailsWith<ProtocolException.InvalidMessage> { legacyBob.client.decryptRaw(legacyBob.receiveOne()) }
+        assertEquals("Session without a pinned identity cannot be replaced", error.message)
         assertUnchanged(before, legacyBob.snapshot(alice))
         assertNull(before.pin)
+
+        // The identity the session was established with may replace it (S1.1, N3), and is pinned.
+        alice.storage.sessions.remove(BOB)
+        alice.send(legacyBob, "same identity")
+        assertEquals("same identity", legacyBob.decryptText(legacyBob.receiveOne()))
+        assertContentEquals(alice.identityKey(), legacyBob.storage.remoteIdentities.identityKey(ALICE))
+        assertBidirectional(alice, legacyBob, 0)
     }
 
     @Test
@@ -574,5 +594,176 @@ class SessionLifecycleTest {
         // Its one-time prekey is gone now, so the second one cannot be accepted.
         assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decryptRaw(second) }
         assertNotNull(bob.storage.preKeys.oneTimePreKey(OneTimePreKeyId(1)))
+    }
+
+    // N3 (S1.1): an unanswered version 1 initiation never blocks version 2.
+
+    private fun preKeyMessageOf(envelope: EncryptedEnvelope) = assertIs<PreKeyMessage>(CiphertextMessageCodec.decode(envelope.payload))
+
+    /** Alice with the unanswered version 1 initiation of the fixture, and its origin. */
+    private suspend fun upgradedAliceWithUnansweredInitiation(pinned: Boolean = true): Pair<Device, SessionInitiationId> {
+        val fixture = LegacySessionFixture
+        val alice = legacyDevice(ALICE, fixture.aliceIdentity, fixture.alicePendingV3, if (pinned) fixture.bobIdentity.publicKey else null)
+        val info = engine.sessionInfo(alice.storage.sessions.load(BOB)!!)
+        assertEquals(SessionInitiationVersion.V1, info.initiationVersion)
+        assertTrue(info.awaitingReply)
+        return alice to assertNotNull(info.initiationId)
+    }
+
+    @Test
+    fun n3PendingV1CanNeverBlockIncomingV2AfterUpgrade() = runTest {
+        // Both orders: v2 ID larger than the v1 origin (ordinary comparison would let v1 win,
+        // the old deadlock) and smaller.
+        for (v2Larger in listOf(true, false)) {
+            val (alice, v1Origin) = upgradedAliceWithUnansweredInitiation()
+            // Bob, upgraded, never accepted Alice's version 1 initiation and starts version 2.
+            val bob = legacyDevice(BOB, LegacySessionFixture.bobIdentity, session = null, pin = LegacySessionFixture.aliceIdentity.publicKey)
+            var envelope: EncryptedEnvelope? = null
+            for (attempt in 0 until 512) {
+                bob.storage.sessions.remove(ALICE)
+                bob.send(alice, "v2 hello")
+                val candidate = alice.receiveOne()
+                if ((alice.initiationOf(candidate) > v1Origin) == v2Larger) {
+                    envelope = candidate
+                    break
+                }
+            }
+            val initiation = assertNotNull(envelope, "no v2 initiation in the required order")
+            val v2Id = alice.initiationOf(initiation)
+            assertEquals(v2Larger, v2Id > v1Origin, "precondition: the order under test")
+            assertEquals(SessionInitiationVersion.V2, preKeyMessageOf(initiation).initiationVersion)
+
+            assertEquals("v2 hello", alice.decryptText(initiation), "v2 wins regardless of the ID order")
+            assertEquals(v2Id, alice.origin(bob))
+            assertEquals(SessionInitiationVersion.V2, engine.sessionInfo(alice.sessionWith(bob)).initiationVersion)
+            assertTrue(alice.isRetired(bob, v1Origin), "the unanswered v1 initiation is retired")
+            assertBidirectional(alice, bob, 0)
+            assertBidirectional(bob, alice, 1)
+        }
+    }
+
+    @Test
+    fun n3UnpinnedPendingV1IsReplacedByV2() = runTest {
+        // Created before pinning: no pin, still no authority to block v2.
+        val (alice, v1Origin) = upgradedAliceWithUnansweredInitiation(pinned = false)
+        val bob = legacyDevice(BOB, LegacySessionFixture.bobIdentity, session = null, pin = null)
+        bob.send(alice, "v2 hello")
+        assertEquals("v2 hello", alice.decryptText(alice.receiveOne()))
+        assertTrue(alice.isRetired(bob, v1Origin))
+        assertContentEquals(LegacySessionFixture.bobIdentity.publicKey, alice.storage.remoteIdentities.identityKey(BOB), "pinned on acceptance")
+        assertBidirectional(alice, bob, 0)
+    }
+
+    @Test
+    fun n3PinnedPendingV1StillRefusesAnotherIdentity() = runTest {
+        val (alice, _) = upgradedAliceWithUnansweredInitiation()
+        val impostor = device(BOB)
+        impostor.send(alice, "I am Bob")
+        val before = alice.snapshot(impostor)
+        assertFailsWith<SecureMessageClientException.IdentityChanged> { alice.client.decryptRaw(alice.receiveOne()) }
+        assertUnchanged(before, alice.snapshot(impostor))
+    }
+
+    @Test
+    fun n3BothPeersPendingV1ConvergeAfterUpgrade() = runTest {
+        val fixture = LegacySessionFixture
+        for (simultaneous in listOf(false, true)) {
+            val alice = legacyDevice(ALICE, fixture.aliceIdentity, fixture.alicePendingV3, fixture.bobIdentity.publicKey)
+            val bob = legacyDevice(BOB, fixture.bobIdentity, fixture.bobPendingV3, fixture.aliceIdentity.publicKey)
+            // Repetitions sent before the upgrade: neither side can accept the other's v1 initiation.
+            val toBobV1 = alice.legacyRepetition(bob, "old to bob")
+            val toAliceV1 = bob.legacyRepetition(alice, "old to alice")
+            assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decryptRaw(toBobV1) }
+            assertFailsWith<ProtocolException.InvalidMessage> { alice.client.decryptRaw(toAliceV1) }
+
+            if (!simultaneous) {
+                // One side sends after the upgrade: version 2, which the other side accepts.
+                alice.send(bob, "from Alice")
+                val toBob = bob.receiveOne()
+                assertEquals(SessionInitiationVersion.V2, preKeyMessageOf(toBob).initiationVersion)
+                assertEquals("from Alice", bob.decryptText(toBob))
+            } else {
+                // Both send at once: an ordinary v2 collision, which converges.
+                alice.send(bob, "from Alice")
+                bob.send(alice, "from Bob")
+                val toBob = bob.receiveOne()
+                val toAlice = alice.receiveOne()
+                assertEquals(SessionInitiationVersion.V2, preKeyMessageOf(toBob).initiationVersion)
+                assertEquals(SessionInitiationVersion.V2, preKeyMessageOf(toAlice).initiationVersion)
+                deliver(alice, bob, toBob, toAlice, aliceFirst = true)
+            }
+            assertBidirectional(alice, bob, 0)
+            assertBidirectional(bob, alice, 1)
+            assertEquals(SessionInitiationVersion.V2, engine.sessionInfo(alice.sessionWith(bob)).initiationVersion)
+            assertEquals(alice.origin(bob), bob.origin(alice))
+        }
+    }
+
+    @Test
+    fun n3PendingV1IsNeverRetransmittedAndItsLogicalMessageMovesToV2() = runTest {
+        val fixture = LegacySessionFixture
+        // Bob never accepted it, or accepted it before upgrading (and never replied).
+        for (bobSession in listOf(null, fixture.bobAcceptedV3)) {
+            val (alice, v1Origin) = upgradedAliceWithUnansweredInitiation()
+            val bob = legacyDevice(BOB, fixture.bobIdentity, bobSession, fixture.aliceIdentity.publicKey)
+            // A logical message Alice's application sent before the upgrade, still pending.
+            val id = LogicalMessageId.random()
+            alice.storage.transaction {
+                pendingOutbound.store(BOB, id, SecurePayloadCodec.encode(SecurePayload.ApplicationMessage(id, "kept".encodeToByteArray())))
+            }
+
+            assertEquals(listOf(id), alice.client.retryPendingMessages(BOB))
+            val retry = bob.receiveOne()
+            assertEquals(SessionInitiationVersion.V2, preKeyMessageOf(retry).initiationVersion, "never v1 again")
+            assertTrue(alice.isRetired(bob, v1Origin))
+            val delivery = assertIs<ReceiveResult.Delivery>(bob.client.decrypt(retry))
+            assertEquals(id, delivery.id, "same logical message")
+            assertEquals("kept", delivery.message.plaintext.decodeToString())
+            assertEquals(1L, alice.client.pendingMessageCount(BOB), "pending until acknowledged")
+
+            assertTrue(bob.client.commitReceivedMessage(delivery.message).ackSent)
+            val ack = assertIs<ReceiveResult.Acknowledgement>(alice.client.decrypt(alice.receiveOne()))
+            assertEquals(id, ack.id)
+            assertEquals(0L, alice.client.pendingMessageCount(BOB))
+            assertEquals(0L, bob.client.pendingReceivedMessageCount(), "delivered once, committed")
+            assertTrue(bob.receiveAll().isEmpty())
+        }
+    }
+
+    @Test
+    fun n3AckIsNeverSentOverPendingV1() = runTest {
+        val (alice, _) = upgradedAliceWithUnansweredInitiation()
+        val bob = legacyDevice(BOB, LegacySessionFixture.bobIdentity, LegacySessionFixture.bobAcceptedV3, LegacySessionFixture.aliceIdentity.publicKey)
+        // A delivery Alice received before the upgrade and commits now, while her session is still unanswered v1.
+        val id = LogicalMessageId.random()
+        alice.storage.transaction {
+            pendingInbound.store(BOB, id, SecurePayloadCodec.encode(SecurePayload.ApplicationMessage(id, "earlier".encodeToByteArray())), Clock.System.now())
+        }
+        val before = alice.snapshot(bob)
+        val result = alice.client.commitReceivedMessage(BOB, id)
+        assertEquals(CommitStatus.COMMITTED, result.status)
+        assertFalse(result.ackSent, "no ACK over an unanswered v1 initiation")
+        assertUnchanged(before, alice.snapshot(bob))
+        assertTrue(bob.receiveAll().isEmpty(), "nothing sent")
+    }
+
+    @Test
+    fun n3DiscardedV1InitiationCannotRevive() = runTest {
+        val (alice, bob) = legacyPair(LegacySessionFixture.alicePendingV3, LegacySessionFixture.bobAcceptedV3)
+        val v1Origin = assertNotNull(alice.origin(bob))
+        // Captured before the upgrade, delivered late.
+        val late = alice.legacyRepetition(bob, "late v1")
+        alice.send(bob, "v2 after upgrade")
+        assertEquals("v2 after upgrade", bob.decryptText(bob.receiveOne()))
+        assertTrue(alice.isRetired(bob, v1Origin))
+        assertTrue(bob.isRetired(alice, v1Origin), "Bob retired the replaced v1 session's origin too")
+        val v2Origin = assertNotNull(bob.origin(alice))
+
+        val before = bob.snapshot(alice)
+        val error = assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decryptRaw(late) }
+        assertEquals("Version 1 session initiations are not accepted", error.message)
+        assertUnchanged(before, bob.snapshot(alice))
+        assertEquals(v2Origin, bob.origin(alice))
+        assertBidirectional(alice, bob, 0)
     }
 }

@@ -6,6 +6,7 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationRepository
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -59,18 +60,6 @@ abstract class DeviceRegistrationRepositoryContractTest {
         assertTrue(repository.register(DeviceRegistration(laptop, key(3)), t1 + 2.days))
         assertEquals(t1 + 2.days, repository.registrationState(laptop)?.authKeyInstalledAt, "per device")
         assertEquals(t1, repository.registrationState(alice)?.authKeyInstalledAt)
-    }
-
-    @Test
-    fun hasRegisteredDevicesComparesTheExactUserIdAndChangesNothing() = runTest {
-        val repository = newRepository()
-        assertFalse(repository.hasRegisteredDevices(UserId("alice")))
-        assertTrue(repository.register(DeviceRegistration(alice, key(1)), registeredAt))
-        assertTrue(repository.hasRegisteredDevices(UserId("alice")))
-        assertFalse(repository.hasRegisteredDevices(UserId("Alice")), "exact compare")
-        assertFalse(repository.hasRegisteredDevices(UserId("alic")))
-        assertFalse(repository.hasRegisteredDevices(UserId("bob")))
-        assertNull(repository.registration(laptop), "reading registers nothing")
     }
 
     @Test
@@ -141,5 +130,29 @@ abstract class DeviceRegistrationRepositoryContractTest {
             }
             assertContentEquals(key(winners.single()), repository.registration(alice)?.publicKey, "never overwritten")
         }
+    }
+
+    /**
+     * S1.1, finding N2: registration has no user-level precondition. Devices
+     * of one new user registering at the same moment are all stored; none of
+     * them is "the first device" in any sense the repository enforces.
+     */
+    @Test
+    fun concurrentRegistrationsOfOneNewUsersDevicesAreAllStored() = runTest {
+        val repository = newRepository()
+        val devices = List(32) { DeviceAddress(UserId("carol"), DeviceId("device-$it")) }
+        val results = withContext(Dispatchers.Default) {
+            val start = CompletableDeferred<Unit>()
+            val calls = devices.mapIndexed { i, address ->
+                async {
+                    start.await()
+                    repository.register(DeviceRegistration(address, key(i)), registeredAt)
+                }
+            }
+            start.complete(Unit)
+            calls.awaitAll()
+        }
+        assertTrue(results.all { it }, "every device stored")
+        devices.forEachIndexed { i, address -> assertContentEquals(key(i), repository.registration(address)?.publicKey) }
     }
 }

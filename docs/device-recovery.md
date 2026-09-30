@@ -78,9 +78,13 @@ otherwise): recovery is never a second way to register an address.
 registration. Before S1 anyone could register a new device ID under an
 existing `UserId` and then authorize the recovery of that user's real
 devices. Since S1 every first registration needs the host application's
-`DeviceRegistrationAuthorizer` (docs/server-authentication.md), so only
-devices the host admitted to the user can authorize a recovery. The
-recovery protocol itself is unchanged.
+`DeviceRegistrationAuthorizer` (docs/server-authentication.md), which since
+S1.1 decides with the host's authenticated principal for the request, so
+only devices the host admitted to the user can authorize a recovery.
+Registrations stored before S1 were never host-authorized and keep this
+authority until the operator audits them
+([operating-the-server.md](operating-the-server.md#registrations-from-before-s1)).
+The recovery protocol itself is unchanged.
 
 **Single-device limitation.** A user with only one registered device has no
 recovery path in M14 if that device loses its key. That is intentional:

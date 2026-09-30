@@ -28,6 +28,7 @@ import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.runBlocking
+import org.slf4j.Logger
 import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -38,25 +39,33 @@ import io.ktor.server.plugins.contentnegotiation.ContentNegotiation as ServerCon
  * Runs [block] against the v1 routes backed by fresh in-memory storage, with
  * [clock] as the server time and [authorizer] as the host's registration
  * decision (S1): every test states it, there is no hidden allow-all.
+ * [registrationContext] is the host's authentication of registration calls
+ * (S1.1); by default every call is authenticated as the owner of its path's
+ * user, for tests whose subject is not registration authorization.
  */
 internal fun testServer(
-    authorizer: DeviceRegistrationAuthorizer,
+    authorizer: DeviceRegistrationAuthorizer<TestRegistrationPrincipal>,
     clock: Clock = Clock.System,
     resetPolicy: RecoveryKeyResetPolicy? = null,
+    registrationContext: DeviceRegistrationContextExtractor<TestRegistrationPrincipal> = TestRegistrationContexts.routeUserOwner,
+    logger: Logger? = null,
     block: suspend ApplicationTestBuilder.(storage: InMemoryServerStorage, http: HttpClient) -> Unit,
-) = testServer(authorizer, InMemoryServerStorage(), clock, resetPolicy, block)
+) = testServer(authorizer, InMemoryServerStorage(), clock, resetPolicy, registrationContext, logger, block)
 
 /** Runs [block] against the v1 routes backed by [storage], which the test chose and owns. */
 internal fun <S : ServerStorage> testServer(
-    authorizer: DeviceRegistrationAuthorizer,
+    authorizer: DeviceRegistrationAuthorizer<TestRegistrationPrincipal>,
     storage: S,
     clock: Clock = Clock.System,
     resetPolicy: RecoveryKeyResetPolicy? = null,
+    registrationContext: DeviceRegistrationContextExtractor<TestRegistrationPrincipal> = TestRegistrationContexts.routeUserOwner,
+    logger: Logger? = null,
     block: suspend ApplicationTestBuilder.(storage: S, http: HttpClient) -> Unit,
 ) {
     testApplication {
+        if (logger != null) environment { log = logger }
         install(ServerContentNegotiation) { json() }
-        routing { kSecureMessageRoutes(SecureMessageServer(storage, clock, authorizer, resetPolicy)) }
+        routing { kSecureMessageRoutes(SecureMessageServer(storage, clock, authorizer, resetPolicy), registrationContext) }
         val http = createClient { install(ClientContentNegotiation) { json() } }
         block(storage, http)
     }

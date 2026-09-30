@@ -184,14 +184,35 @@ Since S1:
   if exactly one slot is the local key and it equals the message's key.
   Otherwise (both or neither slot is local) nothing is pinned; no pin is
   ever guessed;
-- a session this device initiated before pinning stays unpinned until an
-  authenticated new initiation replaces it; ratchet messages never pin.
+- ratchet messages never pin.
 
-A session without a pin is never replaced by a new initiation: without a pin
-there is no identity to check the new initiation against
-([session-lifecycle.md](session-lifecycle.md)). Tests:
-`SecurityReviewRegressionTest` (`client:core`), `SessionInitiationV2Test`
-(`core:protocol`).
+What happens to an unpinned session, as implemented (S1.1, finding D4; S1
+docs said a locally initiated one "stays unpinned until an authenticated new
+initiation replaces it", which the S1 code did not do):
+
+- **Replacement by a version 2 initiation** is accepted only if the
+  initiation names exactly `sessionRemoteIdentityKey(session, localKey)`,
+  the identity the session was established with as remote (the same check
+  that pins it from a repetition). The new session is then pinned to that
+  key. Any other key, or a session where that key cannot be determined
+  (both or neither slot local), is refused with `InvalidMessage` and
+  nothing changes: there is no identity to hold another key against. Such a
+  session is never replaced by the protocol; it keeps working as it is, and
+  only the application can remove it (for example by resetting the local
+  session store). Before S1.1 every replacement of an unpinned session was
+  refused, which after S1 left no way out for a session this device had
+  initiated (its peer can no longer send the version 1 repetition that pins
+  it).
+- **An unanswered version 1 initiation of this device** (pending, never
+  replied to) is replaced by any authenticated version 2 initiation, pinned
+  or not (S1.1, finding N3, [session-lifecycle.md](session-lifecycle.md)):
+  nothing was ever established on it, so accepting is ordinary first
+  contact, and the new key is pinned on acceptance. A pin that exists is
+  still checked first (`IdentityChanged`).
+
+Tests: `SecurityReviewRegressionTest`, `SessionLifecycleTest`
+(`sessionWithoutPinIsNeverReplacedByAnotherIdentity`, `n3…`) in
+`client:core`; `SessionInitiationV2Test` (`core:protocol`).
 
 ## Limitations
 

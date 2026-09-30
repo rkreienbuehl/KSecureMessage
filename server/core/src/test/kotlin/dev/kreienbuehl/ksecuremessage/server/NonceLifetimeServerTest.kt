@@ -44,12 +44,12 @@ class NonceLifetimeServerTest {
     private val aliceKey = newKey()
     private val bobKey = newKey()
 
-    private suspend fun server(): SecureMessageServer {
+    private suspend fun server(): SecureMessageServer<TestRegistrationPrincipal> {
         val server = SecureMessageServer(InMemoryServerStorage(), clock, TestDeviceRegistrationAuthorizer.allowAll())
         for ((address, key) in listOf(alice to aliceKey, bob to bobKey)) {
             val body = key.publicKey
             val request = ServerRequest(address, "PUT", ServerApiPaths.device(address, ServerApiPaths.REGISTRATION), body)
-            server.registerDevice(DeviceRegistration(address, key.publicKey), body, ServerRequestAuthentication.sign(key, request, clock.now))
+            server.registerDeviceAsUserOwner(DeviceRegistration(address, key.publicKey), body, ServerRequestAuthentication.sign(key, request, clock.now))
         }
         return server
     }
@@ -62,7 +62,7 @@ class NonceLifetimeServerTest {
             RequestNonce.random(),
         )
 
-    private suspend fun SecureMessageServer.drain(address: DeviceAddress, authentication: RequestAuthentication) =
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.drain(address: DeviceAddress, authentication: RequestAuthentication) =
         receive(authenticate(address, ProtectedEndpoint.DRAIN_MAILBOX, ByteArray(0), authentication))
 
     @Test

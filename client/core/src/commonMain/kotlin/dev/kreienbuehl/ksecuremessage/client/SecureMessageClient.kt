@@ -1509,9 +1509,9 @@ class SecureMessageClient(
     }
 
     internal suspend fun ensureSession(remote: DeviceAddress): SecureSession {
-        val bundle = fetchBundleIfNoSession(remote)
+        val bundle = fetchBundleIfNoUsableSession(remote)
         return storage.transaction {
-            sessions.load(remote) ?: initiateSession(remote, bundle).also { sessions.store(it) }
+            usableSession(remote) ?: initiateReplacingUnanswered(remote, bundle).also { sessions.store(it) }
         }
     }
 
@@ -1543,7 +1543,7 @@ class SecureMessageClient(
         val frame = SecurePayloadCodec.encode(SecurePayload.ApplicationMessage(id, plaintext))
         // Held across the network call, never inside a storage transaction.
         return sendMutex.withLock {
-            val bundle = fetchBundleIfNoSession(remote)
+            val bundle = fetchBundleIfNoUsableSession(remote)
             val envelope = try {
                 storage.transaction {
                     pendingOutbound.store(remote, id, frame)
@@ -1597,7 +1597,7 @@ class SecureMessageClient(
                 // abandoned ones are gone and skipped.
                 val pending = pendingOutbound.page(afterSequence, 1, remote).singleOrNull() ?: return@transaction RetryStep.Done
                 try {
-                    if (bundle == null && sessions.load(remote) == null) return@transaction RetryStep.NeedsBundle
+                    if (bundle == null && usableSession(remote) == null) return@transaction RetryStep.NeedsBundle
                     RetryStep.Encrypted(pending.id, pending.sequence, encryptOn(remote, bundle, pending.frame))
                 } finally {
                     pending.frame.fill(0)
@@ -2003,8 +2003,12 @@ class SecureMessageClient(
         val frame = SecurePayloadCodec.encode(SecurePayload.Acknowledgement(id))
         return try {
             sendMutex.withLock {
-                // No bundle: without a session the encryption fails.
-                val envelope = storage.transaction { encryptOn(remote, bundle = null, frame) }
+                // Only on a session that can carry it: never a new one (no bundle) and
+                // never an unanswered version 1 initiation (S1.1, N3), which the peer
+                // cannot accept; progress then comes from the next version 2 session.
+                val envelope = storage.transaction {
+                    if (usableSession(remote) == null) null else encryptOn(remote, bundle = null, frame)
+                } ?: return false
                 submit(envelope)
             }
             true
@@ -2039,7 +2043,7 @@ class SecureMessageClient(
         plaintext: ByteArray,
         id: MessageId = newEnvelopeId(),
     ): EncryptedEnvelope {
-        val bundle = fetchBundleIfNoSession(remote)
+        val bundle = fetchBundleIfNoUsableSession(remote)
         return storage.transaction { encryptOn(remote, bundle, plaintext, id) }
     }
 
@@ -2084,7 +2088,10 @@ class SecureMessageClient(
 
     /**
      * Encrypts [plaintext] on the session with [remote], or on a new one from
-     * [bundle], and stores the advanced session. Runs inside a transaction.
+     * [bundle], and stores the advanced session. An unanswered version 1
+     * initiation is never continued: it is retired and replaced by the new
+     * version 2 session in this transaction (S1.1, finding N3). Runs inside a
+     * transaction.
      */
     private suspend fun ClientStorage.encryptOn(
         remote: DeviceAddress,
@@ -2092,7 +2099,7 @@ class SecureMessageClient(
         plaintext: ByteArray,
         id: MessageId = newEnvelopeId(),
     ): EncryptedEnvelope {
-        val session = sessions.load(remote) ?: initiateSession(remote, bundle)
+        val session = usableSession(remote) ?: initiateReplacingUnanswered(remote, bundle)
         val result = protocol.encrypt(session, plaintext)
         val payload = CiphertextMessageCodec.encode(result.message)
         sessions.store(result.updatedSession)
@@ -2162,9 +2169,18 @@ class SecureMessageClient(
             sessionInitiations.isRetired(sender, initiation) ->
                 throw SecureMessageClientException.StaleSessionInitiation(sender)
             session == null || current == null -> acceptSession(identity, sender, message, replaced = null)
-            // A session from before pinning is never replaced: without a pin
+            // An unanswered version 1 initiation of this device: the upgraded peer can
+            // never accept it, so it has no authority to win a collision or to block a
+            // version 2 initiation, pinned or not (S1.1, finding N3). Nothing was ever
+            // established on it; the pin, if any, was checked above.
+            current.isUnansweredVersion1Initiation() -> acceptSession(identity, sender, message, replaced = current)
+            // A session from before pinning is replaced only by the identity it was
+            // established with as remote (the check that pins it from a version 1
+            // repetition, F9): after S1.1 its initiator sends version 2 instead of that
+            // repetition (N3). Any other key, or a session that names none, is refused:
             // there is no identity to hold the new initiation against.
-            !pinned -> throw ProtocolException.InvalidMessage("Session without a pinned identity cannot be replaced")
+            !pinned && !isLegacySessionIdentity(session, message, identity) ->
+                throw ProtocolException.InvalidMessage("Session without a pinned identity cannot be replaced")
             // Established before milestone 6, so its initiation is unknown.
             // A version 2 message never belongs to it: it is a new initiation.
             currentInitiation == null -> acceptSession(identity, sender, message, replaced = null)
@@ -2194,9 +2210,19 @@ class SecureMessageClient(
         message: PreKeyMessage,
         identity: LocalIdentity,
     ) {
-        val remoteIdentityKey = protocol.sessionRemoteIdentityKey(session, identity.publicKey) ?: return
-        if (remoteIdentityKey.contentEquals(identity.publicKey) || !remoteIdentityKey.contentEquals(message.identityKey)) return
-        pinRemoteIdentity(sender, remoteIdentityKey)
+        if (!isLegacySessionIdentity(session, message, identity)) return
+        pinRemoteIdentity(sender, message.identityKey)
+    }
+
+    /**
+     * Whether [message] names exactly the identity key [session] was
+     * established with as remote: never the local identity, never a guess
+     * (S1, finding F9). The only identity an unpinned session from before
+     * pinning can be held to.
+     */
+    private fun isLegacySessionIdentity(session: SecureSession, message: PreKeyMessage, identity: LocalIdentity): Boolean {
+        val remoteIdentityKey = protocol.sessionRemoteIdentityKey(session, identity.publicKey) ?: return false
+        return !remoteIdentityKey.contentEquals(identity.publicKey) && remoteIdentityKey.contentEquals(message.identityKey)
     }
 
     private suspend fun ClientStorage.decryptOn(session: SecureSession, message: CiphertextMessage, identity: LocalIdentity): ByteArray {
@@ -2206,15 +2232,51 @@ class SecureMessageClient(
     }
 
     /**
-     * Fetches [remote]'s bundle when there is no session yet. Runs outside
-     * any transaction: a transaction must not wait for the network.
+     * Fetches [remote]'s bundle when there is no session that can carry a
+     * message (none, or only an unanswered version 1 initiation). Runs
+     * outside any transaction: a transaction must not wait for the network.
      */
-    private suspend fun fetchBundleIfNoSession(remote: DeviceAddress): PreKeyBundle? {
+    private suspend fun fetchBundleIfNoUsableSession(remote: DeviceAddress): PreKeyBundle? {
         val hasSession = storage.transaction {
             requireIdentity()
-            sessions.load(remote) != null
+            usableSession(remote) != null
         }
         return if (hasSession) null else transport.fetchPreKeyBundle(remote)
+    }
+
+    /**
+     * The session with [remote] that may carry new messages: every stored
+     * session except an unanswered version 1 initiation of this device
+     * (S1.1, finding N3). Established version 1 sessions stay usable. Runs
+     * inside a transaction.
+     */
+    private suspend fun ClientStorage.usableSession(remote: DeviceAddress): SecureSession? =
+        sessions.load(remote)?.takeUnless { protocol.sessionInfo(it).isUnansweredVersion1Initiation() }
+
+    /**
+     * A version 1 initiation this device sent and never saw a reply to.
+     * Since S1 no peer accepts a version 1 initiation, so it can only still
+     * matter if the peer accepted it before upgrading; then the peer's reply
+     * completes it, but it is never sent again (S1.1, finding N3).
+     */
+    private fun SessionInfo.isUnansweredVersion1Initiation(): Boolean =
+        initiationVersion == SessionInitiationVersion.V1 && awaitingReply
+
+    /**
+     * Starts a version 2 session with [remote] from [bundle]. If an unanswered
+     * version 1 initiation is stored, it is retired (so it can never come
+     * back) and the caller's store replaces it, in the same transaction. The
+     * bundle is verified before anything changes. Runs inside a transaction.
+     */
+    private suspend fun ClientStorage.initiateReplacingUnanswered(remote: DeviceAddress, bundle: PreKeyBundle?): SecureSession {
+        val session = initiateSession(remote, bundle)
+        sessions.load(remote)?.let { unanswered ->
+            val info = protocol.sessionInfo(unanswered)
+            check(info.isUnansweredVersion1Initiation()) { "Only an unanswered version 1 initiation is replaced" }
+            unanswered.state.fill(0)
+            info.initiationId?.let { sessionInitiations.retire(remote, it, info.acceptedSignedPreKeyId) }
+        }
+        return session
     }
 
     private suspend fun ClientStorage.initiateSession(remote: DeviceAddress, bundle: PreKeyBundle?): SecureSession {

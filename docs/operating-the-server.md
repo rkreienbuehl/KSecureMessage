@@ -33,15 +33,24 @@ control and abuse protection, not as a horizontally scalable service.
 ```kotlin
 val driver = JdbcSqliteDriver("jdbc:sqlite:/var/lib/ksm/server.db", Properties(), SqlDelightServerStorage.Schema)
 val storage = SqlDelightServerStorage.open(driver)
-// The host decides which device may become one of a user's devices (S1).
-val registrationAuthorizer = DeviceRegistrationAuthorizer { request ->
-    if (myAccounts.mayAddDevice(request.address, request.userState)) DeviceRegistrationAuthorizationResult.Authorized
-    else DeviceRegistrationAuthorizationResult.Denied
+// The host decides, with its own authenticated principal, who may add a device to which user (S1, S1.1).
+val registrationAuthorizer = DeviceRegistrationAuthorizer<AccountPrincipal> { principal, request ->
+    if (request.address.userId == principal.userId && myAccounts.mayAddDevice(principal, request.address)) {
+        DeviceRegistrationAuthorizationResult.Authorized
+    } else {
+        DeviceRegistrationAuthorizationResult.Denied
+    }
 }
 val server = SecureMessageServer(storage, Clock.System, registrationAuthorizer, recoveryKeyResetPolicy = null)
 embeddedServer(CIO, port = 8080) {
     install(ContentNegotiation) { json() }
-    routing { kSecureMessageRoutes(server) }
+    install(Authentication) { /* the host's own login: session, bearer, OAuth, … */ }
+    routing {
+        authenticate(optional = true) {
+            // null (not logged in) = registration refused; never a shared anonymous principal.
+            kSecureMessageRoutes(server) { call -> call.principal<AccountPrincipal>() }
+        }
+    }
 }.start(wait = true)
 ```
 
@@ -106,26 +115,95 @@ like any other security input.
 
 ## DeviceRegistrationAuthorizer
 
-Required since S1 (docs/security-review-remediation.md, findings F1/F2).
-Every first registration of a device address, including a user's first
-device, is passed to the host's `DeviceRegistrationAuthorizer` after the
-request proved possession of the device key and before anything is stored.
-KSecureMessage has no account system; the authorizer is where the host ties
-a `UserId` to its own account authentication (for example: the request
-arrives on a route behind the host's login, an enrollment code the user
-confirmed on an existing device, an administrator's device list).
+Required since S1 (docs/security-review-remediation.md, findings F1/F2);
+since S1.1 (finding N1) it decides with the host's authenticated request
+context. Every first registration of a device address, including a user's
+first device, is passed to the host's `DeviceRegistrationAuthorizer<C>`
+after the request proved possession of the device key and before anything
+is stored. KSecureMessage has no account system: the host authenticates the
+HTTP call itself (its login, session, bearer token, OAuth subject,
+enrollment grant) and hands the resulting principal to the registration
+route through the required `DeviceRegistrationContextExtractor<C>` of
+`kSecureMessageRoutes(server, registrationContext)`. The authorizer then
+answers "may *this principal* add *this device* to *this user*?", typically
+`request.address.userId == principal.userId` plus the host's own device
+policy.
 
-- `Denied` answers `403 registration_not_authorized`; the reason is not
-  sent. An exception answers `500 internal_error` and is logged.
-- A retry with the already registered key never asks the authorizer; a
-  different key for a registered address is a conflict and never asks it.
+- No context (the extractor returns `null`) or `Denied` answers `403
+  registration_not_authorized`; the reason is not sent. An exception in the
+  extractor or authorizer answers `500 internal_error` and is logged by
+  exception class only, never its message or the context.
+- The authorizer gets no view of KSecureMessage's registrations (S1.1,
+  finding N2): being the first device of a user is not an authority, and a
+  count read outside the registration's write would be stale.
+- A retry with the already registered key never asks the authorizer and
+  needs no context; a different key for a registered address is a conflict
+  and never asks it.
 - Everything that treats "a registered device of the same user" as an
   authority (device recovery, the offline recovery key, its rotation,
   revocation and reset) trusts exactly the membership the authorizer
-  approved. An authorizer that says yes to everyone brings back findings
-  F1/F2.
-- The sample's fixed allow-list is a demonstration, not a production policy.
+  approved. An authorizer that says yes to everyone, or an extractor that
+  returns one shared principal for unauthenticated calls, brings back
+  findings F1/F2.
+- The sample's bearer-token table is DEMO ONLY: it stands in for the
+  application's login and is not secure authentication.
 - There is no allow-all default; tests pass an explicit test authorizer.
+
+### Registrations from before S1
+
+Registrations stored by a server older than S1 were **never host-authorized**:
+before S1 whoever registered a free address first owned it (findings F1/F2).
+An upgraded server keeps them as trusted historical state; they are not
+re-verified. A device an attacker registered before the upgrade therefore
+still can, until it is removed:
+
+- authenticate as its registered address (signed prekey publication,
+  mailbox drain, registration status);
+- submit signed envelopes as that address;
+- act as a "registered device of the same user": authorize a device
+  recovery (M14) of the user's other devices, register, rotate or revoke
+  the user's offline recovery key (M18/M19) and request, read, complete or
+  cancel its reset (M23).
+
+KSecureMessage cannot tell a legitimate pre-S1 registration from a
+malicious one, so it never deletes or blesses them automatically. Before
+exposing an upgraded server, audit them against the application's own
+account and device records (read-only, on the server database):
+
+```sql
+SELECT user_id, device_id, auth_epoch, auth_key_installed_at FROM device_registration ORDER BY user_id, device_id;
+-- Recovery key state per user and who requested a pending reset:
+SELECT user_id, state, epoch, installed_at FROM last_device_recovery_key_state;
+SELECT user_id, requested_by_device, requested_at, eligible_at FROM last_device_recovery_key_reset;
+```
+
+For a registration the application does not recognize: stop the server,
+back up the database, and delete that device's rows in one transaction
+(`device_registration`, `authentication_nonce`,
+`last_device_recovery_challenge`, `device_prekey_state`,
+`available_one_time_prekey`, `consumed_one_time_prekey`, and the
+`mailbox_message` rows it sent or would receive). Then review the affected
+user's recovery key state: a recovery key that device registered, rotated
+or revoked, or a reset it requested, may be the attacker's; cancel the
+reset and have the user rotate or re-register the recovery key from a
+legitimate device. There is no remote admin API for this by design.
+
+### Upgrade checklist (S1 / S1.1)
+
+1. Upgrade servers and clients together: new sessions need session
+   initiation v2 (wire type `0x03`), which pre-S1 peers cannot read.
+2. Migrate the server database to schema 8 before `open`.
+3. Audit registrations created before S1 (above).
+4. Remove or revoke registrations the application's account and device
+   system does not recognize, and review the affected users' recovery keys.
+5. Wire `DeviceRegistrationAuthorizer<C>` to the application's
+   authenticated principal and pass a `DeviceRegistrationContextExtractor`
+   that returns `null` for unauthenticated calls.
+6. Confirm the registration route cannot run without principal extraction:
+   an unauthenticated `PUT …/registration` for a new address must answer
+   `403 registration_not_authorized`.
+7. On Android, review the storage key provider limitation of
+   [storage-key-providers.md](storage-key-providers.md#haskeys-s1) (F7).
 
 ## RecoveryKeyResetPolicy
 

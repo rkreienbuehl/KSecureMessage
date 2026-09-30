@@ -45,6 +45,10 @@ class SecurityReviewRegressionTest {
 
         suspend fun send(to: DeviceAddress, text: String) = client.sendRaw(to, text.encodeToByteArray())
 
+        /** A version 1 repetition this device sent before its S1.1 upgrade (still in flight). */
+        suspend fun legacyRepetition(to: DeviceAddress, text: String) =
+            legacyV1Repetition(engine, storage, address, to, text.encodeToByteArray())
+
         suspend fun receiveOne(): EncryptedEnvelope = network.receive(address).single()
 
         suspend fun decryptText(envelope: EncryptedEnvelope): String = client.decryptRaw(envelope).decodeToString()
@@ -260,8 +264,7 @@ class SecurityReviewRegressionTest {
         val alice = legacyDevice(ALICE, fixture.aliceIdentity, fixture.alicePendingV3)
         val bob = legacyDevice(BOB, fixture.bobIdentity, fixture.bobAcceptedV3)
         assertNull(bob.pin(ALICE))
-        alice.send(BOB, "repeat")
-        assertEquals("repeat", bob.decryptText(bob.receiveOne()))
+        assertEquals("repeat", bob.decryptText(alice.legacyRepetition(BOB, "repeat")))
         assertContentEquals(fixture.aliceIdentity.publicKey, bob.pin(ALICE), "the session's own initiator key")
     }
 
@@ -271,8 +274,8 @@ class SecurityReviewRegressionTest {
         val alice = legacyDevice(ALICE, fixture.aliceIdentity, fixture.alicePendingV3)
         // Bob's storage holds a session that none of its identity keys belongs to.
         val bob = legacyDevice(BOB, engine.createIdentity(), fixture.bobAcceptedV3)
-        alice.send(BOB, "whose session?")
-        assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decryptRaw(bob.receiveOne()) }
+        val repetition = alice.legacyRepetition(BOB, "whose session?")
+        assertFailsWith<ProtocolException.InvalidMessage> { bob.client.decryptRaw(repetition) }
         assertNull(bob.pin(ALICE), "nothing guessed")
     }
 
@@ -284,8 +287,7 @@ class SecurityReviewRegressionTest {
         bob.storage.remoteIdentities.setVerification(ALICE, fixture.aliceIdentity.publicKey, VerificationState.VERIFIED)
 
         // A rewrapped message naming Bob's own key is an identity change, refused before any crypto.
-        alice.send(BOB, "genuine")
-        val genuine = bob.receiveOne()
+        val genuine = alice.legacyRepetition(BOB, "genuine")
         val message = genuine.preKeyMessage()
         assertFailsWith<SecureMessageClientException.IdentityChanged> {
             bob.client.decryptRaw(genuine.withPreKeyMessage(message.copy(identityKey = fixture.bobIdentity.publicKey)))

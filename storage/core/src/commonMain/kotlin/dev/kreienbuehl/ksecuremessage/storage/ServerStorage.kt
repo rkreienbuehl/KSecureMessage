@@ -236,13 +236,6 @@ interface DeviceRegistrationRepository {
      * registering the registered key again changes neither.
      */
     suspend fun register(registration: DeviceRegistration, installedAt: Instant): Boolean
-
-    /**
-     * Whether any device of [userId] is registered. Read-only. The server
-     * passes it to the host's registration authorizer (docs/server-authentication.md,
-     * "Registration authorization"); it never decides membership itself.
-     */
-    suspend fun hasRegisteredDevices(userId: UserId): Boolean
 }
 
 /**

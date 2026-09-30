@@ -17,6 +17,10 @@ import dev.kreienbuehl.ksecuremessage.protocol.SignedPreKeyPair
  *   Alice initiated with Bob's [bobSignedPreKey] and [bobOneTimePreKey] and
  *   sent one message ("legacy hi"); Bob accepted it; Alice has not seen a
  *   reply yet, so she still sends version 1 PreKeyMessages.
+ * - [bobPendingV3]: state format 3. Bob initiated towards Alice with
+ *   [aliceSignedPreKey] (no one-time prekey) and sent one message ("legacy
+ *   hi from bob"); Alice never accepted it. Added in S1.1 (finding N3) with
+ *   the same generator, for both peers holding unanswered initiations.
  * - [aliceEstablishedV1] / [bobEstablishedV1]: state format 1 (before
  *   milestone 6, so no stored origin). Bob replied ("legacy ack") and Alice
  *   decrypted it: established in both directions.
@@ -36,7 +40,13 @@ internal object LegacySessionFixture {
     /** The one-time prekey Alice's pending initiation names. */
     val bobOneTimePreKey get() = OneTimePreKeyPair(OneTimePreKeyId(100), hex(BOBONETIMEPREKEYPUBLIC), hex(BOBONETIMEPREKEYPRIVATE))
 
+    /** The signed prekey Bob's pending initiation names. */
+    val aliceSignedPreKey get() = SignedPreKeyPair(
+        SignedPreKeyId(1), hex(ALICESIGNEDPREKEYPUBLIC), hex(ALICESIGNEDPREKEYSIGNATURE), hex(ALICESIGNEDPREKEYPRIVATE),
+    )
+
     val alicePendingV3 get() = SecureSession(BOB, hex(ALICEPENDINGV3))
+    val bobPendingV3 get() = SecureSession(ALICE, hex(BOBPENDINGV3))
     val bobAcceptedV3 get() = SecureSession(ALICE, hex(BOBACCEPTEDV3))
     val aliceEstablishedV1 get() = SecureSession(BOB, hex(ALICEESTABLISHEDV1))
     val bobEstablishedV1 get() = SecureSession(ALICE, hex(BOBESTABLISHEDV1))
@@ -106,4 +116,25 @@ internal object LegacySessionFixture {
         "3afb023f81606bff5f54e2de4b9ba45d6201fdc20bfdd1a154b44d86c0a37967d3d876dd44ab1065d339452c9b9a76c37109" +
         "0117c8423decc2ef596334506d5453c835139cb82a75bdca2f1160db4c23022b120000000100000001000000000000000000" +
         "0000194b5365637572654d6573736167652d526174636865742d7631000007d0"
+
+    private const val ALICESIGNEDPREKEYPUBLIC =
+        "7132d604e3a0ac07279e9b1918b4f10d0d13a5712a0a9535314720ad6fb7e4585e5c1a3f96f9506dd47f2ecaf091210e8c72" +
+        "816a2bfb3a9043f49117e0394c59"
+    private const val ALICESIGNEDPREKEYSIGNATURE =
+        "7e4ef2aa06a9dfb9c62b14a9a4b850d73f40e32fe11b5920df74bc75a164496c909d452c1a50453445276043a9df8b4a6ce5" +
+        "ee4c89a0fcca1af22accea70330a"
+    private const val ALICESIGNEDPREKEYPRIVATE =
+        "340aed96c81360e0328ad21918914ab7f61ec5c38798116eb3c903a5d56a2eeb"
+    private const val BOBPENDINGV3 =
+        "0300000080dc57e7db07b0367497b69a56d3392498c2a1de52625f8aca48147b5613f01e5a26c3c112a59affb9425c4bf7b7" +
+        "f6b0058ecccc341e793292c44e6b1b9b3b0768bd21a84f7f745338683c3b8346bba67d0b21e827d70cbeba92ca5dfdb9755d" +
+        "08acd37e2b5a0a2b0ec18ca3f876f42b228a74eb8d1d540949effcfe4db1a1fdd50100000040dc57e7db07b0367497b69a56" +
+        "d3392498c2a1de52625f8aca48147b5613f01e5a26c3c112a59affb9425c4bf7b7f6b0058ecccc341e793292c44e6b1b9b3b" +
+        "07680000004063c1ed7139afacb0883c3f91dac9d35045fce8646ff3e7d845027017de9c0f62757890b954767d3f8e4fd36c" +
+        "04c4d3ac7f1ed57164e37f3f9a444bf2500c95a20000000100015356b69181192d8cde2c811530c2ca29445dc9e6713479b0" +
+        "5d1088f2a4cb06cd00000000d431994a15f19c339452445f7a77849a572e540425207dddd13684fc00abf4cb19017132d604" +
+        "e3a0ac07279e9b1918b4f10d0d13a5712a0a9535314720ad6fb7e4585e5c1a3f96f9506dd47f2ecaf091210e8c72816a2bfb" +
+        "3a9043f49117e0394c59e3b2ca45e22b3b5bd2678089e318c24c7500840c18af29bf0b04fbd24a0f208a01a85d549cd688d4" +
+        "7ba67730fe58e093c3a34623ee555b4715999003a657a159fd0000000001000000000000000000000000000000194b536563" +
+        "7572654d6573736167652d526174636865742d7631000007d0"
 }

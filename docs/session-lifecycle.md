@@ -78,11 +78,34 @@ the message names the session's initiator key (the F9 check, see
 [identity-trust.md](identity-trust.md#sessions-from-before-pinning)).
 
 **Compatibility.** Sessions established before S1 keep their v1 associated
-data and ratchet: no new X3DH. A pending v1 initiation that the peer had
-accepted before upgrading continues. A v1 initiation the peer never accepted
-is rejected: the initiator must start again (it does so automatically with
-v2 once its session is removed). A pre-S1 peer cannot read wire type `0x03`:
+data and ratchet: no new X3DH. A v1 initiation the peer never accepted is
+rejected by the upgraded peer. A pre-S1 peer cannot read wire type `0x03`:
 upgrade peers together. There is no automatic fallback to v1.
+
+**Unanswered v1 initiations (S1.1, finding N3).** A v1 session this device
+initiated and never saw a reply on (`awaitingReply`) can no longer win
+anything: the upgraded peer refuses v1 initiations, so letting it take part
+in the collision comparison could deadlock both sides (the v1 ID "wins", the
+peer refuses it, and the peer's v2 initiation is retired as the loser).
+Since S1.1:
+
+- *receive:* an incoming v2 initiation always replaces it (step 4a below),
+  regardless of ID order and also without a pin; its origin is retired;
+- *send:* it is never used again. The next `send`, `retryPendingMessages`
+  or session setup fetches a bundle, retires its origin and starts a v2
+  session in the same transaction; pending logical messages keep their ID
+  and sequence and are re-encrypted on the v2 session. An acknowledgement
+  is never sent on it (`ackSent = false`); the sender's retry after the v2
+  session exists triggers a new one.
+- A v1 repetition that was already in flight before the upgrade is still
+  accepted by a peer that accepted the initiation, and that peer's reply
+  still completes the session as v1. Once the v2 session exists, a late v1
+  repetition is refused (`InvalidMessage`, the peer's session is v2).
+
+Established v1 sessions (`awaitingReply` false) are unaffected: they keep
+ratcheting. If both peers hold an unanswered v1 initiation towards each
+other, the first one to send after the upgrade sends v2, which the other
+accepts; if both send at once it is an ordinary v2 collision.
 
 Frozen vectors (`SessionInitiationIdTest`, computed independently with
 Python `hashlib`; keys as below, sender `alice`/`phone`, recipient
@@ -176,7 +199,8 @@ ID of the incoming initiation.
 | 2 | Session exists and its origin is `x` (v2 ID from the envelope's sender, this device's address and the header) | decrypt on the existing session: repeated `PreKeyMessage`s of the current initiation, in any order |
 | 3 | `x` is retired for the sender | `StaleSessionInitiation`, no crypto, nothing changes |
 | 4 | No session | accept `x` (first contact, or after local session loss) |
-| 5 | Session exists but no pin (stored before milestone 5) | never replaced (`InvalidMessage`) |
+| 4a | Own version 1 session awaiting reply (S1.1, N3) | accept `x` and replace it, retire its origin; no ID comparison, with or without a pin |
+| 5 | Session exists but no pin (stored before milestone 5) | replaced only by the identity the session was established with as remote (then pinned); otherwise `InvalidMessage` |
 | 6 | Session from before milestone 6 (no origin) | a v2 message is always a new initiation: accept `x` and replace the session (nothing to retire) |
 | 7 | Own session awaiting reply (origin `c`), `x > c` | collision lost by `x`: authenticate `x`, retire it, `SessionCollision` |
 | 8 | Otherwise (established session, or own pending session with `x < c`) | accept `x` and replace the session, retire its origin |
@@ -328,9 +352,9 @@ and never pruned. Version 1 states:
 
 | Stored before milestone 6 | Behavior |
 |---|---|
-| Pending initiator session | origin derived exactly from the stored prekey data; collisions work as for new sessions |
+| Pending initiator session | origin derived exactly from the stored prekey data; never sent again and always replaced by a v2 initiation (S1.1, N3) |
 | Established session | origin unknown (never guessed); step 6: replaced by any v2 initiation |
-| Session without a pin (before milestone 5) | never replaced (step 5); see [identity-trust.md](identity-trust.md#sessions-from-before-pinning) |
+| Session without a pin (before milestone 5) | replaced only by its own remote identity (step 5); see [identity-trust.md](identity-trust.md#sessions-from-before-pinning) |
 
 `storage:client:sqldelight` schema version 3 adds the `retired_session_initiation`
 table (`2.sqm`, add only). The migration keeps identities, prekeys, sessions
@@ -375,5 +399,13 @@ column. `storage:client:inmemory` keeps the set in its transactional state.
   prekey. Entries for initiations this device started, and entries from
   before milestone 7, are kept. Collision losers' one-time prekeys stay in
   the local inventory.
-- No identity change or reset flow, no safety numbers, no authenticated server
-  API, no persistent mailbox, no sealed sender, no encryption at rest.
+- **Unpinned sessions** with an undeterminable remote identity are never
+  replaced by the protocol (step 5); only the application can remove them.
+- **Retiring an unanswered v1 initiation** replaces a session the peer may
+  have accepted before upgrading; that peer's in-flight v1 replies no
+  longer decrypt and are recovered only by its `retryPendingMessages`.
+- No sealed sender: the server sees sender and recipient addresses of every
+  envelope. (Safety numbers, explicit identity-change acceptance, the
+  authenticated server API, the persistent server mailbox and client
+  storage encryption exist since milestones 15, 12, 13 and 9; see their
+  documents.)
