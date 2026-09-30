@@ -220,6 +220,7 @@ val checkReleaseConventions by tasks.registering(CheckReleaseConventions::class)
     workflows.from(fileTree(".github/workflows") { include("*.yml", "*.yaml") })
     securityPolicy.set(layout.projectDirectory.file("SECURITY.md"))
     markdownFiles.from("README.md", fileTree("docs") { include("*.md") })
+    operatorScripts.from(fileTree("docs/operator") { include("*.sql") })
     rootDirectory.set(layout.projectDirectory)
     apiDumps.from(KsmRelease.publishedModules.map { module ->
         fileTree(module.removePrefix(":").replace(':', '/') + "/api") { include("**/*.api") }

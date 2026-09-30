@@ -31,6 +31,8 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.serialization.json.Json
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Instant
@@ -658,23 +660,34 @@ private suspend fun ApplicationCall.respondInternalError(e: Exception) {
 }
 
 /**
- * Runs the host's [DeviceRegistrationContextExtractor] (S1.2, finding N4),
- * with the same policy as the server's authorizer boundary: rethrows
- * [CancellationException] and [VirtualMachineError], wraps every other
- * [Throwable] ([Error]s such as [AssertionError] and [NotImplementedError]
- * included) in [DeviceRegistrationAuthorizationFailedException], which the
+ * Runs the host's [DeviceRegistrationContextExtractor] (S1.2 finding N4,
+ * S1.3 finding N7) with the same throwable policy as the server's authorizer
+ * boundary ([classifyExtractionFailure]); failures that are not propagated
+ * become [DeviceRegistrationAuthorizationFailedException], which the
  * registration route answers with a generic 500 logged by class only.
  */
-internal inline fun <T> runHostExtractionBoundary(block: () -> T): T =
+internal suspend inline fun <T> runHostExtractionBoundary(block: () -> T): T =
     try {
         block()
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: VirtualMachineError) {
-        throw e
     } catch (e: Throwable) {
-        throw DeviceRegistrationAuthorizationFailedException(e)
+        throw classifyExtractionFailure(e)
     }
+
+/**
+ * Mirror of `classifyHostFailure` in `server:core` (sharing it would make it
+ * public API); both boundaries must classify every throwable identically
+ * (S1.3, finding N7): a [CancellationException] while the calling coroutine
+ * is no longer active (genuine cancellation), [OutOfMemoryError] and
+ * [StackOverflowError] propagate unchanged; everything else, including a
+ * [CancellationException] thrown while the coroutine is still active,
+ * [InternalError] and [UnknownError], is wrapped in a message-free
+ * [DeviceRegistrationAuthorizationFailedException].
+ */
+internal suspend fun classifyExtractionFailure(e: Throwable): Throwable = when {
+    e is CancellationException && !currentCoroutineContext().isActive -> e
+    e is OutOfMemoryError || e is StackOverflowError -> e
+    else -> DeviceRegistrationAuthorizationFailedException(e)
+}
 
 /**
  * The host's context extractor or registration authorizer threw: a generic
@@ -683,7 +696,8 @@ internal inline fun <T> runHostExtractionBoundary(block: () -> T): T =
  * context (account names, tokens).
  */
 private suspend fun ApplicationCall.respondRegistrationAuthorizationFailure(hostFailure: Throwable?) {
-    if (hostFailure is CancellationException) throw hostFailure
+    // hostFailure is never genuine cancellation here: the boundaries propagate that unwrapped.
+    // A CancellationException cause was thrown while the call was still active (N7): a host failure.
     application.log.error("Registration authorization failed (${hostFailure?.let { it::class.qualifiedName }})")
     respondError(HttpStatusCode.InternalServerError, "internal_error")
 }

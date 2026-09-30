@@ -2,6 +2,8 @@ package dev.kreienbuehl.ksecuremessage.server
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 
 /**
  * The host application's decision whether the caller of a registration may
@@ -40,9 +42,12 @@ import kotlinx.coroutines.CancellationException
  * registration as a server failure
  * ([DeviceRegistrationAuthorizationFailedException]), exceptions and errors
  * such as [AssertionError] or [NotImplementedError] alike; its message is
- * never sent to the client. Only coroutine cancellation and
- * [VirtualMachineError]s (process conditions such as
- * [OutOfMemoryError]) pass through unchanged (S1.2, finding N4).
+ * never sent to the client (S1.2, finding N4). Only genuine cancellation
+ * of the calling coroutine and the process-health failures
+ * [OutOfMemoryError] and [StackOverflowError] pass through unchanged; a
+ * [CancellationException] thrown while the coroutine is still active,
+ * [InternalError], [UnknownError] and every other [Throwable] are sanitized
+ * like any other failure (S1.3, finding N7).
  */
 fun interface DeviceRegistrationAuthorizer<in C : Any> {
     suspend fun authorize(context: C, request: DeviceRegistrationAuthorizationRequest): DeviceRegistrationAuthorizationResult
@@ -88,19 +93,36 @@ class DeviceRegistrationAuthorizationFailedException(cause: Throwable) :
 
 /**
  * Runs host code ([DeviceRegistrationAuthorizer]) at the registration
- * boundary (S1.2, finding N4): rethrows [CancellationException] (coroutine
- * cancellation must propagate) and [VirtualMachineError] (process conditions
- * whose message comes from the JVM, not the host), and wraps every other
- * [Throwable], [Error]s included, in
- * [DeviceRegistrationAuthorizationFailedException], whose message is fixed.
+ * boundary (S1.2 finding N4, S1.3 finding N7) and classifies what it throws
+ * with [classifyHostFailure].
  */
-internal inline fun <T> runHostRegistrationBoundary(block: () -> T): T =
+internal suspend inline fun <T> runHostRegistrationBoundary(block: () -> T): T =
     try {
         block()
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: VirtualMachineError) {
-        throw e
     } catch (e: Throwable) {
-        throw DeviceRegistrationAuthorizationFailedException(e)
+        throw classifyHostFailure(e)
     }
+
+/**
+ * The host boundary's throwable policy (S1.3, finding N7), mirrored by
+ * `runHostExtractionBoundary` in `server:ktor` (a shared helper would have to
+ * be public API); both must classify every throwable identically:
+ *
+ * - a [CancellationException] while the calling coroutine is no longer
+ *   active is genuine cancellation and propagates unchanged (structured
+ *   concurrency);
+ * - [OutOfMemoryError] and [StackOverflowError] are process-health failures
+ *   and propagate unchanged: they are never turned into an ordinary HTTP
+ *   answer, and their message is not sanitized;
+ * - everything else is sanitized: wrapped in
+ *   [DeviceRegistrationAuthorizationFailedException], whose message is fixed.
+ *   That includes a [CancellationException] thrown by host code while the
+ *   coroutine is still active (its class is no proof of cancellation),
+ *   [InternalError], [UnknownError] and other [VirtualMachineError]s host code
+ *   can throw with its own message, [LinkageError] and every [Exception].
+ */
+internal suspend fun classifyHostFailure(e: Throwable): Throwable = when {
+    e is CancellationException && !currentCoroutineContext().isActive -> e
+    e is OutOfMemoryError || e is StackOverflowError -> e
+    else -> DeviceRegistrationAuthorizationFailedException(e)
+}

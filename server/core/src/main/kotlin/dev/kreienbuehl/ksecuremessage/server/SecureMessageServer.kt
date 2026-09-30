@@ -89,9 +89,11 @@ class SecureMessageServer<C : Any>(
      * [DeviceRegistrationException.NotAuthorized] if [context] is `null` or
      * the host's [DeviceRegistrationAuthorizer] denied it, and
      * [DeviceRegistrationAuthorizationFailedException] if the authorizer
-     * threw anything but a [kotlinx.coroutines.CancellationException] (rethrown) or a
-     * [VirtualMachineError] (rethrown), including an [Error] such as
-     * [AssertionError] or [NotImplementedError]. In every failure nothing is registered; only the request's
+     * threw anything but genuine cancellation of the calling coroutine, an
+     * [OutOfMemoryError] or a [StackOverflowError] (those propagate unchanged),
+     * including a [kotlinx.coroutines.CancellationException] thrown while the
+     * coroutine is still active and an [Error] such as [AssertionError],
+     * [InternalError] or [NotImplementedError] (S1.3, N7). In every failure nothing is registered; only the request's
      * nonce is claimed.
      *
      * Order: size → authentication (key possession, window, nonce) →
@@ -123,7 +125,7 @@ class SecureMessageServer<C : Any>(
         // No context, no membership: never an anonymous allow path (S1.1, N1).
         context ?: throw DeviceRegistrationException.NotAuthorized()
         val request = DeviceRegistrationAuthorizationRequest(registration.address, registration.publicKey)
-        // Host code: any failure but cancellation and a VM error becomes a message-free wrapper (S1.2, N4).
+        // Host code: any failure but genuine cancellation, OOM and stack overflow becomes a message-free wrapper (S1.2 N4, S1.3 N7).
         val decision = runHostRegistrationBoundary { deviceRegistrationAuthorizer.authorize(context, request) }
         when (decision) {
             DeviceRegistrationAuthorizationResult.Authorized -> Unit
