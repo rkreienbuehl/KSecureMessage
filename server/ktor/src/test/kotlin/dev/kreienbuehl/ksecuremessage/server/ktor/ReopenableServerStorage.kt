@@ -72,6 +72,20 @@ internal class ReopenableServerStorage : ServerStorage, AutoCloseable {
         }
     }
 
+    /**
+     * Like [offline], but hands [block] the database file itself, for an
+     * operator tool that opens it on its own (the `sqlite3` shell).
+     */
+    suspend fun <T> offlineFile(block: (Path) -> T): T {
+        driver.close()
+        try {
+            return block(path.toAbsolutePath())
+        } finally {
+            driver = newDriver()
+            current = SqlDelightServerStorage.open(driver)
+        }
+    }
+
     override fun close() {
         driver.close()
         listOf("", "-journal", "-wal", "-shm").forEach { Path.of("$path$it").deleteIfExists() }

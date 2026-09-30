@@ -19,6 +19,8 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.ktor.server.test.host)
+    // N7 (S1.3): the host boundary is also tested on a real CIO engine.
+    testImplementation(libs.ktor.server.cio)
     testImplementation(libs.ktor.client.content.negotiation)
     // HTTP contract and end-to-end tests run the real client adapter against the routes.
     testImplementation(project(":client:ktor"))
@@ -29,10 +31,14 @@ dependencies {
     testImplementation(libs.sqldelight.sqlite.driver)
 }
 
-// PreS1CleanupTest runs the operator SQL of docs/operating-the-server.md verbatim
-// (S1.2, finding N5): the page is a test input, so a doc change reruns the test.
+// PreS1CleanupTest runs the operator cleanup script (docs/operator/, S1.2 N5,
+// S1.3 N6) with the real sqlite3 shell and the audit SQL of
+// docs/operating-the-server.md: both are test inputs, so a change reruns the test.
 tasks.test {
     val operatingServerDoc = rootProject.layout.projectDirectory.file("docs/operating-the-server.md")
+    val preS1Cleanup = rootProject.layout.projectDirectory.file("docs/operator/ksecuremessage-pre-s1-cleanup.sql")
     inputs.file(operatingServerDoc).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("operatingServerDoc")
+    inputs.file(preS1Cleanup).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("preS1Cleanup")
     systemProperty("ksm.docs.operatingServer", operatingServerDoc.asFile.absolutePath)
+    systemProperty("ksm.operator.preS1Cleanup", preS1Cleanup.asFile.absolutePath)
 }

@@ -37,9 +37,10 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
-      # The linuxX64 test binaries of storage:client:sqldelight link the host's libsqlite3.
-      - name: Install SQLite development library
-        run: sudo apt-get update -q && sudo apt-get install -y -q libsqlite3-dev
+      # The linuxX64 test binaries of storage:client:sqldelight link the host's libsqlite3;
+      # server:ktor PreS1CleanupTest runs the operator cleanup script with the sqlite3 shell (S1.3).
+      - name: Install SQLite development library and shell
+        run: sudo apt-get update -q && sudo apt-get install -y -q libsqlite3-dev sqlite3
 
       - name: Accept Android SDK licenses
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null

@@ -11,11 +11,15 @@ F8, F9 closed; F7 partially fixed), plus new findings N1–N3 and
 documentation findings D1–D7. **S1.1** (section [S1.1 follow-up](#s11-follow-up))
 addresses exactly those. **S1.1 re-review result:** passed with residual
 risks, plus findings N4 and N5; **S1.2** (section [S1.2
-follow-up](#s12-follow-up)) addresses those. Status of N1–N5: **FIXED —
-PENDING RE-REVIEW**; F7: **PARTIALLY FIXED — RESIDUAL RISK DOCUMENTED**.
-Only the independent re-review closes a finding: rows marked CLOSED were
-closed by it, everything else in the summary is open until it has been
-re-checked. Neither S1, S1.1 nor S1.2 is an audit.
+follow-up](#s12-follow-up)) addresses those. **S1.2 re-review result:**
+passed with residual risks (N5 closed), plus two LOW findings N6 and N7
+and the cleanup side effects INFO-3; **S1.3** (section [S1.3
+follow-up](#s13-follow-up)) addresses those. Status of N1–N4: **FIXED —
+PENDING RE-REVIEW**; N5: **CLOSED** by the independent S1.2 re-review;
+N6, N7: **FIXED — PENDING RE-REVIEW**; F7: **PARTIALLY FIXED — RESIDUAL
+RISK DOCUMENTED**. Only the independent re-review closes a finding: rows
+marked CLOSED were closed by it, everything else in the summary is open
+until it has been re-checked. Neither S1, S1.1, S1.2 nor S1.3 is an audit.
 
 Path prefixes: `P` = `core/protocol/src/commonMain/kotlin/dev/kreienbuehl/ksecuremessage/protocol`,
 `C` = `client/core/src/commonMain/kotlin/dev/kreienbuehl/ksecuremessage/client`,
@@ -39,8 +43,10 @@ Path prefixes: `P` = `core/protocol/src/commonMain/kotlin/dev/kreienbuehl/ksecur
 | N1 | MEDIUM | The registration authorizer received no host authentication context, so "may *this caller* register for this `UserId`?" was not expressible | Generic `DeviceRegistrationAuthorizer<C>` with the host's context; required `DeviceRegistrationContextExtractor<C>` in the Ktor routes; no context = denied | FIXED — PENDING RE-REVIEW |
 | N2 | LOW | `userState` ("user has no devices") was read outside the atomic registration write and presented as a fact | `DeviceRegistrationUserState` and `hasRegisteredDevices` removed; no authorization input depends on KSecureMessage's registrations | FIXED — PENDING RE-REVIEW |
 | N3 | LOW | An unanswered v1 initiation could win the collision comparison against a v2 initiation that the upgraded peer needs, deadlocking both sides | Unanswered v1 initiations never win, are never sent again and are replaced by v2 on receive and on send | FIXED — PENDING RE-REVIEW |
-| N4 | LOW | Host code throwing an `Error` (`AssertionError`, `NotImplementedError`) bypassed the `Exception`-only wrapper at the authorizer and extractor boundaries and reached Ktor's logging with message and stack | One boundary policy: cancellation and `VirtualMachineError` rethrown, every other `Throwable` wrapped; logged by class name only | FIXED — PENDING RE-REVIEW |
-| N5 | MEDIUM | The pre-S1 cleanup removed a malicious device but left the offline recovery key it may have planted ACTIVE, so the attacker kept same-user authority | Offline, transactional, tested cleanup that also revokes the user's recovery key state and deletes its reset and challenges; fresh key from a legitimate device | FIXED — PENDING RE-REVIEW |
+| N4 | LOW | Host code throwing an `Error` (`AssertionError`, `NotImplementedError`) bypassed the `Exception`-only wrapper at the authorizer and extractor boundaries and reached Ktor's logging with message and stack | One boundary policy: every host `Throwable` wrapped and logged by class name only; the propagated exceptions are refined by N7 (S1.3) | FIXED — PENDING RE-REVIEW |
+| N5 | MEDIUM | The pre-S1 cleanup removed a malicious device but left the offline recovery key it may have planted ACTIVE, so the attacker kept same-user authority | Offline, transactional, tested cleanup that also revokes the user's recovery key state and deletes its reset and challenges; fresh key from a legitimate device | CLOSED (re-review) |
+| N6 | LOW | The cleanup could be pasted into an interactive `sqlite3` prompt, which continues after a failure and then commits a partial cleanup; a mistyped device matched nothing and still revoked the recovery key while the attacker's device stayed registered | One script file run only as `sqlite3 -bail db < script`; in-transaction guards before the first change (listed devices exist, none duplicated, list not empty, schema 8, exhausted epochs only where listed); mandatory post-cleanup verification | FIXED — PENDING RE-REVIEW |
+| N7 | LOW | The host boundaries rethrew every `CancellationException` and every `VirtualMachineError`, so host code could leak its message (on CIO into the 500 body and the log) with a synthetic cancellation or `InternalError` | Only genuine cancellation (coroutine no longer active), `OutOfMemoryError` and `StackOverflowError` propagate; everything else is sanitized, identically at both boundaries | FIXED — PENDING RE-REVIEW |
 | D1–D7 | DOC | Documentation described unreachable authorizer inputs, a racy value as authoritative, and understated legacy and storage residuals | Corrected, see [S1.1 follow-up](#s11-follow-up) | FIXED — PENDING RE-REVIEW |
 
 ## F1/F2 — Unauthenticated user membership at registration
@@ -722,7 +728,11 @@ verbatim from the documentation page):
 - `n5AuditQueriesRunOnSchemaV8`: the audit queries run and expose the
   attacker's key and the planted recovery key.
 
-**Status:** FIXED — PENDING RE-REVIEW.
+S1.3 replaced the in-page script by one script file with guards and
+verification and narrowed its scope (N6, INFO-3); the N5 tests now run that
+file with the `sqlite3` shell.
+
+**Status:** CLOSED by the independent S1.2 re-review.
 
 ### N4 — Host errors bypassed the exception wrapper
 
@@ -738,9 +748,10 @@ request's authentication context.
 `runHostExtractionBoundary`, both `internal`):
 
 - `CancellationException`: rethrown unchanged (coroutine cancellation).
-- `VirtualMachineError` (out of memory, stack overflow, internal error):
-  rethrown unchanged; its message comes from the JVM, not the host, and a
-  process condition must not be turned into an ordinary server failure.
+- `VirtualMachineError`: rethrown unchanged in S1.2. That was too broad:
+  host code can throw `InternalError` or `UnknownError` with its own
+  message, and the class of a `CancellationException` is no proof of
+  cancellation. S1.3 narrows both ([N7](#n7-host-thrown-cancellation-and-vm-errors-leaked-their-message)).
 - every other `Throwable` (exceptions, `AssertionError`,
   `NotImplementedError`, `LinkageError`, …): wrapped in
   `DeviceRegistrationAuthorizationFailedException` (fixed message; the
@@ -750,14 +761,14 @@ request's authentication context.
   throwable to the logger: no message, stack, cause chain or context.
   Nothing is registered.
 
-**Tests:** `server:core` `DeviceRegistrationAuthorizationTest.n4AuthorizerErrorIsWrappedWithoutMessage`,
-`n4CancellationIsRethrown`, `n4VirtualMachineErrorIsNotWrapped` (a
-test-local `VirtualMachineError` subclass; the JVM is not affected),
-`n4BoundaryPolicy`; `server:ktor` `SecurityRemediationRoutesTest.n4AuthorizerErrorLeaksNoMessageOrStack`,
+**Tests:** `server:core` `DeviceRegistrationAuthorizationTest.n4AuthorizerErrorIsWrappedWithoutMessage`
+(the S1.2 tests `n4CancellationIsRethrown`, `n4VirtualMachineErrorIsNotWrapped`
+and `n4BoundaryPolicy` were replaced by the `n7…` tests of S1.3); `server:ktor` `SecurityRemediationRoutesTest.n4AuthorizerErrorLeaksNoMessageOrStack`,
 `n4ExtractorErrorLeaksNoMessageOrStack` (`SECRET-A/B/C` in an
 `IllegalStateException`, `NotImplementedError` and `AssertionError`,
 development mode on: neither body nor log contains them, no throwable is
-logged, nothing is registered) and `n4CancellationIsRethrown`.
+logged, nothing is registered; since S1.3 in development and production
+mode, with the N7 cases added).
 
 **Status:** FIXED — PENDING RE-REVIEW.
 
@@ -811,6 +822,196 @@ mutation was reverted (checksums compared).
 | S1.2-11 | Android `hasKeys()` limitation removed | `checkReleaseConventions` |
 | S1.2-12 | pre-S1 audit warning removed | `checkReleaseConventions` |
 | S1.2-13 | fresh-recovery-key provisioning step removed | `checkReleaseConventions` |
+
+## S1.3 follow-up
+
+The S1.2 re-review passed with residual risks, closed N5 and reported two
+LOW findings, N6 and N7, plus INFO-3 (cleanup side effects). S1.3 addresses
+exactly those: internal server exception handling, the operator script and
+documentation, tests and release checks. No protocol, wire format, schema
+(client 16, server 8), record type, HTTP path, crypto domain or public API
+change; the `checkKotlinAbi` baselines are unchanged.
+
+### N6 — Pre-S1 cleanup not robust against operator mistakes
+
+**Root cause.** Two independent ones. (1) The page said to open the
+database with the `sqlite3` shell and run the script. Pasted into the
+interactive prompt, `.bail on` has no effect: the shell continues after a
+failed statement, and the script's `COMMIT` then commits whatever ran
+(`n6InteractiveExecutionCommitsPartialCleanupRootCause` reproduces it with
+`sqlite3 -interactive`). (2) A listed device that does not exist (a typo,
+`alice/evl` for `alice/evil`) matched no row: the script "succeeded",
+revoked the user's recovery key and left the attacker's device registered.
+
+**Fix.**
+
+- One executable source of truth:
+  [`operator/ksecuremessage-pre-s1-cleanup.sql`](operator/ksecuremessage-pre-s1-cleanup.sql),
+  shown in the page by inclusion (no copy), run by the tests.
+- One supported invocation, `sqlite3 -bail /path/to/server.db <
+  ksecuremessage-pre-s1-cleanup.sql`; the page forbids interactive pasting
+  and says why.
+- Guards inside the transaction, after the input and before the first
+  `DELETE`/`UPDATE`, as named `CHECK` constraints of a temporary table:
+  `server_schema_is_version_8`, `at_least_one_device_listed` (the unedited
+  file is refused), `every_listed_device_is_registered`,
+  `no_unlisted_exhausted_epoch`,
+  `every_exhausted_user_is_listed_active_and_exhausted`; duplicates fail on
+  the input table's primary key. Any failure: non-zero exit, rollback,
+  nothing changed.
+- Recovery keys: only ACTIVE rows are revoked (`WHERE state = 1`), so an
+  already REVOKED user is unchanged (idempotent); several devices of one
+  user cause one transition. The no-epoch-change variant for an exhausted
+  epoch applies only to users the operator lists in `ksm_exhausted_user`
+  (no hand-edited `UPDATE` any more); all others get epoch + 1.
+- Post-cleanup verification in the same run (the same list, nothing typed
+  twice): one `name|violations` line per check, a `CHECK` that fails the
+  run on any violation, and the final line
+  `ksm-pre-s1-cleanup: verification passed`; the page additionally requires
+  re-running the audit in a fresh session before the restart.
+
+**Tests** (`server:ktor` `PreS1CleanupTest`, the real `sqlite3` binary with
+the documented command; the test fails, never skips, if `sqlite3` is not on
+`PATH`; every failure case compares a snapshot of every server table):
+`n6MissingListedDeviceAbortsWithoutChanges`,
+`n6DuplicateListedDeviceAbortsWithoutChanges`, `n6EmptyCleanupIsRejected`
+(also the file as shipped), `n6CleanupFailureRollsBackEverything` (a
+failing statement just before `COMMIT`), `n6SchemaGuardRejectsAnotherServerSchema`,
+`n6ExhaustedEpochAbortsUnlessListed`, `n6ListingANonExhaustedUserAsExhaustedAborts`,
+`n6ExhaustedEpochPathAffectsOnlyListedUsers` (REVOKED, epoch stays
+`Long.MAX_VALUE`, R1 dead, `EPOCH_EXHAUSTED` afterwards; another user in the
+same run gets epoch + 1), `n6MultipleDevicesOfOneUserIncrementEpochOnce`,
+`n6MultipleUsersRemainIsolated`, `n6AlreadyRevokedUserIsUnchanged`,
+`n6VerificationOutputReportsZeroViolations`, `n6VerificationFailsLoudly`,
+`n6GuardRunsBeforeFirstDestructiveStatement`,
+`n6OperatorPageDocumentsExactlyTheTestedInvocation` and
+`n6InteractiveExecutionCommitsPartialCleanupRootCause`. The N5 tests run the
+same file.
+
+**Status:** FIXED — PENDING RE-REVIEW.
+
+### INFO-3 — Cleanup side effects
+
+The cleanup removes **authority and reachability, not history**:
+
+- `consumed_one_time_prekey` is kept. Deleting it let a legitimate device
+  returning to a known address publish a one-time prekey ID that had
+  already been handed out, and the server handed it out again. Publication
+  skips consumed IDs, so keeping the tombstones never blocks a returning
+  device (its `device_prekey_state` is deleted, so it may publish a new
+  identity key).
+- `mailbox_message` rows **sent as** a listed address are kept, for a
+  wholly malicious address as for a known one: they are opaque ciphertext
+  that confers no authority, end-to-end authenticity is decided by the
+  recipient's session and identity trust, and a known address may have
+  legitimate envelopes in flight. Rows **addressed to** a listed
+  registration are deleted (the invalidated device instance); senders
+  resend pending messages.
+- `device_registration`, `authentication_nonce`, `device_prekey_state` and
+  `available_one_time_prekey` of listed registrations, and the recovery key
+  state, reset and challenges of affected users, are handled as before.
+
+**Tests:** `info3ConsumedOneTimePreKeyIdIsNotReissued` (a one-time prekey
+of `alice/phone` handed to Bob, cleanup, the phone re-registers under host
+authorization and publishes again: the consumed ID is never handed out
+again) and `info3KnownAddressWithAttackerKeyCanReturn` (the attacker took
+over `alice/phone` with R1 before S1: after the cleanup the attacker's key
+is not registered, the recovery key is REVOKED, the phone's earlier
+envelope to Bob is delivered, envelopes to the phone are gone, the phone
+re-registers its own key with the host's authorization, publishes, never
+re-issues a consumed ID and provisions a fresh recovery key at epoch 3);
+`n5PreS1CleanupRevokesCompromisedRecoveryAuthority` checks the kept
+tombstones and sent-as envelopes of `alice/evil`.
+
+### N7 — Host-thrown cancellation and VM errors leaked their message
+
+**Root cause.** Both host boundaries rethrew every `CancellationException`
+and every `VirtualMachineError` unchanged, and the route's failure handler
+rethrew a `CancellationException` cause. Host code can throw
+`CancellationException("…")` while its coroutine is still active, or
+`InternalError("…")`; Ktor then handled an uncaught throwable, and on a
+real CIO engine its message could become the 500 body and appear in the
+log. The class alone is no proof of cancellation or of a JVM condition.
+
+<!-- ksm-security-claim:host-boundary-throwables -->
+**Fix (N7).** One policy, implemented as `classifyHostFailure`
+(`S/DeviceRegistrationAuthorizer.kt`, used by `runHostRegistrationBoundary`)
+and mirrored as `classifyExtractionFailure` (`K/KSecureMessageRoutes.kt`,
+used by `runHostExtractionBoundary`): sharing one function across the two
+modules would make it public API, so both are `internal` and tested to
+classify every throwable identically:
+
+- genuine coroutine cancellation (a `CancellationException` while the
+  calling coroutine is no longer active): propagates unchanged, preserving
+  structured concurrency; KSecureMessage neither answers nor logs it;
+- `OutOfMemoryError` and `StackOverflowError`: process-health failures,
+  propagate unchanged and are never turned into an ordinary HTTP answer.
+  KSecureMessage does not sanitize their message, and what the engine does
+  with them after they leave its boundary is outside its control;
+- everything else is sanitized: a `CancellationException` thrown while the
+  coroutine is still active (also with a secret cause), `InternalError`,
+  `UnknownError`, other `VirtualMachineError`s, `LinkageError` and every
+  other `Throwable` are wrapped in `DeviceRegistrationAuthorizationFailedException`
+  (fixed message) and answered `500 {"error":"internal_error"}`, logged by
+  class name only, with nothing registered.
+<!-- /ksm-security-claim:host-boundary-throwables -->
+
+The route's failure handler no longer rethrows a `CancellationException`
+cause: the boundaries hand it only failures they sanitized.
+
+**Tests:** `server:core` `DeviceRegistrationAuthorizationTest.n7SyntheticCancellationAndHostVmErrorsAreSanitized`,
+`n7RealCancellationPropagates` (the authorizer cancels its own coroutine:
+the job ends cancelled, the cancellation is not wrapped, nothing is
+registered), `n7FatalVmErrorPolicyIsPreserved` (plain `OutOfMemoryError` /
+`StackOverflowError` objects; nothing is exhausted), `n7BoundaryPolicy`;
+`server:ktor` `SecurityRemediationRoutesTest.n4AuthorizerErrorLeaksNoMessageOrStack`
+and `n4ExtractorErrorLeaksNoMessageOrStack` (now also synthetic
+cancellation, cancellation with a `SECRET-CAUSE`, `InternalError`,
+`UnknownError`, in development and production mode),
+`n7RealCancellationPropagates`, `n7ExtractorAndAuthorizerClassifyIdentically`,
+`n1HostFailuresLeakNoContext`; and on a real CIO engine (not the test host)
+`HostBoundaryCioTest.n7ExtractorFailuresAreSanitizedOnCio` /
+`n7AuthorizerFailuresAreSanitizedOnCio` (development mode off and on: body
+exactly `{"error":"internal_error"}`, no secret in body or log).
+
+**Status:** FIXED — PENDING RE-REVIEW.
+
+### S1.3 documentation guardrails
+
+`checkReleaseConventions` additionally guards:
+
+| Claim | Where | Guarded content |
+|---|---|---|
+| `pre-s1-recovery-key-cleanup` | [operating-the-server.md](operating-the-server.md#pre-s1-cleanup) | the exact script command, "Do not paste the cleanup statements interactively", why, the guards, mandatory post-cleanup verification, restart only afterwards; forbids "open the database with the sqlite3 shell", "paste into", a hand-edited `UPDATE` |
+| SQL `pre-s1-cleanup-script` | same | the page includes the script file, holds no copy of its statements |
+| `pre-s1-cleanup` | the script file | `.bail on`, transaction, input table keys, every guard, every statement, verification; forbids deleting tombstones or envelopes sent as a cleaned address; the guard runs after the input and before the first `DELETE`/`UPDATE` |
+| `pre-s1-audit` | operating-the-server.md | also: an address alone never clears a registration whose key cannot be established as legitimate |
+| `host-boundary-throwables` | operating-the-server.md, this page | genuine cancellation propagates, active cancellation, `InternalError`, `UnknownError` sanitized, OOM/SOE policy; no page may attribute a throwable's message to the JVM |
+
+### S1.3 mutation testing
+
+Each mutation was applied alone, the named test or check was run, and the
+mutation was reverted (checksums compared).
+
+| # | Mutation | Caught by |
+|---|---|---|
+| S1.3-1 | device-existence guard removed from the script | `n6MissingListedDeviceAbortsWithoutChanges`, `n6InteractiveExecutionCommitsPartialCleanupRootCause`, `checkReleaseConventions` (after this run the guard's subquery became a required token) |
+| S1.3-2 | guard moved after the first destructive `DELETE` | `checkReleaseConventions` (order), `n6GuardRunsBeforeFirstDestructiveStatement` and 15 more `PreS1CleanupTest` tests (the guard then refuses every run) |
+| S1.3-3 | page allows pasting into the sqlite3 prompt | `checkReleaseConventions`, `n6OperatorPageDocumentsExactlyTheTestedInvocation` |
+| S1.3-4 | post-cleanup verification removed from the script | `n6VerificationOutputReportsZeroViolations`, `n6VerificationFailsLoudly`, `n6ExhaustedEpochPathAffectsOnlyListedUsers`, `checkReleaseConventions` |
+| S1.3-5 | consumed one-time prekey tombstones deleted again | `info3ConsumedOneTimePreKeyIdIsNotReissued`, `info3KnownAddressWithAttackerKeyCanReturn`, `n5PreS1CleanupRevokesCompromisedRecoveryAuthority`, `checkReleaseConventions` |
+| S1.3-6 | envelopes sent as a cleaned address deleted again | `n5PreS1CleanupRevokesCompromisedRecoveryAuthority`, `info3KnownAddressWithAttackerKeyCanReturn`, `checkReleaseConventions` |
+| S1.3-7 | no-epoch-change revocation applied to every affected user | `n6ExhaustedEpochPathAffectsOnlyListedUsers`, `checkReleaseConventions` |
+| S1.3-8 | every `CancellationException` rethrown (both boundaries) | `server:core` `n7BoundaryPolicy`, `n7SyntheticCancellationAndHostVmErrorsAreSanitized`; `server:ktor` `n4…LeaksNoMessageOrStack` (2), `HostBoundaryCioTest` (2) |
+| S1.3-9 | synthetic cancellation logged with its throwable | `n4AuthorizerErrorLeaksNoMessageOrStack`, `n4ExtractorErrorLeaksNoMessageOrStack`, `HostBoundaryCioTest` (2) |
+| S1.3-10 | every `VirtualMachineError` rethrown (both boundaries) | as S1.3-8 |
+| S1.3-11 | `InternalError` bypasses sanitization (both boundaries) | as S1.3-8 |
+| S1.3-12 | extractor boundary classifies differently from the authorizer boundary | `n7ExtractorAndAuthorizerClassifyIdentically`, `n4ExtractorErrorLeaksNoMessageOrStack`, `HostBoundaryCioTest.n7ExtractorFailuresAreSanitizedOnCio` |
+| S1.3-13 | genuine cancellation wrapped into a 500 (both boundaries) | `server:core` `n7RealCancellationPropagates`, `n7BoundaryPolicy`; `server:ktor` `n7RealCancellationPropagates` |
+| S1.3-14 | host failure text logged | `n1HostFailuresLeakNoContext`, `n4…LeaksNoMessageOrStack` (2) |
+| S1.3-15 | script-only warning removed from the page | `checkReleaseConventions`, `n6OperatorPageDocumentsExactlyTheTestedInvocation` |
+| S1.3-16 | missing-device guard removed from script and page | `n6MissingListedDeviceAbortsWithoutChanges`, `n6InteractiveExecutionCommitsPartialCleanupRootCause`, `checkReleaseConventions` |
+| S1.3-17 | post-cleanup verification step removed from the page | `checkReleaseConventions` |
 
 ## Version changes
 
@@ -941,7 +1142,7 @@ reason); the fixture now includes them and the test checks the exact error.
   substitution.
 - No formal verification; Kodium is a dependency with its own review status.
 - A finding is closed only by the independent re-review (the CLOSED rows);
-  N1–N5 and D1–D7 are pending it.
+  N1–N4, N6, N7 and D1–D7 are pending it.
 - Legacy: v1 initiations not answered before the upgrade are replaced by v2
   (their messages resent by the reliability layer); peers and servers must
   be upgraded together; `StaticStorageKeyProvider` cannot migrate milestone
@@ -950,5 +1151,13 @@ reason); the fixture now includes them and the test checks the exact error.
   authority, and any offline recovery key they planted, until the operator
   audits them and runs the offline cleanup (D3, N5). A server whose
   operator skips the cleanup keeps that exposure.
+- The operator is responsible for auditing pre-S1 state and running the
+  cleanup correctly (N6 makes mistakes fail closed, it cannot choose the
+  suspicious registrations).
+- `OutOfMemoryError` and `StackOverflowError` from host code propagate
+  unsanitized (N7); KSecureMessage cannot control what happens after a
+  process-health failure leaves its boundary.
+- The server's wall clock is a security input (freshness windows, challenge
+  expiry, reset delay).
 - F7: intent replay and provider-state trust (see F7), accepted for v0.x.
 - The correctness of the host's context extractor and authorizer (N1).

@@ -135,8 +135,17 @@ policy.
   `AssertionError` or `NotImplementedError` alike; S1.2, finding N4) answers
   `500 internal_error`, also in Ktor's development mode, and is logged by
   class name only, never its message, stack, cause or the context.
-  Coroutine cancellation is rethrown, and so are `VirtualMachineError`s
-  (out of memory, stack overflow): their messages come from the JVM.
+  <!-- ksm-security-claim:host-boundary-throwables -->
+  The throwable's class alone is never trusted (S1.3, finding N7): genuine
+  coroutine cancellation (the request's coroutine is no longer active)
+  propagates unchanged; a `CancellationException` thrown by host code while
+  the coroutine is still active is sanitized like any other failure, and so
+  are `InternalError`, `UnknownError` and other errors host code can throw
+  with its own message. Only the process-health failures `OutOfMemoryError`
+  and `StackOverflowError` propagate unchanged: KSecureMessage does not
+  turn them into an ordinary HTTP answer, and what happens to them after
+  they leave its boundary (engine, logging) is outside its control.
+  <!-- /ksm-security-claim:host-boundary-throwables -->
 - The authorizer gets no view of KSecureMessage's registrations (S1.1,
   finding N2): being the first device of a user is not an authority, and a
   count read outside the registration's write would be stale.
@@ -214,7 +223,10 @@ FROM last_device_recovery_challenge ORDER BY user_id, device_id;
 
 A registration is **suspicious** if the application does not recognize its
 address, or recognizes the address but not its key or the transition that
-installed it.
+installed it. A matching address is never enough on its own: if an operator
+cannot establish that a pre-S1 registration's current authentication key is
+legitimate (for example because the application kept no record of device
+keys), treat that registration/user as suspect.
 <!-- /ksm-security-claim:pre-s1-audit -->
 
 ### Pre-S1 cleanup
@@ -238,20 +250,68 @@ application's own records) that the user's current recovery key was
 provisioned after S1 by a legitimate device; the procedure has no switch
 for this and nothing is assumed implicitly.
 
-Perform the cleanup with the **server stopped**, after a backup, inside
-**one database transaction**, then have a legitimate device provision a
-fresh recovery key. There is no remote admin API for this by design.
+Perform the cleanup with the **server stopped**, after a backup, as **one
+database transaction** run by the cleanup script, then have a legitimate
+device provision a fresh recovery key. There is no remote admin API for this
+by design.
 
-1. Stop the server (no request in flight) and back up the database file.
+The script is the file
+[`operator/ksecuremessage-pre-s1-cleanup.sql`](operator/ksecuremessage-pre-s1-cleanup.sql)
+([on GitHub](https://github.com/rkreienbuehl/KSecureMessage/blob/main/docs/operator/ksecuremessage-pre-s1-cleanup.sql)),
+shown in full below. It is the only copy: the test suite runs exactly this
+file with the `sqlite3` shell against server schema 8.
+
+**Preconditions**, all required:
+
+- the server is stopped (no request in flight) and the database file is
+  backed up;
+- the database is at server schema version 8 (the script checks
+  `server_storage.format` and refuses anything else);
+- the audit queries above were run and every suspicious
+  `(user_id, device_id)` tuple was checked against their output.
+
+**Run it as a script, exactly like this** (on an edited copy of the file):
+
+```sh
+sqlite3 -bail /path/to/server.db < ksecuremessage-pre-s1-cleanup.sql
+```
+
+**Do not paste the cleanup statements interactively into the sqlite3
+prompt**, and do not run them with another tool statement by statement.
+Interactively, the shell continues after a failed statement (`.bail on`
+has no effect there), so a guard or constraint failure is followed by the
+remaining `DELETE`s, the `UPDATE` and `COMMIT`: a partial cleanup is
+committed. Run as a script, the first error stops the shell with a non-zero
+exit status and SQLite rolls the open transaction back: nothing changes.
+
+Steps:
+
+1. Stop the server and back up the database file.
 2. Run the audit queries above and list the suspicious registrations.
-3. Open the database with the `sqlite3` shell and run the script below,
-   with one `INSERT` row per suspicious registration (the example removes
-   `alice/evil`). `.bail on` stops at the first error; an error before
-   `COMMIT` leaves nothing changed (the shell rolls the open transaction
-   back when it exits; with another tool, run `ROLLBACK`). The row-value
-   `IN` comparisons need SQLite 3.15 or newer.
-4. Restart the server.
-5. On a legitimate device of each affected user:
+3. Copy the script and edit **only** the section between
+   `-- ksm-cleanup-input:begin` and `-- ksm-cleanup-input:end`: one
+   `INSERT INTO ksm_cleanup_device (user_id, device_id) VALUES (…);` row per
+   suspicious registration, and `ksm_exhausted_user` only as described under
+   "Exhausted recovery key epoch" below.
+4. Run it with the command above. It needs SQLite 3.15 or newer (row-value
+   `IN`).
+5. **Post-cleanup verification** (mandatory, never rely on the exit status
+   alone). The run is successful only if all of these hold:
+    - the exit status is 0;
+    - the script printed one `name|violations` line per check, each with
+      violation count `0`, and its last line is
+      `ksm-pre-s1-cleanup: verification passed`;
+    - the audit queries, run again in a fresh `sqlite3` session, no longer
+      show any listed registration, show every affected user's recovery key
+      state as `2` (REVOKED) or absent, and show no reset and no challenge
+      for an affected user.
+
+    If any check fails, do not start the server; restore the backup and
+    investigate. A non-zero exit status with an error that names
+    `post_cleanup_verification_found_no_violations` means the transaction
+    was committed but its result is wrong.
+6. Only then restart the server.
+7. On a legitimate device of each affected user:
    `val r2 = client.createLastDeviceRecoveryKey()`, back `r2` up offline,
    `client.registerLastDeviceRecoveryKey(r2)`, and check that
    `client.lastDeviceRecoveryKeyStatus()` is `Active` with `r2`'s public key.
@@ -259,103 +319,84 @@ fresh recovery key. There is no remote admin API for this by design.
    ServerAuth by a registered device of the user and `r2`'s proof of
    possession, never the old key.
 
-<!-- ksm-sql:pre-s1-cleanup:begin -->
+**Guards.** The script checks everything before its first change, inside
+the transaction, after the input is listed, and aborts (non-zero exit,
+nothing changed) with the name of the failed guard:
+
+- `server_schema_is_version_8`: the database is at server schema 8;
+- `at_least_one_device_listed`: an empty list is refused, so running the
+  unedited file never looks successful;
+- `every_listed_device_is_registered`: every listed tuple is a current
+  registration; a typo such as `alice/evl` for `alice/evil` aborts instead
+  of revoking the recovery key while the attacker's device stays registered;
+- a duplicate row fails on `ksm_cleanup_device`'s primary key
+  (`UNIQUE constraint failed`);
+- `no_unlisted_exhausted_epoch` and
+  `every_exhausted_user_is_listed_active_and_exhausted`: see below.
+
+<!-- ksm-sql:pre-s1-cleanup-script:begin -->
 ```sql
-.bail on
-BEGIN IMMEDIATE;
-CREATE TEMP TABLE ksm_cleanup_device (user_id TEXT NOT NULL, device_id TEXT NOT NULL, PRIMARY KEY (user_id, device_id));
--- One row per suspicious registration.
-INSERT INTO ksm_cleanup_device (user_id, device_id) VALUES ('alice', 'evil');
-
--- 1. Device-scoped state of every suspicious registration.
-DELETE FROM device_registration WHERE (user_id, device_id) IN (SELECT user_id, device_id FROM ksm_cleanup_device);
-DELETE FROM authentication_nonce WHERE (user_id, device_id) IN (SELECT user_id, device_id FROM ksm_cleanup_device);
--- The prekey bundle fetch is public: a remaining bundle would still start sessions with the attacker.
-DELETE FROM device_prekey_state WHERE (user_id, device_id) IN (SELECT user_id, device_id FROM ksm_cleanup_device);
-DELETE FROM available_one_time_prekey WHERE (user_id, device_id) IN (SELECT user_id, device_id FROM ksm_cleanup_device);
-DELETE FROM consumed_one_time_prekey WHERE (user_id, device_id) IN (SELECT user_id, device_id FROM ksm_cleanup_device);
-DELETE FROM mailbox_message
-WHERE (recipient_user_id, recipient_device_id) IN (SELECT user_id, device_id FROM ksm_cleanup_device)
-   OR (sender_user_id, sender_device_id) IN (SELECT user_id, device_id FROM ksm_cleanup_device);
-
--- 2. Recovery authority of every affected user: forced to REVOKED at epoch + 1.
---    At epoch 9223372036854775807 the NULL fails the NOT NULL constraint and aborts
---    the script: epochs never wrap (see "Exhausted recovery key epoch" below).
-UPDATE last_device_recovery_key_state
-SET state = 2,
-    epoch = CASE WHEN epoch < 9223372036854775807 THEN epoch + 1 ELSE NULL END,
-    public_key = NULL,
-    installed_at = NULL,
-    transitioned_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000,
-    rotation_id = NULL,
-    revocation_id = NULL,
-    reset_completion_id = NULL
-WHERE user_id IN (SELECT user_id FROM ksm_cleanup_device);
-DELETE FROM last_device_recovery_key_reset WHERE user_id IN (SELECT user_id FROM ksm_cleanup_device);
-DELETE FROM last_device_recovery_challenge WHERE user_id IN (SELECT user_id FROM ksm_cleanup_device);
-
-DROP TABLE ksm_cleanup_device;
-COMMIT;
+--8<-- "docs/operator/ksecuremessage-pre-s1-cleanup.sql"
 ```
-<!-- ksm-sql:pre-s1-cleanup:end -->
+<!-- ksm-sql:pre-s1-cleanup-script:end -->
 
-What it changes and why:
+What it changes and why. The cleanup removes **authority and
+reachability**, not history:
 
-- **Device-scoped rows** of each suspicious registration: the registration
-  (its key can no longer sign anything), its claimed nonces, its prekey
-  state and one-time prekeys (the bundle fetch is public; consumed-ID
-  tombstones would otherwise block a later legitimate device at that
-  address), and every mailbox envelope addressed to it (no legitimate
-  consumer) or sent as it (before S1 the sender field was not
-  authenticated; a legitimate device never used that address).
-- **Recovery authority** of each affected user: the state row becomes
-  REVOKED (`state = 2`, no public key, no installation time, no transition
-  IDs; this satisfies the table's CHECK constraint) at epoch + 1, so the
-  epoch stays monotonic and every statement, challenge and reset bound to
-  the old epoch is dead. A user without a row (never configured) stays
-  unconfigured. `transitioned_at` is the wall-clock time of the cleanup.
-  The pending reset and all challenges of the user are deleted: they were
-  issued under suspect authority.
-- **Unchanged:** other devices of the user (registrations, keys, epochs,
-  prekeys, nonces, their mailboxes), other users, and the nonce prune
-  watermark. Afterwards the old recovery key can no longer cancel or read a
-  reset, obtain a challenge, recover a device, rotate or revoke: every one
-  of those needs an ACTIVE key.
+| Table | Rows of the listed registrations / affected users |
+|---|---|
+| `device_registration` | deleted: the key can no longer sign anything |
+| `authentication_nonce` | deleted (the device's claimed nonces); the prune watermark is kept |
+| `device_prekey_state`, `available_one_time_prekey` | deleted: the bundle fetch is public, a remaining bundle would still start sessions with the suspect key holder |
+| `consumed_one_time_prekey` | **kept**: a consumed one-time prekey ID is never handed out again, also after a legitimate device returns to the address and publishes its prekeys again (publication skips consumed IDs) |
+| `mailbox_message` | deleted if **addressed to** a listed registration (the invalidated device instance); **kept** if sent as it (see below) |
+| `last_device_recovery_key_state` | an ACTIVE key is forced to REVOKED (`state = 2`, no public key, no installation time, no transition IDs) at epoch + 1; an already REVOKED user is left unchanged; a user without a row stays unconfigured |
+| `last_device_recovery_key_reset`, `last_device_recovery_challenge` | deleted for every affected user: issued under suspect authority |
 
-A **known address with an attacker's key** (a legitimate device whose key a
-pre-S1 recovery replaced) is cleaned up the same way, with its address in
-the table. The legitimate device then calls `registerDevice()` again (a
-first registration of its own key, authorized by the host) and
-`publishPreKeys()`. Envelopes that were addressed to it are gone; their
+The epoch step keeps the recovery key epoch monotonic, so every statement,
+challenge and reset bound to the old epoch is dead. Several listed devices
+of one user cause a single transition. `transitioned_at` is the wall-clock
+time of the cleanup. Afterwards the old recovery key can no longer cancel
+or read a reset, obtain a challenge, recover a device, rotate or revoke:
+every one of those needs an ACTIVE key. Unchanged: other devices of the
+user (registrations, keys, epochs, prekeys, nonces, their mailboxes), other
+users and the nonce prune watermark.
+
+**Envelopes sent as a listed address are kept**, for a wholly malicious
+address as for a known one. They are opaque ciphertext and confer no
+authority: whether a message is authentic is decided end to end by the
+recipient's session and identity trust, never by the relay's sender field,
+and deleting them cannot undo what the suspect key holder already
+delivered. A known address may also have legitimate envelopes in flight
+from its legitimate device, which the relay cannot tell apart.
+
+**A known address with an attacker's key** (a legitimate device whose key a
+pre-S1 recovery or last-device recovery replaced) is cleaned up the same
+way, with its address in the list. The legitimate device then calls
+`registerDevice()` again (a first registration of its own key, authorized
+by the host) and `publishPreKeys()`; its already consumed one-time prekey
+IDs stay tombstoned. Envelopes that were addressed to it are gone; their
 senders still hold them as pending and resend them with
 `retryPendingMessages()` until acknowledged.
 
-**Exhausted recovery key epoch.** If a user's recovery key epoch is already
-`9223372036854775807`, the script aborts and changes nothing, because the
-epoch cannot grow and never wraps. Decide manually. Revoking without an
-epoch change is fail-closed: replace the `UPDATE` with the statement below
-and run the script again. The old key is then as dead as above (every use
-needs an ACTIVE key; challenges and the reset are deleted), but that user
-can **never** register a recovery key again on this database
-(`EPOCH_EXHAUSTED`).
+**Exhausted recovery key epoch.** If an affected user's ACTIVE recovery key
+epoch is already `9223372036854775807`, the epoch cannot grow and never
+wraps, so the script aborts (`no_unlisted_exhausted_epoch`) and changes
+nothing. Decide manually. Revoking without an epoch change is fail-closed:
+add that user, and only that user, to the input section with
+`INSERT INTO ksm_exhausted_user (user_id) VALUES (…);` and run the script
+again. For that user the old key is then as dead as above (REVOKED, every
+use needs an ACTIVE key, challenges and the reset are deleted) and the
+epoch stays `9223372036854775807`, so that user can **never** register a
+recovery key again on this database (`EPOCH_EXHAUSTED`). Every other
+affected user gets the normal revocation at epoch + 1. Listing a user
+whose epoch is not exhausted, who is not ACTIVE, or who has no listed
+device aborts (`every_exhausted_user_is_listed_active_and_exhausted`).
 
-<!-- ksm-sql:pre-s1-cleanup-exhausted:begin -->
-```sql
-UPDATE last_device_recovery_key_state
-SET state = 2,
-    public_key = NULL,
-    installed_at = NULL,
-    transitioned_at = CAST(strftime('%s', 'now') AS INTEGER) * 1000,
-    rotation_id = NULL,
-    revocation_id = NULL,
-    reset_completion_id = NULL
-WHERE user_id IN (SELECT user_id FROM ksm_cleanup_device);
-```
-<!-- ksm-sql:pre-s1-cleanup-exhausted:end -->
-
-Both scripts run against server schema version 8 in the test suite
-(`PreS1CleanupTest` in `server:ktor`, file-backed SQLite with the real
-constraints), which executes the blocks of this page verbatim.
+The script runs against server schema version 8 in the test suite
+(`PreS1CleanupTest` in `server:ktor`: the real `sqlite3` shell with the
+command above, on a file-backed database with the real constraints; the
+audit queries run verbatim from this page).
 <!-- /ksm-security-claim:pre-s1-recovery-key-cleanup -->
 
 ### Upgrade checklist (S1 / S1.1)
@@ -366,9 +407,10 @@ constraints), which executes the blocks of this page verbatim.
 3. Audit registrations created before S1, with their keys and transition
    metadata, not only their addresses (above).
 4. For every suspicious registration run the offline [pre-S1
-   cleanup](#pre-s1-cleanup): it also revokes the affected users' recovery
-   keys and deletes their pending resets and challenges; then provision a
-   fresh recovery key from a legitimate device.
+   cleanup](#pre-s1-cleanup) script, as a script (never pasted), and pass
+   its post-cleanup verification: it also revokes the affected users'
+   recovery keys and deletes their pending resets and challenges; then
+   provision a fresh recovery key from a legitimate device.
 5. Wire `DeviceRegistrationAuthorizer<C>` to the application's
    authenticated principal and pass a `DeviceRegistrationContextExtractor`
    that returns `null` for unauthenticated calls.

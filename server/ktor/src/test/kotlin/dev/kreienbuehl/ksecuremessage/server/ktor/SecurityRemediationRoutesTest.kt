@@ -4,6 +4,16 @@ import dev.kreienbuehl.ksecuremessage.client.SecureMessageTransportException
 import dev.kreienbuehl.ksecuremessage.client.ktor.KtorSecureMessageTransport
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
 import dev.kreienbuehl.ksecuremessage.model.DeviceId
+import dev.kreienbuehl.ksecuremessage.model.DeviceRegistration
+import dev.kreienbuehl.ksecuremessage.server.DeviceRegistrationAuthorizer
+import dev.kreienbuehl.ksecuremessage.server.SecureMessageServer
+import dev.kreienbuehl.ksecuremessage.storage.server.inmemory.InMemoryServerStorage
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlin.time.Clock
 import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.MessageId
 import dev.kreienbuehl.ksecuremessage.model.UserId
@@ -197,6 +207,12 @@ class SecurityRemediationRoutesTest {
         IllegalStateException("SECRET-A principal=alice token=7f3a"),
         NotImplementedError("SECRET-B principal=alice"),
         AssertionError("SECRET-C principal=alice"),
+        // N7 (S1.3): thrown while the call is still active, so not cancellation of it.
+        CancellationException("SECRET-CANCEL principal=alice"),
+        CancellationException("cancelled").apply { initCause(IllegalStateException("SECRET-CAUSE principal=alice")) },
+        // N7: host code can throw these with its own message.
+        InternalError("SECRET-VM principal=alice"),
+        UnknownError("SECRET-UNKNOWN principal=alice"),
     )
 
     private fun assertNoHostTextLogged(logger: RecordingLogger) {
@@ -209,13 +225,13 @@ class SecurityRemediationRoutesTest {
 
     @Test
     fun n4AuthorizerErrorLeaksNoMessageOrStack() {
-        for (failure in hostFailures()) {
+        for (failure in hostFailures()) for (developmentMode in listOf(true, false)) {
             val logger = RecordingLogger()
             testServer(
                 TestDeviceRegistrationAuthorizer.throwing(failure),
                 registrationContext = TestRegistrationContexts.header,
                 logger = logger,
-                developmentMode = true,
+                developmentMode = developmentMode,
             ) { storage, http ->
                 val response = http.register(TestDevice(alice), principal = "alice")
                 response.assertError(HttpStatusCode.InternalServerError, "internal_error")
@@ -228,14 +244,14 @@ class SecurityRemediationRoutesTest {
 
     @Test
     fun n4ExtractorErrorLeaksNoMessageOrStack() {
-        for (failure in hostFailures()) {
+        for (failure in hostFailures()) for (developmentMode in listOf(true, false)) {
             val logger = RecordingLogger()
             val authorizer = TestDeviceRegistrationAuthorizer.allowAll()
             testServer(
                 authorizer,
                 registrationContext = DeviceRegistrationContextExtractor { throw failure },
                 logger = logger,
-                developmentMode = true,
+                developmentMode = developmentMode,
             ) { storage, http ->
                 val response = http.register(TestDevice(alice), principal = "alice")
                 response.assertError(HttpStatusCode.InternalServerError, "internal_error")
@@ -247,19 +263,34 @@ class SecurityRemediationRoutesTest {
         }
     }
 
-    @Test
-    fun n4CancellationIsRethrown() {
-        // The boundary itself: cancellation passes unchanged, errors are wrapped.
-        val cancellation = CancellationException("cancelled")
-        assertSame(cancellation, assertFailsWith<CancellationException> { runHostExtractionBoundary { throw cancellation } })
-        val error = NotImplementedError("SECRET")
-        assertSame(error, assertFailsWith<DeviceRegistrationAuthorizationFailedException> { runHostExtractionBoundary { throw error } }.cause)
-        val fatal = object : VirtualMachineError("simulated VM condition") {}
-        assertSame(fatal, assertFailsWith<VirtualMachineError> { runHostExtractionBoundary { throw fatal } })
+    // N7 (S1.3): real cancellation propagates; everything else is classified alike at both boundaries.
 
-        // Through the route: KSecureMessage neither answers nor logs a cancelled extraction or authorization as its own failure.
-        val cancelledExtractor = DeviceRegistrationContextExtractor<TestRegistrationPrincipal> { throw CancellationException("host call cancelled") }
-        val cancelledAuthorizer = TestDeviceRegistrationAuthorizer.throwing(CancellationException("host call cancelled"))
+    @Test
+    fun n7RealCancellationPropagates() = runBlocking {
+        // The boundary itself: genuine cancellation passes unchanged, the same instance.
+        val cancellation = CancellationException("cancelled")
+        var propagated: Throwable? = null
+        launch {
+            try {
+                runHostExtractionBoundary {
+                    currentCoroutineContext().cancel()
+                    throw cancellation
+                }
+            } catch (e: Throwable) {
+                propagated = e
+            }
+        }.join()
+        assertSame(cancellation, propagated)
+
+        // Through the route: a call whose extraction or authorization is really cancelled is neither answered
+        // nor logged as KSecureMessage's own failure.
+        val cancelling: suspend () -> Nothing = {
+            currentCoroutineContext().cancel()
+            currentCoroutineContext().ensureActive()
+            error("unreachable")
+        }
+        val cancelledExtractor = DeviceRegistrationContextExtractor<TestRegistrationPrincipal> { cancelling() }
+        val cancelledAuthorizer = DeviceRegistrationAuthorizer<TestRegistrationPrincipal> { _, _ -> cancelling() }
         for ((authorizer, extractor) in listOf(
             TestDeviceRegistrationAuthorizer.allowAll() to cancelledExtractor,
             cancelledAuthorizer to TestRegistrationContexts.header,
@@ -272,6 +303,32 @@ class SecurityRemediationRoutesTest {
             }
             assertFalse(logger.everything().contains("Registration authorization failed"), "not reported as a host failure")
         }
+    }
+
+    @Test
+    fun n7ExtractorAndAuthorizerClassifyIdentically() = runBlocking {
+        val throwables = hostFailures() + LinkageError("SECRET") + OutOfMemoryError("simulated") + StackOverflowError("simulated")
+        for (failure in throwables) {
+            // The server's authorizer boundary (server:core) and the route's extractor boundary (server:ktor).
+            val viaAuthorizer = runCatching {
+                SecureMessageServer(InMemoryServerStorage(), Clock.System, TestDeviceRegistrationAuthorizer.throwing(failure))
+                    .registerDevice(TestRegistrationPrincipal(UserId("alice")), aliceRegistration.first, aliceRegistration.second, aliceRegistration.third)
+            }.exceptionOrNull()
+            val viaExtractor = runCatching { runHostExtractionBoundary { throw failure } }.exceptionOrNull()
+            assertEquals(viaAuthorizer?.let { it::class }, viaExtractor?.let { it::class }, "${failure::class}")
+            assertSame(failure, if (viaAuthorizer is DeviceRegistrationAuthorizationFailedException) viaAuthorizer.cause else viaAuthorizer)
+            assertSame(failure, if (viaExtractor is DeviceRegistrationAuthorizationFailedException) viaExtractor.cause else viaExtractor)
+        }
+        // The fatal ones propagate unwrapped from both; the rest are sanitized by both.
+        for (fatal in listOf<Throwable>(OutOfMemoryError("simulated"), StackOverflowError("simulated"))) {
+            assertSame(fatal, runCatching { runHostExtractionBoundary { throw fatal } }.exceptionOrNull())
+        }
+    }
+
+    private val aliceRegistration by lazy {
+        val device = TestDevice(alice)
+        val body = registrationBody(device)
+        Triple(DeviceRegistration(alice, device.keyPair.publicKey), body, device.sign("PUT", ServerApiPaths.REGISTRATION, body))
     }
 
     @Test

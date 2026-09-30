@@ -71,6 +71,9 @@ abstract class CheckReleaseConventions : DefaultTask() {
     /** README and the documentation pages, checked for platform claims. */
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) abstract val markdownFiles: ConfigurableFileCollection
 
+    /** Operator scripts (the .sql files in docs/operator) whose security statements are guarded like documentation claims. */
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) abstract val operatorScripts: ConfigurableFileCollection
+
     /** The API dumps of the published modules (the .api files in each module's api directory). */
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) abstract val apiDumps: ConfigurableFileCollection
 
@@ -211,16 +214,22 @@ abstract class CheckReleaseConventions : DefaultTask() {
     // whitespace normalized, so rewrapping is fine).
     // The operator SQL blocks (`<!-- ksm-sql:<id>:begin -->` … `:end -->`) that
     // PreS1CleanupTest runs verbatim are guarded the same way, so the prose
-    // around them cannot stand in for a statement the script lost.
+    // around them cannot stand in for a statement the script lost. An operator
+    // script file (S1.3, docs/operator/*.sql) is guarded as a whole; its
+    // `mustPrecede` pairs pin the order of statements (comments ignored), for
+    // example the guards before the first destructive statement.
+    private enum class ClaimKind { REGION, SQL_BLOCK, SCRIPT_FILE }
+
     private class SecurityClaim(
         val file: String,
         val id: String,
         val required: List<String>,
         val forbidden: List<String> = emptyList(),
-        val sqlBlock: Boolean = false,
+        val kind: ClaimKind = ClaimKind.REGION,
+        val mustPrecede: List<Pair<String, String>> = emptyList(),
     ) {
-        val begin = if (sqlBlock) "<!-- ksm-sql:$id:begin -->" else "<!-- ksm-security-claim:$id -->"
-        val end = if (sqlBlock) "<!-- ksm-sql:$id:end -->" else "<!-- /ksm-security-claim:$id -->"
+        val begin = if (kind == ClaimKind.SQL_BLOCK) "<!-- ksm-sql:$id:begin -->" else "<!-- ksm-security-claim:$id -->"
+        val end = if (kind == ClaimKind.SQL_BLOCK) "<!-- ksm-sql:$id:end -->" else "<!-- /ksm-security-claim:$id -->"
     }
 
     private val securityClaims = listOf(
@@ -239,16 +248,29 @@ abstract class CheckReleaseConventions : DefaultTask() {
                 "never host-authorized", "audit", "Addresses alone are not enough",
                 "auth_public_key", "recovery_id", "rotation_id", "last_device_recovery_id",
                 "revocation_id", "reset_completion_id", "expected_public_key", "requested_by_device",
+                // S1.3: a matching address alone never clears a registration.
+                "cannot establish that a pre-S1 registration's current authentication key is legitimate", "treat that registration/user as suspect",
             ),
         ),
         SecurityClaim(
             "operating-the-server.md", "pre-s1-recovery-key-cleanup",
             listOf(
                 "Removing only the device registration is insufficient", "compromised", "server stopped",
-                "one database transaction", "SET state = 2", "DELETE FROM last_device_recovery_key_reset",
-                "DELETE FROM last_device_recovery_challenge", "createLastDeviceRecoveryKey()", "registerLastDeviceRecoveryKey",
+                "one database transaction", "createLastDeviceRecoveryKey()", "registerLastDeviceRecoveryKey",
+                // N6 (S1.3): one supported, non-interactive invocation of the one script file.
+                "sqlite3 -bail /path/to/server.db < ksecuremessage-pre-s1-cleanup.sql",
+                "Do not paste the cleanup statements interactively into the sqlite3 prompt",
+                "continues after a failed statement", "nothing changes",
+                "every_listed_device_is_registered", "at_least_one_device_listed", "UNIQUE constraint failed",
+                "Post-cleanup verification", "never rely on the exit status alone", "ksm-pre-s1-cleanup: verification passed",
+                "Only then restart the server", "ksm_exhausted_user", "EPOCH_EXHAUSTED",
+                "consumed_one_time_prekey", "Envelopes sent as a listed address are kept",
             ),
-            forbidden = listOf("rotate or re-register", "rotateLastDeviceRecoveryKey"),
+            forbidden = listOf(
+                "rotate or re-register", "rotateLastDeviceRecoveryKey",
+                "Open the database with the `sqlite3` shell", "open the database with the sqlite3 shell",
+                "paste into", "paste the script", "paste it", "replace the `UPDATE`",
+            ),
         ),
         SecurityClaim(
             "operating-the-server.md", "pre-s1-audit",
@@ -259,38 +281,96 @@ abstract class CheckReleaseConventions : DefaultTask() {
                 "FROM last_device_recovery_key_state", "requested_by_device", "hex(expected_public_key) AS expected_public_key",
                 "FROM last_device_recovery_key_reset", "FROM last_device_recovery_challenge",
             ),
-            sqlBlock = true,
+            kind = ClaimKind.SQL_BLOCK,
+        ),
+        // The page shows the script file itself (pymdownx.snippets), never a second copy.
+        SecurityClaim(
+            "operating-the-server.md", "pre-s1-cleanup-script",
+            listOf("```sql", "--8<-- \"docs/operator/ksecuremessage-pre-s1-cleanup.sql\""),
+            forbidden = listOf("DELETE FROM", "UPDATE "),
+            kind = ClaimKind.SQL_BLOCK,
         ),
         SecurityClaim(
-            "operating-the-server.md", "pre-s1-cleanup",
+            "ksecuremessage-pre-s1-cleanup.sql", "pre-s1-cleanup",
             listOf(
-                "BEGIN IMMEDIATE;", "DELETE FROM device_registration", "DELETE FROM authentication_nonce", "DELETE FROM device_prekey_state",
-                "DELETE FROM available_one_time_prekey", "DELETE FROM consumed_one_time_prekey", "DELETE FROM mailbox_message",
-                "UPDATE last_device_recovery_key_state SET state = 2",
-                "epoch = CASE WHEN epoch < 9223372036854775807 THEN epoch + 1 ELSE NULL END", "public_key = NULL", "installed_at = NULL",
-                "rotation_id = NULL", "revocation_id = NULL", "reset_completion_id = NULL",
-                "DELETE FROM last_device_recovery_key_reset", "DELETE FROM last_device_recovery_challenge", "COMMIT;",
+                "sqlite3 -bail /path/to/server.db < ksecuremessage-pre-s1-cleanup.sql", "Never paste these statements into an interactive sqlite3 prompt",
+                ".bail on", "BEGIN IMMEDIATE;", "PRIMARY KEY (user_id, device_id)", "ksm_exhausted_user (user_id TEXT NOT NULL PRIMARY KEY)",
+                "-- ksm-cleanup-input:begin", "-- ksm-cleanup-input:end",
+                "CONSTRAINT server_schema_is_version_8 CHECK", "CONSTRAINT at_least_one_device_listed CHECK",
+                "CONSTRAINT every_listed_device_is_registered CHECK", "CONSTRAINT no_unlisted_exhausted_epoch CHECK",
+                "CONSTRAINT every_exhausted_user_is_listed_active_and_exhausted CHECK",
+                "WHERE NOT EXISTS (SELECT 1 FROM main.device_registration r WHERE r.user_id = c.user_id AND r.device_id = c.device_id)",
+                "DELETE FROM main.device_registration", "DELETE FROM main.authentication_nonce", "DELETE FROM main.device_prekey_state",
+                "DELETE FROM main.available_one_time_prekey",
+                "DELETE FROM main.mailbox_message WHERE (recipient_user_id, recipient_device_id) IN (SELECT user_id, device_id FROM ksm_cleanup_device);",
+                "UPDATE main.last_device_recovery_key_state SET state = 2, epoch = CASE WHEN epoch < 9223372036854775807 THEN epoch + 1 ELSE NULL END",
+                "public_key = NULL", "installed_at = NULL", "rotation_id = NULL", "revocation_id = NULL", "reset_completion_id = NULL",
+                "WHERE state = 1 AND user_id IN (SELECT user_id FROM ksm_cleanup_device) AND user_id NOT IN (SELECT user_id FROM ksm_exhausted_user);",
+                "WHERE state = 1 AND user_id IN (SELECT user_id FROM ksm_exhausted_user);",
+                "DELETE FROM main.last_device_recovery_key_reset", "DELETE FROM main.last_device_recovery_challenge", "COMMIT;",
+                "ksm_cleanup_verification", "CONSTRAINT post_cleanup_verification_found_no_violations CHECK (violations = 0)",
+                "affected_users_with_active_recovery_key", "listed_registrations_remaining", "ksm-pre-s1-cleanup: verification passed",
             ),
-            sqlBlock = true,
+            // INFO-3 (S1.3): tombstones and envelopes sent as a cleaned address are kept.
+            forbidden = listOf("DELETE FROM main.consumed_one_time_prekey", "DELETE FROM consumed_one_time_prekey", "sender_user_id", "sender_device_id"),
+            kind = ClaimKind.SCRIPT_FILE,
+            mustPrecede = listOf(
+                "BEGIN IMMEDIATE;" to "CREATE TEMP TABLE ksm_cleanup_device",
+                "-- ksm-cleanup-input:end" to "INSERT INTO ksm_cleanup_guard",
+                "INSERT INTO ksm_cleanup_guard" to "DELETE FROM",
+                "INSERT INTO ksm_cleanup_guard" to "UPDATE ",
+                "UPDATE " to "COMMIT;",
+                "COMMIT;" to "INSERT INTO ksm_cleanup_verification",
+            ),
+        ),
+        // N7 (S1.3): the host boundary trusts no throwable class on its own.
+        SecurityClaim(
+            "operating-the-server.md", "host-boundary-throwables",
+            listOf(
+                "genuine coroutine cancellation", "propagates unchanged", "still active", "sanitized",
+                "InternalError", "UnknownError", "OutOfMemoryError", "StackOverflowError",
+            ),
+            forbidden = listOf("come from the JVM", "comes from the JVM"),
+        ),
+        SecurityClaim(
+            "security-review-remediation.md", "host-boundary-throwables",
+            listOf(
+                "genuine coroutine cancellation", "propagates unchanged", "still active", "sanitized",
+                "InternalError", "UnknownError", "OutOfMemoryError", "StackOverflowError", "N7",
+            ),
+            forbidden = listOf("come from the JVM", "comes from the JVM"),
         ),
     )
 
     private fun checkSecurityClaims(problems: MutableList<String>) {
-        val pages = markdownFiles.files.associateBy { it.name }
+        val pages = markdownFiles.files.associateBy { it.name } + operatorScripts.files.associateBy { it.name }
         securityClaims.forEach { claim ->
             val page = pages[claim.file] ?: return@forEach run { problems += "${claim.file} is missing (security claim ${claim.id})" }
             val text = page.readText()
-            val begin = claim.begin
-            val end = claim.end
-            if (text.split(begin).size != 2 || text.split(end).size != 2 || text.indexOf(begin) > text.indexOf(end)) {
-                return@forEach run { problems += "${claim.file} must contain the security claim region ${claim.id} exactly once" }
-            }
-            val region = text.substringAfter(begin).substringBefore(end).replace(Regex("""\s+"""), " ")
+            val region = if (claim.kind == ClaimKind.SCRIPT_FILE) {
+                text
+            } else {
+                val begin = claim.begin
+                val end = claim.end
+                if (text.split(begin).size != 2 || text.split(end).size != 2 || text.indexOf(begin) > text.indexOf(end)) {
+                    return@forEach run { problems += "${claim.file} must contain the security claim region ${claim.id} exactly once" }
+                }
+                text.substringAfter(begin).substringBefore(end)
+            }.replace(Regex("""\s+"""), " ")
             claim.required.filterNot(region::contains).forEach {
                 problems += "${claim.file}: security claim ${claim.id} no longer states '$it'"
             }
             claim.forbidden.filter(region::contains).forEach {
                 problems += "${claim.file}: security claim ${claim.id} must not say '$it'"
+            }
+            // Order of statements: comment lines (other than the input markers) are ignored.
+            val code = text.lines()
+                .filter { !it.trimStart().startsWith("--") || it.trim().startsWith("-- ksm-cleanup-input:") }
+                .joinToString(" ").replace(Regex("""\s+"""), " ")
+            claim.mustPrecede.forEach { (first, second) ->
+                val a = code.indexOf(first)
+                val b = code.indexOf(second)
+                if (a < 0 || b < 0 || a > b) problems += "${claim.file}: security claim ${claim.id} requires '$first' before the first '$second'"
             }
         }
         // F7 stays partial in the remediation summary table until a reviewer closes it.
@@ -302,6 +382,12 @@ abstract class CheckReleaseConventions : DefaultTask() {
         // The old guidance kept a suspect recovery key authoritative (N5).
         pages["operating-the-server.md"]?.readText()?.replace(Regex("""\s+"""), " ")?.let { text ->
             if (text.contains("rotate or re-register")) problems += "operating-the-server.md tells operators to rotate a suspect recovery key (S1.2, N5)"
+        }
+        // N7 (S1.3): a VM error's message is not the JVM's by definition; host code can throw one.
+        markdownFiles.files.forEach { file ->
+            if (file.readText().replace(Regex("""\s+"""), " ").let { it.contains("come from the JVM") || it.contains("comes from the JVM") }) {
+                problems += "${file.name} claims throwable messages come from the JVM (S1.3, N7)"
+            }
         }
     }
 

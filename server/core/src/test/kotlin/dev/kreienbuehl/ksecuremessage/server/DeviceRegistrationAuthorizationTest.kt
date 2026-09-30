@@ -23,6 +23,10 @@ import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
 import dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException
 import dev.kreienbuehl.ksecuremessage.storage.server.inmemory.InMemoryServerStorage
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -30,6 +34,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -270,7 +275,7 @@ class DeviceRegistrationAuthorizationTest {
         assertNull(storage.devices.registration(alicePhone))
     }
 
-    // N4 (S1.2): errors thrown by host code are wrapped like exceptions; only cancellation and VM errors pass.
+    // N4 (S1.2): errors thrown by host code are wrapped like exceptions.
 
     @Test
     fun n4AuthorizerErrorIsWrappedWithoutMessage() = runTest {
@@ -292,33 +297,97 @@ class DeviceRegistrationAuthorizationTest {
         }
     }
 
-    @Test
-    fun n4CancellationIsRethrown() = runTest {
-        val storage = InMemoryServerStorage()
-        val cancellation = CancellationException("host call cancelled")
-        val server = SecureMessageServer(storage, clock, TestDeviceRegistrationAuthorizer.throwing(cancellation))
-        val thrown = assertFailsWith<CancellationException> { server.register(alicePhone, phoneKey, alicePrincipal) }
-        assertSame(cancellation, thrown, "cancellation propagates unchanged, never wrapped")
-        assertNull(storage.devices.registration(alicePhone))
-    }
+    // N7 (S1.3): the class of a throwable is no proof of cancellation or of a JVM condition.
 
-    @Test
-    fun n4VirtualMachineErrorIsNotWrapped() = runTest {
-        val storage = InMemoryServerStorage()
+    /** Host failures that must be sanitized: wrapped, message and cause never exposed. */
+    private fun sanitizedHostFailures(): List<Throwable> = listOf(
+        CancellationException("SECRET-CANCEL"),
+        CancellationException("cancelled").apply { initCause(IllegalStateException("SECRET-CAUSE")) },
+        InternalError("SECRET-VM"),
+        UnknownError("SECRET-UNKNOWN"),
         // A harmless stand-in: constructing a VirtualMachineError subclass does not affect the JVM.
-        val fatal = object : VirtualMachineError("simulated VM condition") {}
-        val server = SecureMessageServer(storage, clock, TestDeviceRegistrationAuthorizer.throwing(fatal))
-        val thrown = assertFailsWith<VirtualMachineError> { server.register(alicePhone, phoneKey, alicePrincipal) }
-        assertSame(fatal, thrown, "process conditions are not turned into an ordinary server failure")
-        assertNull(storage.devices.registration(alicePhone))
+        object : VirtualMachineError("SECRET-OTHER-VM") {},
+        LinkageError("SECRET-LINKAGE"),
+    )
+
+    @Test
+    fun n7SyntheticCancellationAndHostVmErrorsAreSanitized() = runTest {
+        for (failure in sanitizedHostFailures()) {
+            val storage = InMemoryServerStorage()
+            val server = SecureMessageServer(storage, clock, TestDeviceRegistrationAuthorizer.throwing(failure))
+            // The coroutine is still active: whatever the class, this is a host failure.
+            val thrown = assertFailsWith<DeviceRegistrationAuthorizationFailedException>("${failure::class}") {
+                server.register(alicePhone, phoneKey, alicePrincipal)
+            }
+            assertSame(failure, thrown.cause, "kept for the host's own diagnostics only")
+            assertFalse(thrown.message.orEmpty().contains("SECRET"), "the fixed message carries no host text")
+            assertNull(storage.devices.registration(alicePhone), "nothing registered")
+        }
     }
 
     @Test
-    fun n4BoundaryPolicy() {
-        val cancellation = CancellationException("c")
-        assertSame(cancellation, assertFailsWith<CancellationException> { runHostRegistrationBoundary { throw cancellation } })
-        val error = AssertionError("SECRET")
-        assertSame(error, assertFailsWith<DeviceRegistrationAuthorizationFailedException> { runHostRegistrationBoundary { throw error } }.cause)
+    fun n7RealCancellationPropagates() = runBlocking {
+        val storage = InMemoryServerStorage()
+        val authorizer = DeviceRegistrationAuthorizer<TestRegistrationPrincipal> { _, _ ->
+            // Genuine cancellation of the calling coroutine, e.g. the client went away.
+            currentCoroutineContext().cancel()
+            currentCoroutineContext().ensureActive()
+            DeviceRegistrationAuthorizationResult.Authorized
+        }
+        val server = SecureMessageServer(storage, clock, authorizer)
+        var thrown: Throwable? = null
+        val job = launch {
+            try {
+                server.register(alicePhone, phoneKey, alicePrincipal)
+            } catch (e: Throwable) {
+                thrown = e
+                throw e
+            }
+        }
+        job.join()
+        assertTrue(job.isCancelled, "the coroutine ends cancelled")
+        assertIs<CancellationException>(thrown, "cancellation propagates")
+        assertFalse(thrown is DeviceRegistrationAuthorizationFailedException, "never wrapped into a host failure")
+        assertNull(storage.devices.registration(alicePhone), "nothing registered")
+    }
+
+    @Test
+    fun n7FatalVmErrorPolicyIsPreserved() = runTest {
+        // Plain objects: nothing exhausts memory or the stack.
+        for (fatal in listOf<Throwable>(OutOfMemoryError("simulated"), StackOverflowError("simulated"))) {
+            val storage = InMemoryServerStorage()
+            val server = SecureMessageServer(storage, clock, TestDeviceRegistrationAuthorizer.throwing(fatal))
+            val thrown = assertFailsWith<VirtualMachineError> { server.register(alicePhone, phoneKey, alicePrincipal) }
+            assertSame(fatal, thrown, "process-health failures are not turned into an ordinary server failure")
+            assertNull(storage.devices.registration(alicePhone))
+        }
+    }
+
+    @Test
+    fun n7BoundaryPolicy() = runBlocking {
+        for (failure in sanitizedHostFailures() + AssertionError("SECRET") + NotImplementedError("SECRET") + IllegalStateException("SECRET")) {
+            val wrapped = assertFailsWith<DeviceRegistrationAuthorizationFailedException>("${failure::class}") {
+                runHostRegistrationBoundary { throw failure }
+            }
+            assertSame(failure, wrapped.cause)
+        }
+        for (fatal in listOf<Throwable>(OutOfMemoryError("simulated"), StackOverflowError("simulated"))) {
+            assertSame(fatal, assertFailsWith<VirtualMachineError> { runHostRegistrationBoundary { throw fatal } })
+        }
+        // Genuine cancellation passes unchanged, the same instance.
+        val cancellation = CancellationException("cancelled")
+        var propagated: Throwable? = null
+        launch {
+            try {
+                runHostRegistrationBoundary {
+                    currentCoroutineContext().cancel()
+                    throw cancellation
+                }
+            } catch (e: Throwable) {
+                propagated = e
+            }
+        }.join()
+        assertSame(cancellation, propagated)
         assertEquals(7, runHostRegistrationBoundary { 7 })
     }
 
