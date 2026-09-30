@@ -8,6 +8,7 @@ import dev.kreienbuehl.ksecuremessage.model.EncryptedEnvelope
 import dev.kreienbuehl.ksecuremessage.model.MessageId
 import dev.kreienbuehl.ksecuremessage.model.UserId
 import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
+import dev.kreienbuehl.ksecuremessage.server.DeviceRegistrationAuthorizationFailedException
 import io.ktor.client.plugins.DefaultRequest
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
@@ -15,12 +16,14 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.io.encoding.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation as ClientContentNegotiation
 
@@ -186,6 +189,89 @@ class SecurityRemediationRoutesTest {
         val logged = logger.everything()
         assertTrue(logged.contains("Registration authorization failed"), "the failure is logged")
         assertFalse(logged.contains("SECRET-CONTEXT"), "no host exception text, stack or context in the log")
+    }
+
+    // N4 (S1.2): errors thrown by host code leak no message, stack or cause, also in development mode.
+
+    private fun hostFailures(): List<Throwable> = listOf(
+        IllegalStateException("SECRET-A principal=alice token=7f3a"),
+        NotImplementedError("SECRET-B principal=alice"),
+        AssertionError("SECRET-C principal=alice"),
+    )
+
+    private fun assertNoHostTextLogged(logger: RecordingLogger) {
+        val logged = logger.everything()
+        assertTrue(logged.contains("Registration authorization failed"), "the failure is logged")
+        assertFalse(logged.contains("SECRET-"), "no host message or context in the log: $logged")
+        assertTrue(logger.throwables.isEmpty(), "no throwable (stack, cause chain) handed to the logger")
+        assertFalse(logged.contains("\tat "), "no stack frames in the log")
+    }
+
+    @Test
+    fun n4AuthorizerErrorLeaksNoMessageOrStack() {
+        for (failure in hostFailures()) {
+            val logger = RecordingLogger()
+            testServer(
+                TestDeviceRegistrationAuthorizer.throwing(failure),
+                registrationContext = TestRegistrationContexts.header,
+                logger = logger,
+                developmentMode = true,
+            ) { storage, http ->
+                val response = http.register(TestDevice(alice), principal = "alice")
+                response.assertError(HttpStatusCode.InternalServerError, "internal_error")
+                assertFalse(response.bodyAsText().contains("SECRET-"), "no host text in the body")
+                assertNull(storage.devices.registration(alice), "nothing written")
+            }
+            assertNoHostTextLogged(logger)
+        }
+    }
+
+    @Test
+    fun n4ExtractorErrorLeaksNoMessageOrStack() {
+        for (failure in hostFailures()) {
+            val logger = RecordingLogger()
+            val authorizer = TestDeviceRegistrationAuthorizer.allowAll()
+            testServer(
+                authorizer,
+                registrationContext = DeviceRegistrationContextExtractor { throw failure },
+                logger = logger,
+                developmentMode = true,
+            ) { storage, http ->
+                val response = http.register(TestDevice(alice), principal = "alice")
+                response.assertError(HttpStatusCode.InternalServerError, "internal_error")
+                assertFalse(response.bodyAsText().contains("SECRET-"), "no host text in the body")
+                assertNull(storage.devices.registration(alice), "nothing written")
+            }
+            assertTrue(authorizer.requests.isEmpty(), "the authorizer is never asked after an extractor failure")
+            assertNoHostTextLogged(logger)
+        }
+    }
+
+    @Test
+    fun n4CancellationIsRethrown() {
+        // The boundary itself: cancellation passes unchanged, errors are wrapped.
+        val cancellation = CancellationException("cancelled")
+        assertSame(cancellation, assertFailsWith<CancellationException> { runHostExtractionBoundary { throw cancellation } })
+        val error = NotImplementedError("SECRET")
+        assertSame(error, assertFailsWith<DeviceRegistrationAuthorizationFailedException> { runHostExtractionBoundary { throw error } }.cause)
+        val fatal = object : VirtualMachineError("simulated VM condition") {}
+        assertSame(fatal, assertFailsWith<VirtualMachineError> { runHostExtractionBoundary { throw fatal } })
+
+        // Through the route: KSecureMessage neither answers nor logs a cancelled extraction or authorization as its own failure.
+        val cancelledExtractor = DeviceRegistrationContextExtractor<TestRegistrationPrincipal> { throw CancellationException("host call cancelled") }
+        val cancelledAuthorizer = TestDeviceRegistrationAuthorizer.throwing(CancellationException("host call cancelled"))
+        for ((authorizer, extractor) in listOf(
+            TestDeviceRegistrationAuthorizer.allowAll() to cancelledExtractor,
+            cancelledAuthorizer to TestRegistrationContexts.header,
+        )) {
+            val logger = RecordingLogger()
+            testServer(authorizer, registrationContext = extractor, logger = logger) { storage, http ->
+                val response = runCatching { http.register(TestDevice(alice), principal = "alice") }.getOrNull()
+                if (response != null) assertFalse(response.bodyAsText().contains("internal_error"), "not converted into KSecureMessage's 500")
+                assertNull(storage.devices.registration(alice))
+            }
+            assertFalse(logger.everything().contains("Registration authorization failed"), "not reported as a host failure")
+        }
     }
 
     @Test

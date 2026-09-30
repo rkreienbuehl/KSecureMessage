@@ -88,6 +88,7 @@ abstract class CheckReleaseConventions : DefaultTask() {
         checkDocsWorkflow(problems)
         checkSecurityPolicy(problems)
         checkPlatformClaims(problems)
+        checkSecurityClaims(problems)
         checkApiDumps(problems)
         checkSecrets(problems)
         failIfAny(problems, "Release convention check failed")
@@ -203,6 +204,107 @@ abstract class CheckReleaseConventions : DefaultTask() {
         if (!text.contains("public issue")) problems += "SECURITY.md does not tell reporters to avoid public issues"
     }
 
+    // Security statements that must not silently disappear from the
+    // documentation (S1.2): each lives in a marked region
+    // `<!-- ksm-security-claim:<id> -->` … `<!-- /ksm-security-claim:<id> -->`
+    // of a named page and must keep its required tokens (compared with
+    // whitespace normalized, so rewrapping is fine).
+    // The operator SQL blocks (`<!-- ksm-sql:<id>:begin -->` … `:end -->`) that
+    // PreS1CleanupTest runs verbatim are guarded the same way, so the prose
+    // around them cannot stand in for a statement the script lost.
+    private class SecurityClaim(
+        val file: String,
+        val id: String,
+        val required: List<String>,
+        val forbidden: List<String> = emptyList(),
+        val sqlBlock: Boolean = false,
+    ) {
+        val begin = if (sqlBlock) "<!-- ksm-sql:$id:begin -->" else "<!-- ksm-security-claim:$id -->"
+        val end = if (sqlBlock) "<!-- ksm-sql:$id:end -->" else "<!-- /ksm-security-claim:$id -->"
+    }
+
+    private val securityClaims = listOf(
+        SecurityClaim(
+            "security-review-remediation.md", "f7-partial",
+            listOf("F7", "PARTIALLY FIXED — RESIDUAL RISK DOCUMENTED"),
+            forbidden = listOf("CLOSED"),
+        ),
+        SecurityClaim(
+            "storage-key-providers.md", "android-haskeys",
+            listOf("AndroidStorageKeyProvider.hasKeys()", "wrapped key file", "Keystore alias", "F7"),
+        ),
+        SecurityClaim(
+            "operating-the-server.md", "pre-s1-audit",
+            listOf(
+                "never host-authorized", "audit", "Addresses alone are not enough",
+                "auth_public_key", "recovery_id", "rotation_id", "last_device_recovery_id",
+                "revocation_id", "reset_completion_id", "expected_public_key", "requested_by_device",
+            ),
+        ),
+        SecurityClaim(
+            "operating-the-server.md", "pre-s1-recovery-key-cleanup",
+            listOf(
+                "Removing only the device registration is insufficient", "compromised", "server stopped",
+                "one database transaction", "SET state = 2", "DELETE FROM last_device_recovery_key_reset",
+                "DELETE FROM last_device_recovery_challenge", "createLastDeviceRecoveryKey()", "registerLastDeviceRecoveryKey",
+            ),
+            forbidden = listOf("rotate or re-register", "rotateLastDeviceRecoveryKey"),
+        ),
+        SecurityClaim(
+            "operating-the-server.md", "pre-s1-audit",
+            listOf(
+                "hex(auth_public_key) AS auth_public_key", "auth_epoch", "auth_key_installed_at", "hex(recovery_id) AS recovery_id",
+                "hex(rotation_id) AS rotation_id", "hex(last_device_recovery_id) AS last_device_recovery_id", "FROM device_registration",
+                "hex(public_key) AS public_key", "hex(revocation_id) AS revocation_id", "hex(reset_completion_id) AS reset_completion_id",
+                "FROM last_device_recovery_key_state", "requested_by_device", "hex(expected_public_key) AS expected_public_key",
+                "FROM last_device_recovery_key_reset", "FROM last_device_recovery_challenge",
+            ),
+            sqlBlock = true,
+        ),
+        SecurityClaim(
+            "operating-the-server.md", "pre-s1-cleanup",
+            listOf(
+                "BEGIN IMMEDIATE;", "DELETE FROM device_registration", "DELETE FROM authentication_nonce", "DELETE FROM device_prekey_state",
+                "DELETE FROM available_one_time_prekey", "DELETE FROM consumed_one_time_prekey", "DELETE FROM mailbox_message",
+                "UPDATE last_device_recovery_key_state SET state = 2",
+                "epoch = CASE WHEN epoch < 9223372036854775807 THEN epoch + 1 ELSE NULL END", "public_key = NULL", "installed_at = NULL",
+                "rotation_id = NULL", "revocation_id = NULL", "reset_completion_id = NULL",
+                "DELETE FROM last_device_recovery_key_reset", "DELETE FROM last_device_recovery_challenge", "COMMIT;",
+            ),
+            sqlBlock = true,
+        ),
+    )
+
+    private fun checkSecurityClaims(problems: MutableList<String>) {
+        val pages = markdownFiles.files.associateBy { it.name }
+        securityClaims.forEach { claim ->
+            val page = pages[claim.file] ?: return@forEach run { problems += "${claim.file} is missing (security claim ${claim.id})" }
+            val text = page.readText()
+            val begin = claim.begin
+            val end = claim.end
+            if (text.split(begin).size != 2 || text.split(end).size != 2 || text.indexOf(begin) > text.indexOf(end)) {
+                return@forEach run { problems += "${claim.file} must contain the security claim region ${claim.id} exactly once" }
+            }
+            val region = text.substringAfter(begin).substringBefore(end).replace(Regex("""\s+"""), " ")
+            claim.required.filterNot(region::contains).forEach {
+                problems += "${claim.file}: security claim ${claim.id} no longer states '$it'"
+            }
+            claim.forbidden.filter(region::contains).forEach {
+                problems += "${claim.file}: security claim ${claim.id} must not say '$it'"
+            }
+        }
+        // F7 stays partial in the remediation summary table until a reviewer closes it.
+        pages["security-review-remediation.md"]?.readLines()?.filter { it.startsWith("| F7 |") }?.let { rows ->
+            if (rows.size != 1 || !rows.single().contains("PARTIALLY FIXED — RESIDUAL RISK DOCUMENTED")) {
+                problems += "security-review-remediation.md: the F7 summary row must say PARTIALLY FIXED — RESIDUAL RISK DOCUMENTED"
+            }
+        }
+        // The old guidance kept a suspect recovery key authoritative (N5).
+        pages["operating-the-server.md"]?.readText()?.replace(Regex("""\s+"""), " ")?.let { text ->
+            if (text.contains("rotate or re-register")) problems += "operating-the-server.md tells operators to rotate a suspect recovery key (S1.2, N5)"
+        }
+    }
+
     // Wasm runtimes are blocked upstream (docs/supported-platforms.md): no
     // row of a platform status table (a table with a "Status" column) may
     // claim more than compile-only for Wasm.
@@ -214,7 +316,7 @@ abstract class CheckReleaseConventions : DefaultTask() {
                 if (!line.startsWith("|")) return@forEachIndexed run { header = null }
                 if (header == null) return@forEachIndexed run { header = line }
                 val firstCell = line.removePrefix("|").substringBefore('|').trim()
-                val statusTable = header!!.contains("Status")
+                val statusTable = header.contains("Status")
                 if (statusTable && firstCell.contains("Wasm", ignoreCase = true) &&
                     (!line.contains("compile-only") || Regex("""(?<!un)tested|tests executed""").containsMatchIn(line))
                 ) {

@@ -28,3 +28,11 @@ dependencies {
     testImplementation(project(":storage:server:sqldelight"))
     testImplementation(libs.sqldelight.sqlite.driver)
 }
+
+// PreS1CleanupTest runs the operator SQL of docs/operating-the-server.md verbatim
+// (S1.2, finding N5): the page is a test input, so a doc change reruns the test.
+tasks.test {
+    val operatingServerDoc = rootProject.layout.projectDirectory.file("docs/operating-the-server.md")
+    inputs.file(operatingServerDoc).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("operatingServerDoc")
+    systemProperty("ksm.docs.operatingServer", operatingServerDoc.asFile.absolutePath)
+}

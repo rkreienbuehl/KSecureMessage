@@ -13,8 +13,11 @@ import io.ktor.server.application.ApplicationCall
  * Return `null` when the call carries no valid host authentication: the
  * registration is then refused with `403 registration_not_authorized`
  * without asking the authorizer (a retry of an already registered key still
- * succeeds, it adds no membership). A thrown exception gives `500
- * internal_error`; its message is neither logged nor returned. Never return
+ * succeeds, it adds no membership). Anything thrown, exceptions and errors
+ * such as [AssertionError] alike, gives `500 internal_error`; its message,
+ * stack and cause are neither logged nor returned. Only coroutine
+ * cancellation and [VirtualMachineError]s pass through unchanged (S1.2,
+ * finding N4). Never return
  * a shared anonymous context for unauthenticated calls.
  */
 fun interface DeviceRegistrationContextExtractor<out C : Any> {

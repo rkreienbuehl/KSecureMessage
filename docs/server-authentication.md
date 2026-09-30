@@ -502,8 +502,11 @@ requests for another address. Applications never build signatures.
   extractor that returns a shared context for unauthenticated calls, an
   authorizer that ignores the principal) reopens F1/F2.
 - Registrations stored before S1 were never host-authorized and keep their
-  same-user authority until the operator audits them
-  ([operating-the-server.md](operating-the-server.md#registrations-from-before-s1)).
+  same-user authority until the operator audits them; removing a malicious
+  one is not enough, because an offline recovery key it registered outlives
+  it: the offline cleanup also revokes the affected users' recovery keys
+  ([operating-the-server.md](operating-the-server.md#pre-s1-cleanup), S1.2,
+  finding N5).
 - Auth-key recovery through another registered device of the same user
   (M14, docs/device-recovery.md) or, for the last device, with the user's
   offline recovery key (M18, docs/last-device-recovery.md); routine rotation

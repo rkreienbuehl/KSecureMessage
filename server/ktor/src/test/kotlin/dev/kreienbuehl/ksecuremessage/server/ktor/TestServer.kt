@@ -49,8 +49,9 @@ internal fun testServer(
     resetPolicy: RecoveryKeyResetPolicy? = null,
     registrationContext: DeviceRegistrationContextExtractor<TestRegistrationPrincipal> = TestRegistrationContexts.routeUserOwner,
     logger: Logger? = null,
+    developmentMode: Boolean = false,
     block: suspend ApplicationTestBuilder.(storage: InMemoryServerStorage, http: HttpClient) -> Unit,
-) = testServer(authorizer, InMemoryServerStorage(), clock, resetPolicy, registrationContext, logger, block)
+) = testServer(authorizer, InMemoryServerStorage(), clock, resetPolicy, registrationContext, logger, developmentMode, block)
 
 /** Runs [block] against the v1 routes backed by [storage], which the test chose and owns. */
 internal fun <S : ServerStorage> testServer(
@@ -60,10 +61,13 @@ internal fun <S : ServerStorage> testServer(
     resetPolicy: RecoveryKeyResetPolicy? = null,
     registrationContext: DeviceRegistrationContextExtractor<TestRegistrationPrincipal> = TestRegistrationContexts.routeUserOwner,
     logger: Logger? = null,
+    developmentMode: Boolean = false,
     block: suspend ApplicationTestBuilder.(storage: S, http: HttpClient) -> Unit,
 ) {
     testApplication {
         if (logger != null) environment { log = logger }
+        // Ktor's development mode shows unhandled failures in more detail; KSecureMessage's handlers must answer first.
+        if (developmentMode) serverConfig { this.developmentMode = true }
         install(ServerContentNegotiation) { json() }
         routing { kSecureMessageRoutes(SecureMessageServer(storage, clock, authorizer, resetPolicy), registrationContext) }
         val http = createClient { install(ClientContentNegotiation) { json() } }

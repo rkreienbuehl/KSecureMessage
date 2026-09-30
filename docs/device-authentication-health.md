@@ -8,7 +8,7 @@ M14, routine rotation M16, last-device recovery M18) and, when those do not
 decide, the signed registration status of M17. The library classifies; the
 application decides what to show and what to do.
 
-Client only. No server code, route, schema (client v15, server v7), wire
+Client only. No server code, route, schema (at M25: client v15, server v7), wire
 format, cryptographic domain, frozen vector or sealed record type changed.
 
 ## Model

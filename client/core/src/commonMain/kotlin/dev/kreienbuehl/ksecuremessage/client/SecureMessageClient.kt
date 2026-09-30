@@ -227,7 +227,9 @@ class SecureMessageClient(
      * Needed once before [publishPreKeys] and [receive]; calling it again is
      * safe. Throws [SecureMessageTransportException.DeviceRegistrationConflict]
      * if the server has another key for [localAddress]; there is no reset.
-     * The server trusts the first registration for an address.
+     * The first registration of an address needs the host application's
+     * authorization on the server (S1;
+     * [SecureMessageTransportException.DeviceRegistrationNotAuthorized]).
      */
     suspend fun registerDevice() {
         withRequestSigner { keyPair, signer ->

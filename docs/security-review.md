@@ -49,7 +49,10 @@ Assumptions and non-goals, collected from the specifications in `docs/`:
   with the host's own authenticated principal for the request, and all
   "same-user device" authority (device recovery, offline recovery key and
   reset) rests on that host decision. Registrations stored before S1 were
-  never host-authorized ([operating-the-server.md](operating-the-server.md#registrations-from-before-s1)). Message submission is signed by the sender (the server
+  never host-authorized, and a malicious one may have planted an offline
+  recovery key that outlives it: the operator audits them and runs the
+  offline cleanup, which also revokes the affected users' recovery keys
+  ([operating-the-server.md](operating-the-server.md#registrations-from-before-s1), S1.2). Message submission is signed by the sender (the server
   vouches for the envelope's sender). Requests are signed over a canonical binary description (domain
   `KSecureMessage-ServerAuth-v1`), fresh within ±5 minutes, single-use per
   nonce and device. It authenticates requests, not responses; TLS is the
