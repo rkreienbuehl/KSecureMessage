@@ -1,6 +1,7 @@
 package dev.kreienbuehl.ksecuremessage.server
 
 import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
+import kotlinx.coroutines.CancellationException
 
 /**
  * The host application's decision whether the caller of a registration may
@@ -35,10 +36,13 @@ import dev.kreienbuehl.ksecuremessage.model.DeviceAddress
  * The authorizer is called only when the address has no registration yet;
  * a retry with the registered key and a request with another key (a
  * conflict) never reach it. It is called before anything is stored and
- * outside every storage transaction. A thrown exception rejects the
+ * outside every storage transaction. Anything it throws rejects the
  * registration as a server failure
- * ([DeviceRegistrationAuthorizationFailedException]); its message is never
- * sent to the client.
+ * ([DeviceRegistrationAuthorizationFailedException]), exceptions and errors
+ * such as [AssertionError] or [NotImplementedError] alike; its message is
+ * never sent to the client. Only coroutine cancellation and
+ * [VirtualMachineError]s (process conditions such as
+ * [OutOfMemoryError]) pass through unchanged (S1.2, finding N4).
  */
 fun interface DeviceRegistrationAuthorizer<in C : Any> {
     suspend fun authorize(context: C, request: DeviceRegistrationAuthorizationRequest): DeviceRegistrationAuthorizationResult
@@ -81,3 +85,22 @@ sealed class DeviceRegistrationAuthorizationResult {
  */
 class DeviceRegistrationAuthorizationFailedException(cause: Throwable) :
     Exception("Device registration authorizer failed", cause)
+
+/**
+ * Runs host code ([DeviceRegistrationAuthorizer]) at the registration
+ * boundary (S1.2, finding N4): rethrows [CancellationException] (coroutine
+ * cancellation must propagate) and [VirtualMachineError] (process conditions
+ * whose message comes from the JVM, not the host), and wraps every other
+ * [Throwable], [Error]s included, in
+ * [DeviceRegistrationAuthorizationFailedException], whose message is fixed.
+ */
+internal inline fun <T> runHostRegistrationBoundary(block: () -> T): T =
+    try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: VirtualMachineError) {
+        throw e
+    } catch (e: Throwable) {
+        throw DeviceRegistrationAuthorizationFailedException(e)
+    }

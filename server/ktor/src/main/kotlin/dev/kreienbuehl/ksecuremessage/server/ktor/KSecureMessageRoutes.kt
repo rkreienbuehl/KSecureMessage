@@ -82,14 +82,8 @@ fun <C : Any> Route.kSecureMessageRoutes(server: SecureMessageServer<C>, registr
             return@put call.respondError(HttpStatusCode.BadRequest, INVALID_REGISTRATION)
         }
         try {
-            // Host code: its failures are reported without message or context.
-            val context = try {
-                registrationContext.extract(call)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                return@put call.respondRegistrationAuthorizationFailure(e)
-            }
+            // Host code: its failures (errors included, S1.2, N4) are reported without message or context.
+            val context = runHostExtractionBoundary { registrationContext.extract(call) }
             val created = server.registerDevice(context, registration, body, call.authentication())
             call.respond(if (created) HttpStatusCode.Created else HttpStatusCode.NoContent)
         } catch (e: DeviceRegistrationAuthorizationFailedException) {
@@ -662,6 +656,25 @@ private suspend fun ApplicationCall.respondInternalError(e: Exception) {
     application.log.error("Unexpected server failure", e)
     respondError(HttpStatusCode.InternalServerError, "internal_error")
 }
+
+/**
+ * Runs the host's [DeviceRegistrationContextExtractor] (S1.2, finding N4),
+ * with the same policy as the server's authorizer boundary: rethrows
+ * [CancellationException] and [VirtualMachineError], wraps every other
+ * [Throwable] ([Error]s such as [AssertionError] and [NotImplementedError]
+ * included) in [DeviceRegistrationAuthorizationFailedException], which the
+ * registration route answers with a generic 500 logged by class only.
+ */
+internal inline fun <T> runHostExtractionBoundary(block: () -> T): T =
+    try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: VirtualMachineError) {
+        throw e
+    } catch (e: Throwable) {
+        throw DeviceRegistrationAuthorizationFailedException(e)
+    }
 
 /**
  * The host's context extractor or registration authorizer threw: a generic

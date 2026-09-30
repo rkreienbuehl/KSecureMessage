@@ -82,8 +82,9 @@ devices. Since S1 every first registration needs the host application's
 S1.1 decides with the host's authenticated principal for the request, so
 only devices the host admitted to the user can authorize a recovery.
 Registrations stored before S1 were never host-authorized and keep this
-authority until the operator audits them
-([operating-the-server.md](operating-the-server.md#registrations-from-before-s1)).
+authority until the operator audits and removes them; the offline cleanup
+also revokes the affected users' offline recovery keys
+([operating-the-server.md](operating-the-server.md#pre-s1-cleanup)).
 The recovery protocol itself is unchanged.
 
 **Single-device limitation.** A user with only one registered device has no

@@ -26,7 +26,6 @@ import dev.kreienbuehl.ksecuremessage.storage.LastDeviceRecoveryKeyException
 import dev.kreienbuehl.ksecuremessage.storage.MailboxRepository
 import dev.kreienbuehl.ksecuremessage.storage.PreKeyPublicationException
 import dev.kreienbuehl.ksecuremessage.storage.ServerStorage
-import kotlinx.coroutines.CancellationException
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -90,7 +89,9 @@ class SecureMessageServer<C : Any>(
      * [DeviceRegistrationException.NotAuthorized] if [context] is `null` or
      * the host's [DeviceRegistrationAuthorizer] denied it, and
      * [DeviceRegistrationAuthorizationFailedException] if the authorizer
-     * threw. In every failure nothing is registered; only the request's
+     * threw anything but a [kotlinx.coroutines.CancellationException] (rethrown) or a
+     * [VirtualMachineError] (rethrown), including an [Error] such as
+     * [AssertionError] or [NotImplementedError]. In every failure nothing is registered; only the request's
      * nonce is claimed.
      *
      * Order: size → authentication (key possession, window, nonce) →
@@ -122,13 +123,8 @@ class SecureMessageServer<C : Any>(
         // No context, no membership: never an anonymous allow path (S1.1, N1).
         context ?: throw DeviceRegistrationException.NotAuthorized()
         val request = DeviceRegistrationAuthorizationRequest(registration.address, registration.publicKey)
-        val decision = try {
-            deviceRegistrationAuthorizer.authorize(context, request)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            throw DeviceRegistrationAuthorizationFailedException(e)
-        }
+        // Host code: any failure but cancellation and a VM error becomes a message-free wrapper (S1.2, N4).
+        val decision = runHostRegistrationBoundary { deviceRegistrationAuthorizer.authorize(context, request) }
         when (decision) {
             DeviceRegistrationAuthorizationResult.Authorized -> Unit
             DeviceRegistrationAuthorizationResult.Denied -> throw DeviceRegistrationException.NotAuthorized()

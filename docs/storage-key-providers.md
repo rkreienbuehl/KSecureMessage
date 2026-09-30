@@ -55,6 +55,7 @@ encryption from a downgraded one ([storage-encryption.md](storage-encryption.md#
 `StaticStorageKeyProvider.hasKeys()` is always `true`. Contract tests:
 `StorageKeyProviderContractTest` (`hasKeys*`).
 
+<!-- ksm-security-claim:android-haskeys -->
 **Android limitation (S1.1, finding D7).** `AndroidStorageKeyProvider.hasKeys()`
 reads the wrapped key file in `noBackupFilesDir` only, not the Android
 Keystore alias. A missing file reports `false` even if the Keystore alias
@@ -67,6 +68,7 @@ is intact; it does not protect against arbitrary modification of both the
 database and the provider's state. Apple's `hasKeys()` queries the keychain
 items themselves; a keychain item an attacker can delete has the same
 limitation.
+<!-- /ksm-security-claim:android-haskeys -->
 
 ### `createKey` and `removeKey` (storage key rotation)
 

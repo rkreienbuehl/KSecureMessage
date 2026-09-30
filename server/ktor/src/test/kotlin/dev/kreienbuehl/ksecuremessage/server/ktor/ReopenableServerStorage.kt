@@ -25,6 +25,8 @@ import dev.kreienbuehl.ksecuremessage.storage.ServerStorage
 import dev.kreienbuehl.ksecuremessage.storage.server.sqldelight.SqlDelightServerStorage
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
+import java.sql.Connection
+import java.sql.DriverManager
 import java.nio.file.Path
 import java.util.Properties
 import kotlin.io.path.deleteIfExists
@@ -51,6 +53,23 @@ internal class ReopenableServerStorage : ServerStorage, AutoCloseable {
         driver.close()
         driver = newDriver()
         current = SqlDelightServerStorage.open(driver)
+    }
+
+    /**
+     * Stops the storage like a stopped server (driver closed), runs [block]
+     * on a plain JDBC connection to the same file, as an operator's offline
+     * `sqlite3` session would (autocommit: the block's SQL controls its own
+     * transactions), closes that connection (rolling back anything it left
+     * uncommitted) and opens the file again with a new storage instance.
+     */
+    suspend fun <T> offline(block: (Connection) -> T): T {
+        driver.close()
+        try {
+            return DriverManager.getConnection("jdbc:sqlite:${path.toAbsolutePath()}").use(block)
+        } finally {
+            driver = newDriver()
+            current = SqlDelightServerStorage.open(driver)
+        }
     }
 
     override fun close() {

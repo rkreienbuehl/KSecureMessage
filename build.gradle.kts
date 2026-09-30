@@ -210,7 +210,7 @@ tasks.register("appleKeychainHostTest") {
 
 val checkReleaseConventions by tasks.registering(CheckReleaseConventions::class) {
     group = "verification"
-    description = "Checks version, README, release checklist, CI workflows, API dump dependency leaks and secrets."
+    description = "Checks version, README, release checklist, CI workflows, security documentation claims, API dump dependency leaks and secrets."
     projectVersion.set(version.toString())
     readme.set(layout.projectDirectory.file("README.md"))
     wrapperProperties.set(layout.projectDirectory.file("gradle/wrapper/gradle-wrapper.properties"))

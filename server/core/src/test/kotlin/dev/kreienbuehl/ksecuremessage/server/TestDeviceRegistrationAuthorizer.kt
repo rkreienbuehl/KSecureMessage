@@ -52,7 +52,7 @@ class TestDeviceRegistrationAuthorizer private constructor(
             }
 
         /** Throws [failure] for every request, like a failing host account service. */
-        fun throwing(failure: Exception = IllegalStateException("host account service unavailable: secret detail")) =
+        fun throwing(failure: Throwable = IllegalStateException("host account service unavailable: secret detail")) =
             TestDeviceRegistrationAuthorizer { _, _ -> throw failure }
 
         /** Allows exactly [addresses] (a host-owned device list), whoever the principal is. */

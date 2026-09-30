@@ -9,10 +9,13 @@ over compatibility with the vulnerable behavior.
 **S1 re-review result:** passed with residual risks (F1/F2, F3, F4, F5/F6,
 F8, F9 closed; F7 partially fixed), plus new findings N1–N3 and
 documentation findings D1–D7. **S1.1** (section [S1.1 follow-up](#s11-follow-up))
-addresses exactly those. Status of N1–N3: **FIXED — PENDING RE-REVIEW**;
-F7: **PARTIALLY FIXED — RESIDUAL RISK DOCUMENTED**. Nothing here is closed
-until an independent reviewer has checked it. Neither S1 nor S1.1 is an
-audit.
+addresses exactly those. **S1.1 re-review result:** passed with residual
+risks, plus findings N4 and N5; **S1.2** (section [S1.2
+follow-up](#s12-follow-up)) addresses those. Status of N1–N5: **FIXED —
+PENDING RE-REVIEW**; F7: **PARTIALLY FIXED — RESIDUAL RISK DOCUMENTED**.
+Only the independent re-review closes a finding: rows marked CLOSED were
+closed by it, everything else in the summary is open until it has been
+re-checked. Neither S1, S1.1 nor S1.2 is an audit.
 
 Path prefixes: `P` = `core/protocol/src/commonMain/kotlin/dev/kreienbuehl/ksecuremessage/protocol`,
 `C` = `client/core/src/commonMain/kotlin/dev/kreienbuehl/ksecuremessage/client`,
@@ -36,6 +39,8 @@ Path prefixes: `P` = `core/protocol/src/commonMain/kotlin/dev/kreienbuehl/ksecur
 | N1 | MEDIUM | The registration authorizer received no host authentication context, so "may *this caller* register for this `UserId`?" was not expressible | Generic `DeviceRegistrationAuthorizer<C>` with the host's context; required `DeviceRegistrationContextExtractor<C>` in the Ktor routes; no context = denied | FIXED — PENDING RE-REVIEW |
 | N2 | LOW | `userState` ("user has no devices") was read outside the atomic registration write and presented as a fact | `DeviceRegistrationUserState` and `hasRegisteredDevices` removed; no authorization input depends on KSecureMessage's registrations | FIXED — PENDING RE-REVIEW |
 | N3 | LOW | An unanswered v1 initiation could win the collision comparison against a v2 initiation that the upgraded peer needs, deadlocking both sides | Unanswered v1 initiations never win, are never sent again and are replaced by v2 on receive and on send | FIXED — PENDING RE-REVIEW |
+| N4 | LOW | Host code throwing an `Error` (`AssertionError`, `NotImplementedError`) bypassed the `Exception`-only wrapper at the authorizer and extractor boundaries and reached Ktor's logging with message and stack | One boundary policy: cancellation and `VirtualMachineError` rethrown, every other `Throwable` wrapped; logged by class name only | FIXED — PENDING RE-REVIEW |
+| N5 | MEDIUM | The pre-S1 cleanup removed a malicious device but left the offline recovery key it may have planted ACTIVE, so the attacker kept same-user authority | Offline, transactional, tested cleanup that also revokes the user's recovery key state and deletes its reset and challenges; fresh key from a legitimate device | FIXED — PENDING RE-REVIEW |
 | D1–D7 | DOC | Documentation described unreachable authorizer inputs, a racy value as authoritative, and understated legacy and storage residuals | Corrected, see [S1.1 follow-up](#s11-follow-up) | FIXED — PENDING RE-REVIEW |
 
 ## F1/F2 — Unauthenticated user membership at registration
@@ -292,6 +297,7 @@ with the intent). `storage:encryption` `StorageCipherTest.migrationIntentVector`
 (independently computed), `migrationIntentIsNoKeyCheckAndNeedsItsKey`.
 `storage:testing` `StorageKeyProviderContractTest.hasKeys*`.
 
+<!-- ksm-security-claim:f7-partial -->
 **Remaining limitations (S1.1: stated precisely, finding D6/D7).**
 
 - **What S1 protects:** a database whose provider holds its key cannot be
@@ -317,7 +323,11 @@ with the intent). `storage:encryption` `StorageCipherTest.migrationIntentVector`
   `StaticStorageKeyProvider` cannot migrate a milestone 8 database
   (deliberate).
 
+F7 remains partially fixed; the residual risks above are accepted for
+v0.x and documented, not closed.
+
 **Status:** PARTIALLY FIXED — RESIDUAL RISK DOCUMENTED (accepted for v0.x).
+<!-- /ksm-security-claim:f7-partial -->
 
 ## F8 — Nonce pruned while its request is still fresh
 
@@ -629,11 +639,178 @@ afterwards.
 | S1.1-9 | established v1 sessions dropped as well | `preS1EstablishedSessionsKeepRatchetingAfterTheUpgrade`, `preS1PendingInitiationContinuesWhenTheResponderAcceptedItBefore`, `SecurityReviewRegressionTest.f9LocallyInitiatedLegacySessionNeverPinsTheLocalIdentity` |
 | S1.1-10 | unpinned legacy session replaced by any identity | `sessionWithoutPinIsNeverReplacedByAnotherIdentity` |
 | S1.1-11 | host failure logged with message and stack | `SecurityRemediationRoutesTest.n1HostFailuresLeakNoContext` |
-| S1.1-12 | docs claim F7 closed | documentation check only (no docs test suite): an ad-hoc grep over the F7 row and status, run during review; not part of `build` |
-| S1.1-13 | Android `hasKeys()` limitation removed from the docs | same ad-hoc documentation check |
-| S1.1-14 | pre-S1 registration audit warning removed | same ad-hoc documentation check |
+| S1.1-12 | docs claim F7 closed | `checkReleaseConventions` since S1.2 (claim `f7-partial` and the F7 summary row) |
+| S1.1-13 | Android `hasKeys()` limitation removed from the docs | `checkReleaseConventions` since S1.2 (claim `android-haskeys`) |
+| S1.1-14 | pre-S1 registration audit warning removed | `checkReleaseConventions` since S1.2 (claim `pre-s1-audit`) |
 
-Mutations 12–14 are guarded only by review, not by an automated test.
+Mutations 12–14 were guarded only by review in S1.1; S1.2 automated them
+(see [Documentation guardrails](#documentation-guardrails)).
+
+## S1.2 follow-up
+
+The S1.1 re-review passed with residual risks and reported two more
+findings, N4 and N5, plus documentation issues. S1.2 addresses exactly
+those: an operator procedure, a tested SQL script, host-boundary hardening
+and automated documentation checks. No new protocol, wire format, schema
+(client 16, server 8), record type, HTTP path or public API; the
+`checkKotlinAbi` baselines are unchanged.
+
+### N5 — Pre-S1 cleanup left the attacker's recovery key authoritative
+
+**Root cause.** The S1.1 guidance removed an unrecognized pre-S1 device's
+rows and then told the operator to "cancel the reset and have the user
+rotate or re-register the recovery key". Before S1, such a device could
+register the user's offline recovery key (or rotate one in, or complete a
+reset). Removing the device leaves that key ACTIVE, and the attacker holds
+it: with it alone it can cancel the legitimate user's reset (public
+R1-signed cancellation), obtain a last-device recovery challenge for any of
+the user's devices and replace that device's authentication key, and so
+regain same-user authority. A rotation needs the suspect key's own
+signature, and re-registration is refused while a key is ACTIVE, so the
+guidance could not remove it.
+
+**Fix (documentation and verification; no code change).**
+[operating-the-server.md](operating-the-server.md#pre-s1-cleanup) now
+states that any unrecognized pre-S1 device makes the user's recovery-key
+authority suspect, and prescribes an offline cleanup (server stopped,
+backup, one `BEGIN IMMEDIATE … COMMIT` transaction, then a fresh key from a
+legitimate device):
+
+- device-scoped rows of each suspicious registration: `device_registration`,
+  `authentication_nonce`, `device_prekey_state`, `available_one_time_prekey`,
+  `consumed_one_time_prekey`, and `mailbox_message` rows addressed to it or
+  sent as it;
+- per affected user: `last_device_recovery_key_state` forced to REVOKED
+  (`state = 2`, `public_key`/`installed_at` NULL, all transition IDs NULL,
+  as the table CHECK requires) at `epoch + 1`; at `Long.MAX_VALUE` the
+  script fails on the NOT NULL constraint and changes nothing (never wraps),
+  and a documented manual variant revokes without an epoch change;
+  `last_device_recovery_key_reset` and `last_device_recovery_challenge`
+  rows of the user deleted;
+- afterwards a legitimate device calls `createLastDeviceRecoveryKey()` and
+  `registerLastDeviceRecoveryKey(r2)` (registration after revocation, M18/M19).
+
+The audit now shows, besides addresses, each registration's current auth
+public key, epoch, installation time and `recovery_id` / `rotation_id` /
+`last_device_recovery_id`, the recovery key state with its public key and
+transition IDs, pending resets with requester and key/epoch binding, and
+outstanding challenges: **addresses alone are not enough**, because a
+pre-S1 recovery may have put an attacker's key on a legitimate address.
+
+**Tests** (`server:ktor` `PreS1CleanupTest`, file-backed SQLite at server
+schema 8 with the real constraints, real clients over HTTP; the SQL is read
+verbatim from the documentation page):
+
+- `n5DeviceOnlyCleanupLeavesAttackerRecoveryAuthority` reproduces the
+  finding: with only the device-scoped part, R1 still cancels the reset and
+  takes over `alice/phone` through last-device recovery.
+- `n5PreS1CleanupRevokesCompromisedRecoveryAuthority`: the device is gone,
+  cannot authenticate, publish or re-register (the host now refuses), its
+  bundle is not found; recovery key REVOKED at epoch 2; reset and challenges
+  gone; the legitimate device's key, epoch, installation time, prekeys and
+  nonces, Bob's state and the mailbox rows between legitimate devices are
+  unchanged.
+- `n5OldRecoveryKeyCannotRecoverAfterOfflineCleanup`: R1 cannot cancel or
+  query the reset, get a challenge, or use the statement it signed before
+  the cleanup; the phone's key stays.
+- `n5LegitimateDeviceCanProvisionFreshRecoveryKeyAfterCleanup`: R2 becomes
+  ACTIVE at epoch 3, new challenges carry recovery key epoch 3, R1 stays
+  rejected, R2 recovers a device.
+- `n5CleanupAtExhaustedEpochFailsClosedAndRollsBack`: at `Long.MAX_VALUE`
+  the script aborts with nothing applied; the manual variant revokes, R1 is
+  dead, and a new registration gets `EPOCH_EXHAUSTED`.
+- `n5AuditQueriesRunOnSchemaV8`: the audit queries run and expose the
+  attacker's key and the planted recovery key.
+
+**Status:** FIXED — PENDING RE-REVIEW.
+
+### N4 — Host errors bypassed the exception wrapper
+
+**Root cause.** The authorizer call in `SecureMessageServer.registerDevice`
+and the extractor call in the registration route caught `Exception` only.
+An `AssertionError`, `NotImplementedError` or other `Error` from host code
+reached Ktor's default handler, which logs the message and stack (and in
+development mode can show them), although host failures may carry the
+request's authentication context.
+
+**Fix.** One policy at both host boundaries (`S/DeviceRegistrationAuthorizer.kt`
+`runHostRegistrationBoundary`, `K/KSecureMessageRoutes.kt`
+`runHostExtractionBoundary`, both `internal`):
+
+- `CancellationException`: rethrown unchanged (coroutine cancellation).
+- `VirtualMachineError` (out of memory, stack overflow, internal error):
+  rethrown unchanged; its message comes from the JVM, not the host, and a
+  process condition must not be turned into an ordinary server failure.
+- every other `Throwable` (exceptions, `AssertionError`,
+  `NotImplementedError`, `LinkageError`, …): wrapped in
+  `DeviceRegistrationAuthorizationFailedException` (fixed message; the
+  original is its `cause` for the host's own diagnostics). The route answers
+  `500 {"error":"internal_error"}`, also in development mode, and logs
+  `Registration authorization failed (<class name>)` without passing any
+  throwable to the logger: no message, stack, cause chain or context.
+  Nothing is registered.
+
+**Tests:** `server:core` `DeviceRegistrationAuthorizationTest.n4AuthorizerErrorIsWrappedWithoutMessage`,
+`n4CancellationIsRethrown`, `n4VirtualMachineErrorIsNotWrapped` (a
+test-local `VirtualMachineError` subclass; the JVM is not affected),
+`n4BoundaryPolicy`; `server:ktor` `SecurityRemediationRoutesTest.n4AuthorizerErrorLeaksNoMessageOrStack`,
+`n4ExtractorErrorLeaksNoMessageOrStack` (`SECRET-A/B/C` in an
+`IllegalStateException`, `NotImplementedError` and `AssertionError`,
+development mode on: neither body nor log contains them, no throwable is
+logged, nothing is registered) and `n4CancellationIsRethrown`.
+
+**Status:** FIXED — PENDING RE-REVIEW.
+
+### Documentation guardrails
+
+`checkReleaseConventions` (part of `check` and therefore of `build`) now
+fails if a guarded security statement disappears. Each statement is a
+marked region (`<!-- ksm-security-claim:<id> -->`) or an operator SQL block
+(`<!-- ksm-sql:<id>:begin -->`) that must keep its required tokens:
+
+| Claim | Page | Guarded content |
+|---|---|---|
+| `f7-partial` | this page | F7 is PARTIALLY FIXED — RESIDUAL RISK DOCUMENTED (never "CLOSED"), and so is the F7 summary row |
+| `android-haskeys` | [storage-key-providers.md](storage-key-providers.md#haskeys-s1) | `AndroidStorageKeyProvider.hasKeys()` reads the wrapped key file, not the Keystore alias |
+| `pre-s1-audit` | [operating-the-server.md](operating-the-server.md#registrations-from-before-s1) | pre-S1 registrations never host-authorized, audit, addresses alone are not enough, keys and transition IDs |
+| `pre-s1-recovery-key-cleanup` | same | removing only the device is insufficient, key compromised, server stopped, one transaction, revocation, reset/challenge deletion, fresh key; never "rotate or re-register" |
+| SQL `pre-s1-audit`, `pre-s1-cleanup` | same | every audited column; every cleanup statement, including the REVOKED update with its non-wrapping epoch |
+
+The SQL blocks are additionally executed by `PreS1CleanupTest`.
+
+### Stale statements corrected
+
+- Client schema is 16, not 15 ([operating-the-server.md](operating-the-server.md#client-storage),
+  `SqlDelightClientStorage` KDoc); the M25 page now says its schema versions
+  were those at M25.
+- The status wording at the top of this page matches the summary table
+  (closed only by the independent re-review).
+- `SecureMessageClient.registerDevice` KDoc no longer says the server trusts
+  the first registration (host authorization since S1).
+- Pre-S1 guidance in security-review.md, server-authentication.md,
+  device-recovery.md and the README points to the recovery-key cleanup.
+
+### S1.2 mutation testing
+
+Each mutation was applied alone, the named test or check was run, and the
+mutation was reverted (checksums compared).
+
+| # | Mutation | Caught by |
+|---|---|---|
+| S1.2-1 | cleanup leaves the recovery key ACTIVE (UPDATE removed) | `PreS1CleanupTest` (4 tests), `checkReleaseConventions` |
+| S1.2-2 | cleanup keeps the pending reset | `n5PreS1CleanupRevokesCompromisedRecoveryAuthority`, `n5OldRecoveryKeyCannotRecoverAfterOfflineCleanup`, `checkReleaseConventions` |
+| S1.2-3 | cleanup keeps the challenges | `n5PreS1CleanupRevokesCompromisedRecoveryAuthority`, `checkReleaseConventions` |
+| S1.2-4 | docs say "rotate or re-register" instead of revoke | `checkReleaseConventions` (forbidden phrase, missing `SET state = 2`), 3 `PreS1CleanupTest` tests |
+| S1.2-5 | audit query omits the auth public key and transition IDs | `n5AuditQueriesRunOnSchemaV8`, `checkReleaseConventions` |
+| S1.2-6 | authorizer boundary catches `Exception` only | `n4AuthorizerErrorIsWrappedWithoutMessage`, `n4BoundaryPolicy`, `n4AuthorizerErrorLeaksNoMessageOrStack` |
+| S1.2-7 | extractor boundary catches `Exception` only | `n4ExtractorErrorLeaksNoMessageOrStack`, `n4CancellationIsRethrown` (route) |
+| S1.2-8 | host failure logged with the throwable | `n1HostFailuresLeakNoContext`, `n4AuthorizerErrorLeaksNoMessageOrStack`, `n4ExtractorErrorLeaksNoMessageOrStack` |
+| S1.2-9a | authorizer boundary wraps cancellation | `server:core` `n4CancellationIsRethrown`, `n4BoundaryPolicy` (end to end the route still rethrows a wrapped cancellation) |
+| S1.2-9b | extractor boundary wraps cancellation | `server:ktor` `n4CancellationIsRethrown` |
+| S1.2-10 | F7 claim region removed / F7 row says CLOSED | `checkReleaseConventions` |
+| S1.2-11 | Android `hasKeys()` limitation removed | `checkReleaseConventions` |
+| S1.2-12 | pre-S1 audit warning removed | `checkReleaseConventions` |
+| S1.2-13 | fresh-recovery-key provisioning step removed | `checkReleaseConventions` |
 
 ## Version changes
 
@@ -763,12 +940,15 @@ reason); the fixture now includes them and the test checks the exact error.
   sender. First contact trusts the server (TOFU); safety numbers detect key
   substitution.
 - No formal verification; Kodium is a dependency with its own review status.
-- No finding is closed until the independent reviewer re-runs the review.
+- A finding is closed only by the independent re-review (the CLOSED rows);
+  N1–N5 and D1–D7 are pending it.
 - Legacy: v1 initiations not answered before the upgrade are replaced by v2
   (their messages resent by the reliability layer); peers and servers must
   be upgraded together; `StaticStorageKeyProvider` cannot migrate milestone
   8 databases.
 - Registrations from before S1 were never host-authorized and keep their
-  authority until the operator audits them (D3).
+  authority, and any offline recovery key they planted, until the operator
+  audits them and runs the offline cleanup (D3, N5). A server whose
+  operator skips the cleanup keeps that exposure.
 - F7: intent replay and provider-state trust (see F7), accepted for v0.x.
 - The correctness of the host's context extractor and authorizer (N1).

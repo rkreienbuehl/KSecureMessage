@@ -105,7 +105,9 @@ import kotlin.time.Instant
  * `processed_inbound_message` finalization and discard reason and the
  * sender pagination index (milestone 21, docs/message-discard.md), version
  * 15 the `pending_outbound_message` recipient pagination index (milestone 22,
- * docs/outbound-message-lifecycle.md). A driver created with
+ * docs/outbound-message-lifecycle.md), version 16 the
+ * `storage_encryption.migration_intent` column (S1, finding F7,
+ * docs/storage-encryption.md). A driver created with
  * [Schema] upgrades an older database on open; an application that manages
  * versions itself calls `Schema.migrate(driver, oldVersion, Schema.version)`. An upgraded database still holds
  * its milestone 8 plaintext until [open] encrypts it. Session state written
