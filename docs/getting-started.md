@@ -59,7 +59,10 @@ The application creates and owns the SQLDelight driver
 ## Run a server
 
 The server is a blind relay: it stores public prekeys and queues opaque
-envelopes. The host owns the SQLite driver.
+envelopes. The host owns the SQLite driver and its own user authentication:
+the registration route asks the host for the caller's principal and the
+`DeviceRegistrationAuthorizer` decides with it (the sample's bearer-token
+table is DEMO ONLY).
 
 ```kotlin
 --8<-- "samples/jvm-e2e/app/src/main/kotlin/dev/kreienbuehl/ksecuremessage/sample/Main.kt:server"
@@ -71,6 +74,7 @@ Clocks, backups and deployment notes: [operating the server](operating-the-serve
 
 Each device has a `DeviceAddress` (user + device). The sample keeps storage
 in memory to stay short; use `SqlDelightClientStorage` in an application.
+The transport's `HttpClient` carries the application's own authentication.
 
 ```kotlin
 --8<-- "samples/jvm-e2e/app/src/main/kotlin/dev/kreienbuehl/ksecuremessage/sample/Main.kt:clients"

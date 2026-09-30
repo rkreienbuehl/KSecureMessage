@@ -72,12 +72,12 @@ class DeviceAuthenticationRotationServerTest {
     private val laptopKey = newKey()
     private val bobKey = newKey()
 
-    private suspend fun setUp(storage: ServerStorage = InMemoryServerStorage()): Pair<ServerStorage, SecureMessageServer> {
+    private suspend fun setUp(storage: ServerStorage = InMemoryServerStorage()): Pair<ServerStorage, SecureMessageServer<TestRegistrationPrincipal>> {
         val server = SecureMessageServer(storage, clock, TestDeviceRegistrationAuthorizer.allowAll())
         for ((address, key) in listOf(phone to phoneKey, laptop to laptopKey, bob to bobKey)) {
             val body = key.publicKey
             val request = ServerRequest(address, "PUT", ServerApiPaths.device(address, ServerApiPaths.REGISTRATION), body)
-            server.registerDevice(DeviceRegistration(address, key.publicKey), body, ServerRequestAuthentication.sign(key, request, clock.now()))
+            server.registerDeviceAsUserOwner(DeviceRegistration(address, key.publicKey), body, ServerRequestAuthentication.sign(key, request, clock.now()))
         }
         return storage to server
     }
@@ -92,7 +92,7 @@ class DeviceAuthenticationRotationServerTest {
     ): DeviceAuthenticationRotationAuthorization =
         DeviceAuthenticationRotation.create(current, replacement, address, epoch, clock.now + offset, nonce)
 
-    private suspend fun SecureMessageServer.signed(
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.signed(
         address: DeviceAddress,
         key: DeviceAuthenticationKeyPair,
         endpoint: ProtectedEndpoint,
@@ -102,10 +102,10 @@ class DeviceAuthenticationRotationServerTest {
         return authenticate(address, endpoint, ByteArray(0), ServerRequestAuthentication.sign(key, request, clock.now(), nonce))
     }
 
-    private suspend fun SecureMessageServer.drain(address: DeviceAddress, key: DeviceAuthenticationKeyPair): List<EncryptedEnvelope> =
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.drain(address: DeviceAddress, key: DeviceAuthenticationKeyPair): List<EncryptedEnvelope> =
         receive(signed(address, key, ProtectedEndpoint.DRAIN_MAILBOX))
 
-    private suspend fun SecureMessageServer.epoch(address: DeviceAddress, key: DeviceAuthenticationKeyPair): Long =
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.epoch(address: DeviceAddress, key: DeviceAuthenticationKeyPair): Long =
         registrationStatus(signed(address, key, ProtectedEndpoint.READ_REGISTRATION)).authEpoch
 
     private suspend fun ServerStorage.state(address: DeviceAddress = phone): DeviceRegistrationState = assertNotNull(devices.registrationState(address))
@@ -152,7 +152,7 @@ class DeviceAuthenticationRotationServerTest {
         val k1Body = phoneKey.publicKey
         val k1Request = ServerRequest(phone, "PUT", ServerApiPaths.device(phone, ServerApiPaths.REGISTRATION), k1Body)
         assertFailsWith<dev.kreienbuehl.ksecuremessage.storage.DeviceRegistrationException.Conflict> {
-            server.registerDevice(DeviceRegistration(phone, phoneKey.publicKey), k1Body, ServerRequestAuthentication.sign(phoneKey, k1Request, clock.now()))
+            server.registerDeviceAsUserOwner(DeviceRegistration(phone, phoneKey.publicKey), k1Body, ServerRequestAuthentication.sign(phoneKey, k1Request, clock.now()))
         }
         // Other devices are not touched.
         assertEquals(1, storage.state(laptop).authEpoch)

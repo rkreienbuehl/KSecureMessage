@@ -14,19 +14,32 @@ import dev.kreienbuehl.ksecuremessage.protocol.KodiumProtocolEngine
 import dev.kreienbuehl.ksecuremessage.server.DeviceRegistrationAuthorizationResult
 import dev.kreienbuehl.ksecuremessage.server.DeviceRegistrationAuthorizer
 import dev.kreienbuehl.ksecuremessage.server.SecureMessageServer
+import dev.kreienbuehl.ksecuremessage.server.ktor.DeviceRegistrationContextExtractor
 import dev.kreienbuehl.ksecuremessage.server.ktor.kSecureMessageRoutes
 import dev.kreienbuehl.ksecuremessage.storage.client.inmemory.InMemoryClientStorage
 import dev.kreienbuehl.ksecuremessage.storage.server.sqldelight.SqlDelightServerStorage
+import io.ktor.client.HttpClient
+import io.ktor.client.plugins.defaultRequest
+import io.ktor.client.request.bearerAuth
+import io.ktor.http.HttpHeaders
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
-import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
 import java.util.Properties
 import kotlin.time.Clock
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation as ClientContentNegotiation
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation as ServerContentNegotiation
+
+/**
+ * DEMO ONLY: the account a request was authenticated as. Replace it with
+ * your application's authenticated principal (session, OAuth subject,
+ * enrollment grant); KSecureMessage passes it to the authorizer unchanged.
+ */
+private data class DemoPrincipal(val userId: UserId)
 
 // The minimal application lifecycle of docs/application-lifecycle.md, end to
 // end over HTTP: a reference server on a SQLite file, Alice and Bob as two
@@ -40,22 +53,34 @@ fun main() = runBlocking {
     val databaseFile = Files.createTempDirectory("ksecuremessage-sample").resolve("server.db")
     val driver = JdbcSqliteDriver("jdbc:sqlite:$databaseFile", Properties(), SqlDelightServerStorage.Schema)
     val serverStorage = SqlDelightServerStorage.open(driver)
-    // Which device may become one of a user's devices is the host's decision
-    // (docs/server-authentication.md, "Registration authorization"). This
-    // sample only knows two fixed devices; a real host checks its own
-    // account authentication here. Not a production policy.
-    val knownDevices = setOf(
-        DeviceAddress(UserId("alice"), DeviceId("phone")),
-        DeviceAddress(UserId("bob"), DeviceId("laptop")),
+    // Which caller may add a device to which user is the host's decision
+    // (docs/server-authentication.md, "Registration authorization"): the
+    // host's own authentication establishes a principal for the request, and
+    // the authorizer compares it with the user the device is registered for.
+    // DEMO ONLY: a fixed bearer-token table stands in for the application's
+    // login. Replace it with your application's authenticated principal.
+    val demoSessions = mapOf(
+        "demo-token-alice" to DemoPrincipal(UserId("alice")),
+        "demo-token-bob" to DemoPrincipal(UserId("bob")),
+        "demo-token-mallory" to DemoPrincipal(UserId("mallory")),
     )
-    val registrationAuthorizer = DeviceRegistrationAuthorizer { request ->
-        if (request.address in knownDevices) DeviceRegistrationAuthorizationResult.Authorized else DeviceRegistrationAuthorizationResult.Denied
+    val registrationContext = DeviceRegistrationContextExtractor { call ->
+        // null = not authenticated: the registration is refused without asking the authorizer.
+        call.request.headers[HttpHeaders.Authorization]?.takeIf { it.startsWith("Bearer ") }?.let { demoSessions[it.removePrefix("Bearer ")] }
+    }
+    val registrationAuthorizer = DeviceRegistrationAuthorizer<DemoPrincipal> { principal, request ->
+        // A principal may add devices to its own user only.
+        if (request.address.userId == principal.userId) {
+            DeviceRegistrationAuthorizationResult.Authorized
+        } else {
+            DeviceRegistrationAuthorizationResult.Denied
+        }
     }
     // No RecoveryKeyResetPolicy: delayed recovery key resets are disabled on this server.
     val server = SecureMessageServer(serverStorage, Clock.System, registrationAuthorizer, recoveryKeyResetPolicy = null)
     val http = embeddedServer(CIO, port = 0, host = "127.0.0.1") {
-        install(ContentNegotiation) { json() }
-        routing { kSecureMessageRoutes(server) }
+        install(ServerContentNegotiation) { json() }
+        routing { kSecureMessageRoutes(server, registrationContext) }
     }.start(wait = false)
     // --8<-- [end:server]
     val port = http.engine.resolvedConnectors().single().port
@@ -66,10 +91,19 @@ fun main() = runBlocking {
         // Clients: in-memory storage keeps the sample short. A real application
         // uses SqlDelightClientStorage with a platform StorageKeyProvider.
         // --8<-- [start:clients]
+        // The application's HTTP client carries the application's own
+        // authentication (DEMO ONLY: the fixed bearer tokens above).
+        fun transport(token: String?) = KtorSecureMessageTransport(
+            baseUrl,
+            HttpClient {
+                install(ClientContentNegotiation) { json() }
+                if (token != null) defaultRequest { bearerAuth(token) }
+            },
+        )
         val aliceAddress = DeviceAddress(UserId("alice"), DeviceId("phone"))
         val bobAddress = DeviceAddress(UserId("bob"), DeviceId("laptop"))
-        val alice = SecureMessageClient(aliceAddress, InMemoryClientStorage(), KodiumProtocolEngine(), KtorSecureMessageTransport(baseUrl))
-        val bob = SecureMessageClient(bobAddress, InMemoryClientStorage(), KodiumProtocolEngine(), KtorSecureMessageTransport(baseUrl))
+        val alice = SecureMessageClient(aliceAddress, InMemoryClientStorage(), KodiumProtocolEngine(), transport("demo-token-alice"))
+        val bob = SecureMessageClient(bobAddress, InMemoryClientStorage(), KodiumProtocolEngine(), transport("demo-token-bob"))
         // --8<-- [end:clients]
 
         // First launch: local keys, server registration, prekey publication.
@@ -82,14 +116,19 @@ fun main() = runBlocking {
         // --8<-- [end:first-launch]
         step("alice and bob initialized, registered and published prekeys")
 
-        // A device the host does not know cannot join alice's devices, even with a valid key (S1).
-        val unknown = SecureMessageClient(
-            DeviceAddress(UserId("alice"), DeviceId("unknown")), InMemoryClientStorage(), KodiumProtocolEngine(), KtorSecureMessageTransport(baseUrl),
-        )
-        unknown.initialize()
-        val refused = runCatching { unknown.registerDevice() }.exceptionOrNull()
-        check(refused is SecureMessageTransportException.DeviceRegistrationNotAuthorized) { "an unknown device must be refused, got $refused" }
-        step("an unknown device of alice was refused: registration_not_authorized")
+        // Only alice's authenticated principal can add a device to alice, even with a valid device key (S1, S1.1).
+        val aliceTablet = DeviceAddress(UserId("alice"), DeviceId("tablet"))
+        for ((token, who) in listOf("demo-token-mallory" to "mallory's principal", null to "no principal")) {
+            val intruder = SecureMessageClient(aliceTablet, InMemoryClientStorage(), KodiumProtocolEngine(), transport(token))
+            intruder.initialize()
+            val refused = runCatching { intruder.registerDevice() }.exceptionOrNull()
+            check(refused is SecureMessageTransportException.DeviceRegistrationNotAuthorized) { "alice/tablet with $who must be refused, got $refused" }
+            step("alice/tablet with $who was refused: registration_not_authorized")
+        }
+        val tablet = SecureMessageClient(aliceTablet, InMemoryClientStorage(), KodiumProtocolEngine(), transport("demo-token-alice"))
+        tablet.initialize()
+        tablet.registerDevice()
+        step("alice/tablet with alice's principal was registered")
 
         // Send: the message stays pending on Alice's side until Bob's ACK.
         // --8<-- [start:send]

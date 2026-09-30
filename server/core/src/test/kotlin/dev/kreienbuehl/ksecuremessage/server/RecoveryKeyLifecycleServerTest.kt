@@ -89,18 +89,18 @@ class RecoveryKeyLifecycleServerTest {
 
     private val keys = mapOf(phone to phoneKey, laptop to laptopKey, bob to bobKey)
 
-    private suspend fun setUp(storage: ServerStorage = InMemoryServerStorage()): Pair<ServerStorage, SecureMessageServer> {
+    private suspend fun setUp(storage: ServerStorage = InMemoryServerStorage()): Pair<ServerStorage, SecureMessageServer<TestRegistrationPrincipal>> {
         val server = SecureMessageServer(storage, clock, TestDeviceRegistrationAuthorizer.allowAll())
         for ((address, key) in keys) {
             val body = key.publicKey
             val request = ServerRequest(address, "PUT", ServerApiPaths.device(address, ServerApiPaths.REGISTRATION), body)
-            server.registerDevice(DeviceRegistration(address, key.publicKey), body, ServerRequestAuthentication.sign(key, request, clock.now()))
+            server.registerDeviceAsUserOwner(DeviceRegistration(address, key.publicKey), body, ServerRequestAuthentication.sign(key, request, clock.now()))
         }
         assertTrue(server.registerLastDeviceRecoveryKey(server.signed(laptop, ProtectedEndpoint.REGISTER_LAST_DEVICE_RECOVERY_KEY), LastDeviceRecovery.registerKey(r1, phone.userId)))
         return storage to server
     }
 
-    private suspend fun SecureMessageServer.signed(
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.signed(
         address: DeviceAddress,
         endpoint: ProtectedEndpoint,
         key: DeviceAuthenticationKeyPair = keys.getValue(address),
@@ -120,17 +120,17 @@ class RecoveryKeyLifecycleServerTest {
     private fun revocation(current: LastDeviceRecoveryKey = r1, epoch: Long = 1, authorizer: DeviceAddress = phone) =
         RecoveryKeyRevocation.authorize(current, authorizer, epoch, clock.now())
 
-    private suspend fun SecureMessageServer.rotate(authorization: RecoveryKeyRotationAuthorization, by: DeviceAddress = authorization.statement.authorizer) =
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.rotate(authorization: RecoveryKeyRotationAuthorization, by: DeviceAddress = authorization.statement.authorizer) =
         rotateLastDeviceRecoveryKey(signed(by, ProtectedEndpoint.ROTATE_LAST_DEVICE_RECOVERY_KEY), authorization)
 
-    private suspend fun SecureMessageServer.revoke(authorization: RecoveryKeyRevocationAuthorization, by: DeviceAddress = authorization.statement.authorizer) =
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.revoke(authorization: RecoveryKeyRevocationAuthorization, by: DeviceAddress = authorization.statement.authorizer) =
         revokeLastDeviceRecoveryKey(signed(by, ProtectedEndpoint.REVOKE_LAST_DEVICE_RECOVERY_KEY), authorization)
 
     /** The status as the laptop sees it (its key never changes in these tests). */
-    private suspend fun SecureMessageServer.status(by: DeviceAddress = laptop) =
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.status(by: DeviceAddress = laptop) =
         lastDeviceRecoveryKeyStatus(signed(by, ProtectedEndpoint.READ_LAST_DEVICE_RECOVERY_KEY))
 
-    private suspend fun SecureMessageServer.assertActive(key: LastDeviceRecoveryKey, epoch: Long) {
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.assertActive(key: LastDeviceRecoveryKey, epoch: Long) {
         val status = assertIs<LastDeviceRecoveryKeyStatus.Active>(status())
         assertEquals(epoch, status.epoch)
         assertTrue(status.isKey(key.publicKey))

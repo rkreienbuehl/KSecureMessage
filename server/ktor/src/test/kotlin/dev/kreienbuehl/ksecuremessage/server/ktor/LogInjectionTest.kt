@@ -10,10 +10,6 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.testing.testApplication
-import org.slf4j.Marker
-import org.slf4j.event.Level
-import org.slf4j.helpers.LegacyAbstractLogger
-import org.slf4j.helpers.MessageFormatter
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -26,23 +22,6 @@ import io.ktor.server.plugins.contentnegotiation.ContentNegotiation as ServerCon
  * so a raw CR/LF could end a log line and forge the next one.
  */
 class LogInjectionTest {
-    /** Records every formatted log event. */
-    private class RecordingLogger : LegacyAbstractLogger() {
-        val events = mutableListOf<String>()
-
-        override fun getName() = "recording"
-        override fun isTraceEnabled() = true
-        override fun isDebugEnabled() = true
-        override fun isInfoEnabled() = true
-        override fun isWarnEnabled() = true
-        override fun isErrorEnabled() = true
-        override fun getFullyQualifiedCallerName(): String? = null
-
-        override fun handleNormalizedLoggingCall(level: Level, marker: Marker?, pattern: String?, arguments: Array<out Any?>?, throwable: Throwable?) {
-            synchronized(events) { events += MessageFormatter.basicArrayFormat(pattern, arguments) }
-        }
-    }
-
     private val hostile = listOf(
         "evil\nINFO forged line",
         "evil\rERROR forged",
@@ -78,7 +57,7 @@ class LogInjectionTest {
         testApplication {
             environment { log = logger }
             install(ServerContentNegotiation) { json() }
-            routing { kSecureMessageRoutes(SecureMessageServer(storage, ManualClock(), TestDeviceRegistrationAuthorizer.allowAll())) }
+            routing { kSecureMessageRoutes(SecureMessageServer(storage, ManualClock(), TestDeviceRegistrationAuthorizer.allowAll()), TestRegistrationContexts.routeUserOwner) }
             val http = createClient { }
             for (value in hostile) {
                 val target = DeviceAddress(UserId(value), DeviceId(value))

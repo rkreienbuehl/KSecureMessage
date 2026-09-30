@@ -21,6 +21,10 @@ dependencies {
     implementation(libs.sqldelight.sqlite.driver)
     implementation(libs.ktor.server.cio)
     implementation(libs.ktor.server.content.negotiation)
+    // The application's own HTTP client, carrying its authentication (S1.1).
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.client.engine.defaults)
     implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.kotlinx.coroutines.core)
 }

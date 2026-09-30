@@ -248,9 +248,6 @@ private class InMemoryDeviceRegistrationRepository(private val state: Authentica
         }
     }
 
-    override suspend fun hasRegisteredDevices(userId: UserId): Boolean =
-        state.mutex.withLock { state.registrations.keys.any { it.userId == userId } }
-
     // A retry of the registered key changes nothing, also not the installation time.
     override suspend fun register(registration: DeviceRegistration, installedAt: Instant): Boolean = state.mutex.withLock {
         val existing = state.registrations[registration.address]

@@ -55,6 +55,19 @@ encryption from a downgraded one ([storage-encryption.md](storage-encryption.md#
 `StaticStorageKeyProvider.hasKeys()` is always `true`. Contract tests:
 `StorageKeyProviderContractTest` (`hasKeys*`).
 
+**Android limitation (S1.1, finding D7).** `AndroidStorageKeyProvider.hasKeys()`
+reads the wrapped key file in `noBackupFilesDir` only, not the Android
+Keystore alias. A missing file reports `false` even if the Keystore alias
+survives (the same state an interrupted key creation leaves, which
+`loadOrCreateKey()` deliberately reuses). An attacker who can modify the app
+sandbox can delete that file and make the provider look empty, and then a
+downgraded `format = 0` database passes as a genuine first migration. The
+S1 downgrade protection (F7) therefore assumes the provider's backing state
+is intact; it does not protect against arbitrary modification of both the
+database and the provider's state. Apple's `hasKeys()` queries the keychain
+items themselves; a keychain item an attacker can delete has the same
+limitation.
+
 ### `createKey` and `removeKey` (storage key rotation)
 
 Milestone 11 ([storage-key-rotation.md](storage-key-rotation.md)):

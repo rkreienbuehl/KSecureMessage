@@ -130,11 +130,14 @@ public final class dev/kreienbuehl/ksecuremessage/server/DeviceRecoveryOutcome :
 	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/server/DeviceRecoveryOutcome;
 }
 
+public final class dev/kreienbuehl/ksecuremessage/server/DeviceRegistrationAuthorizationFailedException : java/lang/Exception {
+	public fun <init> (Ljava/lang/Throwable;)V
+}
+
 public final class dev/kreienbuehl/ksecuremessage/server/DeviceRegistrationAuthorizationRequest {
-	public fun <init> (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[BLdev/kreienbuehl/ksecuremessage/server/DeviceRegistrationUserState;)V
+	public fun <init> (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;[B)V
 	public final fun getAddress ()Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;
 	public final fun getProposedAuthenticationPublicKey ()[B
-	public final fun getUserState ()Ldev/kreienbuehl/ksecuremessage/server/DeviceRegistrationUserState;
 }
 
 public abstract class dev/kreienbuehl/ksecuremessage/server/DeviceRegistrationAuthorizationResult {
@@ -155,15 +158,7 @@ public final class dev/kreienbuehl/ksecuremessage/server/DeviceRegistrationAutho
 }
 
 public abstract interface class dev/kreienbuehl/ksecuremessage/server/DeviceRegistrationAuthorizer {
-	public abstract fun authorize (Ldev/kreienbuehl/ksecuremessage/server/DeviceRegistrationAuthorizationRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-}
-
-public final class dev/kreienbuehl/ksecuremessage/server/DeviceRegistrationUserState : java/lang/Enum {
-	public static final field USER_HAS_NO_REGISTERED_DEVICES Ldev/kreienbuehl/ksecuremessage/server/DeviceRegistrationUserState;
-	public static final field USER_HAS_REGISTERED_DEVICES Ldev/kreienbuehl/ksecuremessage/server/DeviceRegistrationUserState;
-	public static fun getEntries ()Lkotlin/enums/EnumEntries;
-	public static fun valueOf (Ljava/lang/String;)Ldev/kreienbuehl/ksecuremessage/server/DeviceRegistrationUserState;
-	public static fun values ()[Ldev/kreienbuehl/ksecuremessage/server/DeviceRegistrationUserState;
+	public abstract fun authorize (Ljava/lang/Object;Ldev/kreienbuehl/ksecuremessage/server/DeviceRegistrationAuthorizationRequest;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
 public final class dev/kreienbuehl/ksecuremessage/server/EnvelopeSenderMismatchException : java/lang/Exception {
@@ -374,7 +369,7 @@ public final class dev/kreienbuehl/ksecuremessage/server/SecureMessageServer {
 	public final fun receive (Ldev/kreienbuehl/ksecuremessage/server/AuthenticatedDevice;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun recoverDevice (Ldev/kreienbuehl/ksecuremessage/protocol/DeviceRecoveryAuthorization;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun recoverLastDevice (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryAuthorization;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public final fun registerDevice (Ldev/kreienbuehl/ksecuremessage/model/DeviceRegistration;[BLdev/kreienbuehl/ksecuremessage/protocol/RequestAuthentication;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun registerDevice (Ljava/lang/Object;Ldev/kreienbuehl/ksecuremessage/model/DeviceRegistration;[BLdev/kreienbuehl/ksecuremessage/protocol/RequestAuthentication;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun registerLastDeviceRecoveryKey (Ldev/kreienbuehl/ksecuremessage/server/AuthenticatedDevice;Ldev/kreienbuehl/ksecuremessage/protocol/LastDeviceRecoveryKeyRegistration;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun registrationStatus (Ldev/kreienbuehl/ksecuremessage/server/AuthenticatedDevice;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun relay (Ldev/kreienbuehl/ksecuremessage/server/AuthenticatedDevice;Ldev/kreienbuehl/ksecuremessage/model/EncryptedEnvelope;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;

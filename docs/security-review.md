@@ -45,9 +45,11 @@ Assumptions and non-goals, collected from the specifications in `docs/`:
 - **Server authentication** ([server-authentication.md](server-authentication.md))
   binds a dedicated Ed25519 device key to a device address. It is not
   account authentication: since S1 every first registration needs the host
-  application's `DeviceRegistrationAuthorizer`, and all "same-user device"
-  authority (device recovery, offline recovery key and reset) rests on that
-  host decision. Message submission is signed by the sender (the server
+  application's `DeviceRegistrationAuthorizer`, which since S1.1 decides
+  with the host's own authenticated principal for the request, and all
+  "same-user device" authority (device recovery, offline recovery key and
+  reset) rests on that host decision. Registrations stored before S1 were
+  never host-authorized ([operating-the-server.md](operating-the-server.md#registrations-from-before-s1)). Message submission is signed by the sender (the server
   vouches for the envelope's sender). Requests are signed over a canonical binary description (domain
   `KSecureMessage-ServerAuth-v1`), fresh within ±5 minutes, single-use per
   nonce and device. It authenticates requests, not responses; TLS is the

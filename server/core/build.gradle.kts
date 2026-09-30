@@ -16,4 +16,7 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(project(":storage:server:inmemory"))
+    // N2 registration races run against every server storage adapter (S1.1).
+    testImplementation(project(":storage:server:sqldelight"))
+    testImplementation(libs.sqldelight.sqlite.driver)
 }

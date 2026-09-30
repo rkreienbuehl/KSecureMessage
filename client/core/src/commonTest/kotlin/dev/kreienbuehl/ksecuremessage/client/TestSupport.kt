@@ -224,20 +224,17 @@ internal class ServerBackedNetwork(
 
     /**
      * The host application's registration decision (server:core's
-     * DeviceRegistrationAuthorizer), for first registrations only: the
-     * address and whether its user has registered devices. Allows by default
-     * in these tests.
+     * DeviceRegistrationAuthorizer), for first registrations only. Allows
+     * by default in these tests, which do not model the host's principal.
      */
-    var authorizeRegistration: suspend (DeviceAddress, Boolean) -> Boolean = { _, _ -> true }
+    var authorizeRegistration: suspend (DeviceAddress) -> Boolean = { true }
 
     override suspend fun registerDevice(registration: DeviceRegistration, signer: ServerRequestSigner) {
         beforeNetworkCall()
         val key = registration.publicKey
         authenticate(registration.address, "PUT", ServerApiPaths.REGISTRATION, key, signer) { key }
         val existing = server.devices.registration(registration.address)
-        if (existing == null &&
-            !authorizeRegistration(registration.address, server.devices.hasRegisteredDevices(registration.address.userId))
-        ) {
+        if (existing == null && !authorizeRegistration(registration.address)) {
             throw SecureMessageTransportException.DeviceRegistrationNotAuthorized()
         }
         try {

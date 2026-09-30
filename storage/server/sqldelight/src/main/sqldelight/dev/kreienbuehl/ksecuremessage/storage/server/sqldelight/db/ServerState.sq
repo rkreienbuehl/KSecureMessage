@@ -209,9 +209,6 @@ UPDATE authentication_nonce_watermark SET prune_before = max(prune_before, ?) WH
 selectNonceWatermark:
 SELECT prune_before FROM authentication_nonce_watermark WHERE id = 0;
 
-countRegisteredDevicesOfUser:
-SELECT count(*) FROM device_registration WHERE user_id = ?;
-
 insertNonce:
 INSERT OR IGNORE INTO authentication_nonce (user_id, device_id, nonce, request_timestamp) VALUES (?, ?, ?, ?);
 

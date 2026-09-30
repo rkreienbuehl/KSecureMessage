@@ -69,12 +69,12 @@ class DeviceRecoveryServerTest {
     private val tabletKey = newKey()
     private val bobKey = newKey()
 
-    private suspend fun setUp(storage: ServerStorage = InMemoryServerStorage()): Pair<ServerStorage, SecureMessageServer> {
+    private suspend fun setUp(storage: ServerStorage = InMemoryServerStorage()): Pair<ServerStorage, SecureMessageServer<TestRegistrationPrincipal>> {
         val server = SecureMessageServer(storage, clock, TestDeviceRegistrationAuthorizer.allowAll())
         for ((address, key) in listOf(laptop to laptopKey, phone to phoneKey, tablet to tabletKey, bob to bobKey)) {
             val body = key.publicKey
             val request = ServerRequest(address, "PUT", ServerApiPaths.device(address, ServerApiPaths.REGISTRATION), body)
-            server.registerDevice(DeviceRegistration(address, key.publicKey), body, ServerRequestAuthentication.sign(key, request, clock.now()))
+            server.registerDeviceAsUserOwner(DeviceRegistration(address, key.publicKey), body, ServerRequestAuthentication.sign(key, request, clock.now()))
         }
         return storage to server
     }
@@ -89,7 +89,7 @@ class DeviceRecoveryServerTest {
     ): DeviceRecoveryAuthorization =
         DeviceRecovery.authorize(authorizerKey, DeviceRecovery.prepare(replacement, target, authorizer, clock.now + offset, nonce))
 
-    private suspend fun SecureMessageServer.drain(address: DeviceAddress, key: DeviceAuthenticationKeyPair): List<EncryptedEnvelope> {
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.drain(address: DeviceAddress, key: DeviceAuthenticationKeyPair): List<EncryptedEnvelope> {
         val request = ServerRequest(address, "GET", ServerApiPaths.device(address, ServerApiPaths.MESSAGES), ByteArray(0))
         return receive(authenticate(address, ProtectedEndpoint.DRAIN_MAILBOX, ByteArray(0), ServerRequestAuthentication.sign(key, request, clock.now())))
     }

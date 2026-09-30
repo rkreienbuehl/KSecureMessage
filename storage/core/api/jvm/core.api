@@ -50,7 +50,6 @@ public final class dev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationExce
 }
 
 public abstract interface class dev/kreienbuehl/ksecuremessage/storage/DeviceRegistrationRepository {
-	public abstract fun hasRegisteredDevices-vKr61vg (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun register (Ldev/kreienbuehl/ksecuremessage/model/DeviceRegistration;Lkotlin/time/Instant;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun registration (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun registrationState (Ldev/kreienbuehl/ksecuremessage/model/DeviceAddress;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;

@@ -22,7 +22,6 @@ import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryChallengeId
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKey
 import dev.kreienbuehl.ksecuremessage.protocol.LastDeviceRecoveryKeyRegistration
 import dev.kreienbuehl.ksecuremessage.protocol.PreKeyFormat
-import dev.kreienbuehl.ksecuremessage.protocol.RequestNonce
 import dev.kreienbuehl.ksecuremessage.protocol.ServerApiPaths
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequest
 import dev.kreienbuehl.ksecuremessage.protocol.ServerRequestAuthentication
@@ -90,12 +89,12 @@ class LastDeviceRecoveryServerTest {
     private suspend fun setUp(
         storage: ServerStorage = InMemoryServerStorage(),
         withRecoveryKey: Boolean = true,
-    ): Pair<ServerStorage, SecureMessageServer> {
+    ): Pair<ServerStorage, SecureMessageServer<TestRegistrationPrincipal>> {
         val server = SecureMessageServer(storage, clock, TestDeviceRegistrationAuthorizer.allowAll())
         for ((address, key) in listOf(phone to phoneKey, laptop to laptopKey, bob to bobKey)) {
             val body = key.publicKey
             val request = ServerRequest(address, "PUT", ServerApiPaths.device(address, ServerApiPaths.REGISTRATION), body)
-            server.registerDevice(DeviceRegistration(address, key.publicKey), body, ServerRequestAuthentication.sign(key, request, clock.now()))
+            server.registerDeviceAsUserOwner(DeviceRegistration(address, key.publicKey), body, ServerRequestAuthentication.sign(key, request, clock.now()))
         }
         if (withRecoveryKey) {
             assertTrue(server.registerLastDeviceRecoveryKey(server.signed(laptop, laptopKey, ProtectedEndpoint.REGISTER_LAST_DEVICE_RECOVERY_KEY), LastDeviceRecovery.registerKey(recoveryKey, phone.userId)))
@@ -103,7 +102,7 @@ class LastDeviceRecoveryServerTest {
         return storage to server
     }
 
-    private suspend fun SecureMessageServer.signed(
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.signed(
         address: DeviceAddress,
         key: DeviceAuthenticationKeyPair,
         endpoint: ProtectedEndpoint,
@@ -112,10 +111,10 @@ class LastDeviceRecoveryServerTest {
         return authenticate(address, endpoint, ByteArray(0), ServerRequestAuthentication.sign(key, request, clock.now()))
     }
 
-    private suspend fun SecureMessageServer.drain(address: DeviceAddress, key: DeviceAuthenticationKeyPair): List<EncryptedEnvelope> =
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.drain(address: DeviceAddress, key: DeviceAuthenticationKeyPair): List<EncryptedEnvelope> =
         receive(signed(address, key, ProtectedEndpoint.DRAIN_MAILBOX))
 
-    private suspend fun SecureMessageServer.recovery(
+    private suspend fun SecureMessageServer<TestRegistrationPrincipal>.recovery(
         replacement: DeviceAuthenticationKeyPair = newKey(),
         key: LastDeviceRecoveryKey = recoveryKey,
         target: DeviceAddress = phone,
@@ -237,7 +236,7 @@ class LastDeviceRecoveryServerTest {
         val k1Body = phoneKey.publicKey
         val k1Request = ServerRequest(phone, "PUT", ServerApiPaths.device(phone, ServerApiPaths.REGISTRATION), k1Body)
         assertFailsWith<DeviceRegistrationException.Conflict> {
-            server.registerDevice(DeviceRegistration(phone, phoneKey.publicKey), k1Body, ServerRequestAuthentication.sign(phoneKey, k1Request, clock.now()))
+            server.registerDeviceAsUserOwner(DeviceRegistration(phone, phoneKey.publicKey), k1Body, ServerRequestAuthentication.sign(phoneKey, k1Request, clock.now()))
         }
         // Other devices and the recovery key are not touched; the recovered device can rotate normally.
         assertEquals(1, storage.state(laptop).authEpoch)
@@ -255,7 +254,7 @@ class LastDeviceRecoveryServerTest {
         val server = SecureMessageServer(storage, clock, TestDeviceRegistrationAuthorizer.allowAll())
         val body = phoneKey.publicKey
         val request = ServerRequest(phone, "PUT", ServerApiPaths.device(phone, ServerApiPaths.REGISTRATION), body)
-        server.registerDevice(DeviceRegistration(phone, phoneKey.publicKey), body, ServerRequestAuthentication.sign(phoneKey, request, clock.now()))
+        server.registerDeviceAsUserOwner(DeviceRegistration(phone, phoneKey.publicKey), body, ServerRequestAuthentication.sign(phoneKey, request, clock.now()))
         server.registerLastDeviceRecoveryKey(
             server.signed(phone, phoneKey, ProtectedEndpoint.REGISTER_LAST_DEVICE_RECOVERY_KEY),
             LastDeviceRecovery.registerKey(recoveryKey, phone.userId),

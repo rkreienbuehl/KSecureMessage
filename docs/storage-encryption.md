@@ -354,13 +354,33 @@ Limitations, stated plainly:
 - A crash between the provider persisting the new key and the intent
   commit leaves a provider key without an intent: the next `open` fails
   closed with `DowngradeRejected`; recovery is manual.
-- Someone who copied the database file while a genuine first migration was
-  interrupted could later restore that copy (with an intent sealed by the
-  current key) plus chosen rows. This needs the attacker to have captured
-  exactly that window; a completed migration clears the intent.
+- **Intent replay (S1.1, finding D6).** The intent is sealed with the
+  provider key over a fixed marker and a constant row key: it names neither
+  a database nor a time. Anyone who captured the intent bytes while a
+  genuine first migration was interrupted (a copy of the database file, a
+  backup) holds a valid intent for as long as that storage key exists:
+  - **across time:** completing the migration clears the intent in *this*
+    database, but not the captured copy; restoring a `format = 0` database
+    with the captured intent and rows of the attacker's choice is migrated
+    and sealed with the legitimate key;
+  - **across databases:** the same intent opens in any other database file
+    of the same application under the same provider (namespace and key), so
+    it can be replayed into a reconstructed database, not only the original.
+  The window closes only when that storage key is retired
+  ([storage key rotation](#key-ids-and-rotation) removes it after
+  re-encryption). Binding the intent to a per-database random ID was
+  considered and not done: the ID would live in the same attacker-writable
+  file, so a reconstructed database simply carries it. The residual risk is
+  accepted for v0.x; F7 is **partially fixed**.
+- **Provider state is trusted.** Protection assumes the provider's state is
+  intact. An attacker who can change both the database and the provider's
+  backing state (for example delete Android's wrapped key file while the
+  Keystore alias survives, so `hasKeys()` reports no key,
+  [storage-key-providers.md](storage-key-providers.md#haskeys-s1)) can make
+  a downgraded database look like a genuine first migration.
 - This is authenticity of the migration input, not rollback protection of
-  the whole database: an attacker can still restore an older copy of an
-  encrypted database (see [Not covered](#not-covered)).
+  the whole database or of the provider: an attacker can still restore an
+  older copy of an encrypted database (see [Not covered](#not-covered)).
 
 Tests: `StorageDowngradeTest` and `SqlDelightMigrationTest`
 (`storage:client:sqldelight`), `StorageCipherTest` (record type 13 vector),

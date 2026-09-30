@@ -148,33 +148,78 @@ device of a user**, needs both:
 
 1. proof of possession of the device authentication key (the signed request
    below), and
-2. the host application's decision: `DeviceRegistrationAuthorizer`
-   (`server:core`), a required constructor parameter of
-   `SecureMessageServer(storage, clock, deviceRegistrationAuthorizer,
-   recoveryKeyResetPolicy)`. There is no default and no allow-all class in
-   production code.
+2. the host application's decision, made with the host's own authentication
+   of the request: `DeviceRegistrationAuthorizer<C>` (`server:core`), a
+   required constructor parameter of `SecureMessageServer<C>(storage, clock,
+   deviceRegistrationAuthorizer, recoveryKeyResetPolicy)`. There is no
+   default and no allow-all class in production code.
 
-The authorizer gets a `DeviceRegistrationAuthorizationRequest`: the
-address, the proposed public key (a copy) and
-`DeviceRegistrationUserState` (`USER_HAS_NO_REGISTERED_DEVICES` or
-`USER_HAS_REGISTERED_DEVICES`). It returns `Authorized` or `Denied`; a
-denial carries no reason, so nothing host-specific reaches HTTP. An
-exception it throws becomes `500 internal_error` (logged, no text in the
-body) and registers nothing.
+**Host context (S1.1, finding N1).** `C` is the host's request
+authentication context: the account principal its login established, a
+session, an OAuth subject, an enrollment grant. KSecureMessage does not
+define or interpret it. The Ktor adapter takes a required
+`DeviceRegistrationContextExtractor<C>`:
+
+```kotlin
+fun <C : Any> Route.kSecureMessageRoutes(
+    server: SecureMessageServer<C>,
+    registrationContext: DeviceRegistrationContextExtractor<C>, // suspend (ApplicationCall) -> C?
+)
+```
+
+The registration route calls the extractor, then
+`SecureMessageServer.registerDevice(context, registration, body,
+authentication)`. `server:core` never sees Ktor types. The context is
+request-scoped: never logged, serialized, stored, returned in a response or
+put into a signed or hashed input.
+
+The authorizer gets the context and a `DeviceRegistrationAuthorizationRequest`:
+the address and the proposed public key (a copy). It returns `Authorized` or
+`Denied`; a denial carries no reason, so nothing host-specific reaches HTTP.
+The request deliberately carries **no view of KSecureMessage's
+registrations** (S1.1, finding N2): S1 passed a `DeviceRegistrationUserState`
+("the user has no registered devices"), read outside the atomic
+registration write, so two racing first registrations could both be told
+"first device". That type and `DeviceRegistrationRepository.hasRegisteredDevices`
+are removed. "No device yet" is not ownership; the decision rests on the
+principal and the host's own account and device records. The only storage
+precondition, "this address is not registered", is enforced by the atomic
+`register` (a concurrent winner gives `204` for the same key, `409` for
+another).
+
+A typical host:
+
+```kotlin
+data class AccountPrincipal(val userId: UserId) // from the host's own login
+val server = SecureMessageServer(storage, Clock.System, DeviceRegistrationAuthorizer<AccountPrincipal> { principal, request ->
+    if (request.address.userId == principal.userId && accounts.mayAddDevice(principal, request.address)) Authorized else Denied
+})
+routing {
+    kSecureMessageRoutes(server) { call -> call.principal<UserIdPrincipal>()?.let { AccountPrincipal(UserId(it.name)) } }
+}
+```
+
+| Case | Result |
+|---|---|
+| extractor returns `null` (no valid host authentication) | `403 registration_not_authorized`, authorizer not called, nothing stored |
+| authorizer `Denied` (for example Mallory's principal for `alice/…`) | `403 registration_not_authorized`, nothing stored |
+| extractor or authorizer throws | `500 internal_error`; logged as `Registration authorization failed (<exception class>)` only, never the message, stack, cause or context; nothing stored |
+| same key as registered | `204`, no host decision (lost-response retries and the recovery/rotation probes need no context) |
+| other key for a registered address | `409 device_registration_conflict`, no host decision |
 
 Order in `SecureMessageServer.registerDevice`: key size → authentication
 (signature with the key in the body, window, nonce claim) → existing
-registration (same key: `false`/`204` without asking the host; other key:
-conflict) → host authorization → atomic `register`. Nothing is stored before
-the host authorized; a denied request consumes only its own nonce.
+registration (same key: `false`/`204`; other key: conflict) → context
+present → host authorization (outside every storage transaction) → atomic
+`register`. Nothing is stored before the host authorized; a denied request
+consumes only its own nonce.
 
-KSecureMessage still has no accounts: how the host decides (a session
-cookie, an account token, an enrollment code on the request that it checks
-out of band, a fixed device list in the sample) is the host's business. The
-flows that treat "a registered device of the same user" as an authority
+The flows that treat "a registered device of the same user" as an authority
 (M14 device recovery, M18 recovery key registration, M19 rotation and
 revocation, M23 reset request, status and cancellation) are unchanged; their
-authority is now exactly the host-authorized membership.
+authority is exactly the host-authorized membership. Registrations stored
+before S1 were never host-authorized: see
+[operating-the-server.md](operating-the-server.md#registrations-from-before-s1).
 
 Registration is explicit: `SecureMessageClient.registerDevice()`. Neither
 `initialize()` nor any protected request registers a key implicitly, so the
@@ -452,8 +497,13 @@ requests for another address. Applications never build signatures.
 ## Limitations
 
 - Registration proves possession of the device key; account ownership is
-  whatever the host's `DeviceRegistrationAuthorizer` checks. A host that
-  authorizes carelessly reopens F1/F2.
+  whatever the host's `DeviceRegistrationAuthorizer` checks with the
+  principal its extractor supplies. A host that authorizes carelessly (an
+  extractor that returns a shared context for unauthenticated calls, an
+  authorizer that ignores the principal) reopens F1/F2.
+- Registrations stored before S1 were never host-authorized and keep their
+  same-user authority until the operator audits them
+  ([operating-the-server.md](operating-the-server.md#registrations-from-before-s1)).
 - Auth-key recovery through another registered device of the same user
   (M14, docs/device-recovery.md) or, for the last device, with the user's
   offline recovery key (M18, docs/last-device-recovery.md); routine rotation
