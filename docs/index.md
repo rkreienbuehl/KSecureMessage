@@ -11,7 +11,9 @@ device authentication towards the server, and recovery of lost device keys.
 
 - **Not Signal** and not wire-compatible with Signal/libsignal. Wire,
   storage, authentication and recovery formats are KSecureMessage's own.
-- **Not audited** and not formally verified. See the
+- **No comprehensive security audit** and no formal verification. The
+  findings of a targeted security review, their fixes, the independent
+  re-review results and the accepted residual risks are documented; see the
   [security model](security-review.md).
 - **No metadata protection**: there is no sealed sender, the server sees who
   sends to whom and when.
@@ -26,7 +28,8 @@ device authentication towards the server, and recovery of lost device keys.
 Pre-1.0 (`0.x`). The public API can still change between minor versions;
 it is tracked by a checked-in API baseline. Wire, storage and protocol formats
 are frozen by test vectors and change only through explicit new format
-versions ([releasing](releasing.md)). No public release has been made yet.
+versions ([releasing](releasing.md)). Current version: `0.1.0`, the first
+public release ([changelog](changelog.md)).
 
 ## Platforms
 

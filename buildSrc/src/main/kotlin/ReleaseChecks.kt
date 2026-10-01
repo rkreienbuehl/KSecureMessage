@@ -232,6 +232,14 @@ abstract class CheckReleaseConventions : DefaultTask() {
         val end = if (kind == ClaimKind.SQL_BLOCK) "<!-- ksm-sql:$id:end -->" else "<!-- /ksm-security-claim:$id -->"
     }
 
+    private companion object {
+        val HOST_BOUNDARY_FORBIDDEN = listOf(
+            "come from the JVM", "comes from the JVM",
+            "sanitizes genuine cancellation", "genuine cancellation is sanitized", "sanitizes every throwable",
+        )
+        val RESIDUAL_FORBIDDEN = listOf("FIXED —", "FIXED - ", "CLOSED", "RESOLVED")
+    }
+
     private val securityClaims = listOf(
         SecurityClaim(
             "security-review-remediation.md", "f7-partial",
@@ -265,9 +273,14 @@ abstract class CheckReleaseConventions : DefaultTask() {
                 "Post-cleanup verification", "never rely on the exit status alone", "ksm-pre-s1-cleanup: verification passed",
                 "Only then restart the server", "ksm_exhausted_user", "EPOCH_EXHAUSTED",
                 "consumed_one_time_prekey", "Envelopes sent as a listed address are kept",
+                // Release preparation (v0.1.0): scope of the fail-closed claim, post-COMMIT
+                // verification, and the accepted residuals N8/N9 stay visible to operators.
+                "not a claim about every other way", "does not undo the committed cleanup",
+                "N8", "does not recall queued messages", "UNVERIFIED", "N9", "skips them silently",
             ),
             forbidden = listOf(
                 "rotate or re-register", "rotateLastDeviceRecoveryKey",
+                "recalls queued", "removes queued", "undoes the cleanup", "rolls the cleanup back",
                 "Open the database with the `sqlite3` shell", "open the database with the sqlite3 shell",
                 "paste into", "paste the script", "paste it", "replace the `UPDATE`",
             ),
@@ -329,16 +342,37 @@ abstract class CheckReleaseConventions : DefaultTask() {
             listOf(
                 "genuine coroutine cancellation", "propagates unchanged", "still active", "sanitized",
                 "InternalError", "UnknownError", "OutOfMemoryError", "StackOverflowError",
+                // Final S1.3 re-review (INFO): what is propagated is not sanitized.
+                "does not sanitize what it deliberately propagates", "must not place secrets in cancellation",
             ),
-            forbidden = listOf("come from the JVM", "comes from the JVM"),
+            forbidden = HOST_BOUNDARY_FORBIDDEN,
         ),
         SecurityClaim(
             "security-review-remediation.md", "host-boundary-throwables",
             listOf(
                 "genuine coroutine cancellation", "propagates unchanged", "still active", "sanitized",
                 "InternalError", "UnknownError", "OutOfMemoryError", "StackOverflowError", "N7",
+                "does not sanitize what it deliberately propagates", "must not place secrets in cancellation",
             ),
-            forbidden = listOf("come from the JVM", "comes from the JVM"),
+            forbidden = HOST_BOUNDARY_FORBIDDEN,
+        ),
+        // Release preparation (v0.1.0): the accepted LOW residuals of the final S1.3
+        // re-review stay accepted, never fixed or closed, with their consequence.
+        SecurityClaim(
+            "security-review-remediation.md", "n8-residual",
+            listOf(
+                "N8", "LOW", "ACCEPTED — RESIDUAL RISK DOCUMENTED", "may still be delivered",
+                "does not recall queued messages", "UNVERIFIED", "does not authenticate end-to-end content",
+            ),
+            forbidden = RESIDUAL_FORBIDDEN + listOf("recalls queued", "removes queued", "queued envelopes are deleted"),
+        ),
+        SecurityClaim(
+            "security-review-remediation.md", "n9-residual",
+            listOf(
+                "N9", "LOW", "ACCEPTED — RESIDUAL RISK DOCUMENTED", "skips them silently",
+                "without a one-time prekey", "Likely future remediation", "not v0.1.0 behavior",
+            ),
+            forbidden = RESIDUAL_FORBIDDEN + listOf("cannot affect replenishment", "never affect replenishment"),
         ),
     )
 
@@ -377,6 +411,16 @@ abstract class CheckReleaseConventions : DefaultTask() {
         pages["security-review-remediation.md"]?.readLines()?.filter { it.startsWith("| F7 |") }?.let { rows ->
             if (rows.size != 1 || !rows.single().contains("PARTIALLY FIXED — RESIDUAL RISK DOCUMENTED")) {
                 problems += "security-review-remediation.md: the F7 summary row must say PARTIALLY FIXED — RESIDUAL RISK DOCUMENTED"
+            }
+        }
+        // N8/N9 stay accepted residuals in the summary table (release preparation, v0.1.0).
+        listOf("N8", "N9").forEach { id ->
+            pages["security-review-remediation.md"]?.readLines()?.filter { it.startsWith("| $id |") }?.let { rows ->
+                if (rows.size != 1 || !rows.single().contains("ACCEPTED — RESIDUAL RISK DOCUMENTED") ||
+                    RESIDUAL_FORBIDDEN.any(rows.single()::contains)
+                ) {
+                    problems += "security-review-remediation.md: the $id summary row must say ACCEPTED — RESIDUAL RISK DOCUMENTED"
+                }
             }
         }
         // The old guidance kept a suspect recovery key authoritative (N5).

@@ -5,26 +5,27 @@ committed and acknowledged. The Kotlin below is taken verbatim from
 [`samples/jvm-e2e`](https://github.com/rkreienbuehl/KSecureMessage/blob/main/samples/jvm-e2e/app/src/main/kotlin/dev/kreienbuehl/ksecuremessage/sample/Main.kt),
 which the release gate compiles and runs against the published artifacts.
 
-!!! warning "Pre-1.0, not audited"
-    KSecureMessage is `0.x` and has not had an independent security audit.
-    Read the [security model](security-review.md) before you depend on it.
+!!! warning "Pre-1.0, no comprehensive audit"
+    KSecureMessage is `0.x` and has not had a comprehensive security audit.
+    Read the [security model](security-review.md) and its known residual
+    risks before you depend on it.
 
 ## Dependencies
 
 Group `dev.kreienbuehl.ksecuremessage`, one artifact per module named
-`ksecuremessage-<module path>`. No release has been published yet; the
-current development version is `0.1.0-SNAPSHOT`.
+`ksecuremessage-<module path>`. The current version is `0.1.0`
+([changelog](changelog.md)).
 
 === "Client application"
 
     ```kotlin
     dependencies {
-        implementation("dev.kreienbuehl.ksecuremessage:ksecuremessage-client-core:0.1.0-SNAPSHOT")
-        implementation("dev.kreienbuehl.ksecuremessage:ksecuremessage-client-ktor:0.1.0-SNAPSHOT")
-        implementation("dev.kreienbuehl.ksecuremessage:ksecuremessage-storage-client-sqldelight:0.1.0-SNAPSHOT")
+        implementation("dev.kreienbuehl.ksecuremessage:ksecuremessage-client-core:0.1.0")
+        implementation("dev.kreienbuehl.ksecuremessage:ksecuremessage-client-ktor:0.1.0")
+        implementation("dev.kreienbuehl.ksecuremessage:ksecuremessage-storage-client-sqldelight:0.1.0")
         // one platform key provider:
-        implementation("dev.kreienbuehl.ksecuremessage:ksecuremessage-storage-keyprovider-android:0.1.0-SNAPSHOT")
-        implementation("dev.kreienbuehl.ksecuremessage:ksecuremessage-storage-keyprovider-apple:0.1.0-SNAPSHOT")
+        implementation("dev.kreienbuehl.ksecuremessage:ksecuremessage-storage-keyprovider-android:0.1.0")
+        implementation("dev.kreienbuehl.ksecuremessage:ksecuremessage-storage-keyprovider-apple:0.1.0")
     }
     ```
 
@@ -32,9 +33,9 @@ current development version is `0.1.0-SNAPSHOT`.
 
     ```kotlin
     dependencies {
-        implementation("dev.kreienbuehl.ksecuremessage:ksecuremessage-server-core:0.1.0-SNAPSHOT")
-        implementation("dev.kreienbuehl.ksecuremessage:ksecuremessage-server-ktor:0.1.0-SNAPSHOT")
-        implementation("dev.kreienbuehl.ksecuremessage:ksecuremessage-storage-server-sqldelight:0.1.0-SNAPSHOT")
+        implementation("dev.kreienbuehl.ksecuremessage:ksecuremessage-server-core:0.1.0")
+        implementation("dev.kreienbuehl.ksecuremessage:ksecuremessage-server-ktor:0.1.0")
+        implementation("dev.kreienbuehl.ksecuremessage:ksecuremessage-storage-server-sqldelight:0.1.0")
     }
     ```
 
