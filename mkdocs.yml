@@ -108,6 +108,7 @@ nav:
       - Dependencies: dependencies.md
   - API reference: api-reference.md
   - Release & compatibility:
+      - Changelog: changelog.md
       - Releasing: releasing.md
       - Project history: project-history.md
   - Security reporting: security-reporting.md

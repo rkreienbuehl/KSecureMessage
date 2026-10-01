@@ -14,12 +14,30 @@ risks, plus findings N4 and N5; **S1.2** (section [S1.2
 follow-up](#s12-follow-up)) addresses those. **S1.2 re-review result:**
 passed with residual risks (N5 closed), plus two LOW findings N6 and N7
 and the cleanup side effects INFO-3; **S1.3** (section [S1.3
-follow-up](#s13-follow-up)) addresses those. Status of N1–N4: **FIXED —
-PENDING RE-REVIEW**; N5: **CLOSED** by the independent S1.2 re-review;
-N6, N7: **FIXED — PENDING RE-REVIEW**; F7: **PARTIALLY FIXED — RESIDUAL
-RISK DOCUMENTED**. Only the independent re-review closes a finding: rows
-marked CLOSED were closed by it, everything else in the summary is open
-until it has been re-checked. Neither S1, S1.1, S1.2 nor S1.3 is an audit.
+follow-up](#s13-follow-up)) addresses those. **S1.3 final re-review
+result:** passed with residual risks (N6 and N7 closed, N4 closed with
+them, F7 accurately documented as a residual), plus two new LOW findings
+N8 and N9 in the INFO-3 cleanup behavior, which do not restore attacker
+authority; ready for a public v0.x release with documented residual risks
+(section [S1.3 final re-review](#s13-final-re-review)).
+
+This page keeps three things apart:
+
+- **Implementation status**: what the code and documentation do (FIXED,
+  PARTIALLY FIXED).
+- **Independent review result**: only an independent re-review closes a
+  finding; rows marked CLOSED name the re-review that closed them.
+- **Accepted residual risk**: a finding that is documented and accepted for
+  v0.x instead of fixed (F7, N8, N9); it is not closed.
+
+Final status: F1/F2, F3, F4, F5/F6, F8, F9 **CLOSED** (S1 re-review); N1,
+N2, N3 **CLOSED** (S1.1 re-review); N5 **CLOSED** (S1.2 re-review); N4, N6,
+N7 **CLOSED** (S1.3 final re-review); F7 **PARTIALLY FIXED — RESIDUAL RISK
+DOCUMENTED**; N8, N9 **LOW — ACCEPTED — RESIDUAL RISK DOCUMENTED**; D1–D7
+**FIXED — REVIEWED, NOT INDIVIDUALLY CLOSED** (the re-reviews checked the
+corrected documentation but gave no per-finding verdict for them). None of
+S1, S1.1, S1.2 or S1.3, nor their re-reviews, is a comprehensive audit: the
+re-reviews were targeted at these findings.
 
 Path prefixes: `P` = `core/protocol/src/commonMain/kotlin/dev/kreienbuehl/ksecuremessage/protocol`,
 `C` = `client/core/src/commonMain/kotlin/dev/kreienbuehl/ksecuremessage/client`,
@@ -40,14 +58,16 @@ Path prefixes: `P` = `core/protocol/src/commonMain/kotlin/dev/kreienbuehl/ksecur
 | F7 | LOW | A plaintext `storage_encryption.format = 0` marker sent an encrypted database back through the plaintext migration | Structural checks, `StorageKeyProvider.hasKeys()` and an authenticated migration intent (record type 13); S1.1: residual risks documented (intent replay, provider state trust, Android `hasKeys`) | PARTIALLY FIXED — RESIDUAL RISK DOCUMENTED |
 | F8 | LOW | Freshness check and nonce prune used different callers' clocks; a nonce could be pruned while its request was still fresh | Monotonic prune watermark inside the atomic claim | CLOSED (re-review) |
 | F9 | LOW | A `PreKeyMessage` on a locally initiated legacy session was checked against the initiator slot, which is the local key, and then pinned | Responder-role check in the engine; legacy pins only from `sessionRemoteIdentityKey` | CLOSED (re-review) |
-| N1 | MEDIUM | The registration authorizer received no host authentication context, so "may *this caller* register for this `UserId`?" was not expressible | Generic `DeviceRegistrationAuthorizer<C>` with the host's context; required `DeviceRegistrationContextExtractor<C>` in the Ktor routes; no context = denied | FIXED — PENDING RE-REVIEW |
-| N2 | LOW | `userState` ("user has no devices") was read outside the atomic registration write and presented as a fact | `DeviceRegistrationUserState` and `hasRegisteredDevices` removed; no authorization input depends on KSecureMessage's registrations | FIXED — PENDING RE-REVIEW |
-| N3 | LOW | An unanswered v1 initiation could win the collision comparison against a v2 initiation that the upgraded peer needs, deadlocking both sides | Unanswered v1 initiations never win, are never sent again and are replaced by v2 on receive and on send | FIXED — PENDING RE-REVIEW |
-| N4 | LOW | Host code throwing an `Error` (`AssertionError`, `NotImplementedError`) bypassed the `Exception`-only wrapper at the authorizer and extractor boundaries and reached Ktor's logging with message and stack | One boundary policy: every host `Throwable` wrapped and logged by class name only; the propagated exceptions are refined by N7 (S1.3) | FIXED — PENDING RE-REVIEW |
+| N1 | MEDIUM | The registration authorizer received no host authentication context, so "may *this caller* register for this `UserId`?" was not expressible | Generic `DeviceRegistrationAuthorizer<C>` with the host's context; required `DeviceRegistrationContextExtractor<C>` in the Ktor routes; no context = denied | CLOSED (S1.1 re-review) |
+| N2 | LOW | `userState` ("user has no devices") was read outside the atomic registration write and presented as a fact | `DeviceRegistrationUserState` and `hasRegisteredDevices` removed; no authorization input depends on KSecureMessage's registrations | CLOSED (S1.1 re-review) |
+| N3 | LOW | An unanswered v1 initiation could win the collision comparison against a v2 initiation that the upgraded peer needs, deadlocking both sides | Unanswered v1 initiations never win, are never sent again and are replaced by v2 on receive and on send | CLOSED (S1.1 re-review) |
+| N4 | LOW | Host code throwing an `Error` (`AssertionError`, `NotImplementedError`) bypassed the `Exception`-only wrapper at the authorizer and extractor boundaries and reached Ktor's logging with message and stack | One boundary policy: every host `Throwable` wrapped and logged by class name only; the propagated exceptions are refined by N7 (S1.3) | CLOSED (S1.3 final re-review; partial after S1.2, completed by N7) |
 | N5 | MEDIUM | The pre-S1 cleanup removed a malicious device but left the offline recovery key it may have planted ACTIVE, so the attacker kept same-user authority | Offline, transactional, tested cleanup that also revokes the user's recovery key state and deletes its reset and challenges; fresh key from a legitimate device | CLOSED (re-review) |
-| N6 | LOW | The cleanup could be pasted into an interactive `sqlite3` prompt, which continues after a failure and then commits a partial cleanup; a mistyped device matched nothing and still revoked the recovery key while the attacker's device stayed registered | One script file run only as `sqlite3 -bail db < script`; in-transaction guards before the first change (listed devices exist, none duplicated, list not empty, schema 8, exhausted epochs only where listed); mandatory post-cleanup verification | FIXED — PENDING RE-REVIEW |
-| N7 | LOW | The host boundaries rethrew every `CancellationException` and every `VirtualMachineError`, so host code could leak its message (on CIO into the 500 body and the log) with a synthetic cancellation or `InternalError` | Only genuine cancellation (coroutine no longer active), `OutOfMemoryError` and `StackOverflowError` propagate; everything else is sanitized, identically at both boundaries | FIXED — PENDING RE-REVIEW |
-| D1–D7 | DOC | Documentation described unreachable authorizer inputs, a racy value as authoritative, and understated legacy and storage residuals | Corrected, see [S1.1 follow-up](#s11-follow-up) | FIXED — PENDING RE-REVIEW |
+| N6 | LOW | The cleanup could be pasted into an interactive `sqlite3` prompt, which continues after a failure and then commits a partial cleanup; a mistyped device matched nothing and still revoked the recovery key while the attacker's device stayed registered | One script file run only as `sqlite3 -bail db < script`; in-transaction guards before the first change (listed devices exist, none duplicated, list not empty, schema 8, exhausted epochs only where listed); mandatory post-cleanup verification | CLOSED (S1.3 final re-review) |
+| N7 | LOW | The host boundaries rethrew every `CancellationException` and every `VirtualMachineError`, so host code could leak its message (on CIO into the 500 body and the log) with a synthetic cancellation or `InternalError` | Only genuine cancellation (coroutine no longer active), `OutOfMemoryError` and `StackOverflowError` propagate; everything else is sanitized, identically at both boundaries | CLOSED (S1.3 final re-review) |
+| D1–D7 | DOC | Documentation described unreachable authorizer inputs, a racy value as authoritative, and understated legacy and storage residuals | Corrected, see [S1.1 follow-up](#s11-follow-up) | FIXED — REVIEWED, NOT INDIVIDUALLY CLOSED |
+| N8 | LOW | The pre-S1 cleanup keeps mailbox rows sent as a cleaned address (INFO-3), so an envelope a suspect device submitted before the cleanup may still be delivered afterwards | None in v0.1.0: accepted availability/security tradeoff, see [N8](#n8-queued-envelopes-from-cleaned-sender-addresses) | ACCEPTED — RESIDUAL RISK DOCUMENTED |
+| N9 | LOW | Kept consumed one-time prekey tombstones (INFO-3) can hold IDs a pre-S1 attacker published and drained; a returning legitimate device's uploads of those IDs are skipped silently, so the server may hold no one-time prekeys for it | None in v0.1.0; likely future direction documented, see [N9](#n9-consumed-one-time-prekey-tombstone-poisoning) | ACCEPTED — RESIDUAL RISK DOCUMENTED |
 
 ## F1/F2 — Unauthenticated user membership at registration
 
@@ -500,7 +520,7 @@ Sample E2E (`verifyPublication`).
 an extractor that returns a shared principal for unauthenticated calls or
 an authorizer that ignores the principal reopens F1/F2.
 
-**Status:** FIXED — PENDING RE-REVIEW.
+**Status:** CLOSED by the independent S1.1 re-review.
 
 ### N2 — Non-atomic `userState`
 
@@ -546,7 +566,7 @@ must enforce it with its own atomic state (for example a single-use
 enrollment grant in its account database), not with KSecureMessage's
 registrations.
 
-**Status:** FIXED — PENDING RE-REVIEW.
+**Status:** CLOSED by the independent S1.1 re-review.
 
 ### N3 — Unanswered v1 initiation deadlocks v2 after the upgrade
 
@@ -611,7 +631,7 @@ peer did accept before upgrading drops that peer's in-flight v1 replies
 (they no longer decrypt); its reliability layer resends them. Peers must
 still be upgraded together.
 
-**Status:** FIXED — PENDING RE-REVIEW.
+**Status:** CLOSED by the independent S1.1 re-review.
 
 ### D1–D7 — Documentation
 
@@ -624,6 +644,9 @@ still be upgraded together.
 | D5 obsolete session-lifecycle limitations | [session-lifecycle.md](session-lifecycle.md#limitations): stale "no safety numbers / authenticated API / persistent mailbox / encryption at rest" removed; N3 rules and step table updated |
 | D6 F7 intent replay understated | [storage-encryption.md](storage-encryption.md#downgrade-protection) and F7 above: replay across time and across databases under the same provider key, window closed only by key rotation, no rollback protection |
 | D7 Android `hasKeys()` limitation | [storage-key-providers.md](storage-key-providers.md#haskeys-s1): reads the wrapped key file, not the Keystore alias; F7 assumes intact provider state |
+
+**Status:** FIXED — REVIEWED, NOT INDIVIDUALLY CLOSED (the re-reviews
+checked the corrected pages but gave no per-finding verdict for D1–D7).
 
 ### S1.1 mutation testing
 
@@ -770,7 +793,8 @@ development mode on: neither body nor log contains them, no throwable is
 logged, nothing is registered; since S1.3 in development and production
 mode, with the N7 cases added).
 
-**Status:** FIXED — PENDING RE-REVIEW.
+**Status:** CLOSED by the independent S1.3 final re-review (the S1.2
+re-review found it only partially fixed; N7 completed the boundary policy).
 
 ### Documentation guardrails
 
@@ -888,7 +912,7 @@ same run gets epoch + 1), `n6MultipleDevicesOfOneUserIncrementEpochOnce`,
 `n6InteractiveExecutionCommitsPartialCleanupRootCause`. The N5 tests run the
 same file.
 
-**Status:** FIXED — PENDING RE-REVIEW.
+**Status:** CLOSED by the independent S1.3 final re-review.
 
 ### INFO-3 — Cleanup side effects
 
@@ -954,6 +978,18 @@ classify every throwable identically:
   other `Throwable` are wrapped in `DeviceRegistrationAuthorizationFailedException`
   (fixed message) and answered `500 {"error":"internal_error"}`, logged by
   class name only, with nothing registered.
+
+What this policy does not cover (S1.3 final re-review, informational
+residuals): KSecureMessage does not sanitize what it deliberately
+propagates. After genuine cancellation, a message or cause host code
+attached to the cancellation may be logged by the runtime or server
+downstream; host code must not place secrets in cancellation exception
+messages or causes. An `OutOfMemoryError` or `StackOverflowError`
+constructed by host code with a sensitive message may reach the engine's
+HTTP and log handling unchanged; host code must not use them as control
+flow or attach secrets to their messages. What happens after such a
+process-health failure leaves the boundary is outside KSecureMessage's
+sanitization guarantee.
 <!-- /ksm-security-claim:host-boundary-throwables -->
 
 The route's failure handler no longer rethrows a `CancellationException`
@@ -974,7 +1010,7 @@ cancellation, cancellation with a `SECRET-CAUSE`, `InternalError`,
 `n7AuthorizerFailuresAreSanitizedOnCio` (development mode off and on: body
 exactly `{"error":"internal_error"}`, no secret in body or log).
 
-**Status:** FIXED — PENDING RE-REVIEW.
+**Status:** CLOSED by the independent S1.3 final re-review.
 
 ### S1.3 documentation guardrails
 
@@ -987,6 +1023,12 @@ exactly `{"error":"internal_error"}`, no secret in body or log).
 | `pre-s1-cleanup` | the script file | `.bail on`, transaction, input table keys, every guard, every statement, verification; forbids deleting tombstones or envelopes sent as a cleaned address; the guard runs after the input and before the first `DELETE`/`UPDATE` |
 | `pre-s1-audit` | operating-the-server.md | also: an address alone never clears a registration whose key cannot be established as legitimate |
 | `host-boundary-throwables` | operating-the-server.md, this page | genuine cancellation propagates, active cancellation, `InternalError`, `UnknownError` sanitized, OOM/SOE policy; no page may attribute a throwable's message to the JVM |
+| `n8-residual`, `n9-residual` (release preparation) | this page | N8 and N9 stay ACCEPTED — RESIDUAL RISK DOCUMENTED with their consequence (queued envelopes may still be delivered; tombstoned uploads are skipped); never "FIXED" or "CLOSED", and so do their summary rows |
+
+These checks are regression guards over required and forbidden tokens, not
+a semantic proof: a rewrite that keeps the tokens but changes the meaning
+is not caught, so security-relevant documentation changes still need
+review.
 
 ### S1.3 mutation testing
 
@@ -1012,6 +1054,137 @@ mutation was reverted (checksums compared).
 | S1.3-15 | script-only warning removed from the page | `checkReleaseConventions`, `n6OperatorPageDocumentsExactlyTheTestedInvocation` |
 | S1.3-16 | missing-device guard removed from script and page | `n6MissingListedDeviceAbortsWithoutChanges`, `n6InteractiveExecutionCommitsPartialCleanupRootCause`, `checkReleaseConventions` |
 | S1.3-17 | post-cleanup verification step removed from the page | `checkReleaseConventions` |
+
+## S1.3 final re-review
+
+The independent final re-review of S1.3 concluded: N6 CLOSED, N7 CLOSED
+(and with it N4), F7 accurately documented as a residual, two new LOW
+findings N8 and N9 in the INFO-3 cleanup changes, and "passed with residual
+risks; ready for public v0.x with documented residual risks". N8 and N9 do
+not restore attacker authority. They are accepted and documented for
+v0.1.0, not fixed; this release changes no code for them.
+
+<!-- ksm-security-claim:n8-residual -->
+### N8 — Queued envelopes from cleaned sender addresses
+
+**Severity:** LOW. **Status:** ACCEPTED — RESIDUAL RISK DOCUMENTED.
+
+**Precondition.** Before S1, a malicious or suspect device registered
+under some address successfully submitted an envelope, and that envelope
+was still queued in `mailbox_message` when the operator ran the pre-S1
+cleanup for that address.
+
+**Behavior.** The cleanup (INFO-3) deliberately keeps mailbox rows **sent
+as** a cleaned address and deletes only rows addressed to it. Such an
+already-queued envelope may still be delivered after the cleanup. The
+cleanup does not recall queued messages.
+
+**Boundaries.**
+
+- The cleanup removes the registration: the removed key can no longer
+  submit new authenticated envelopes (`POST /v1/messages` needs ServerAuth
+  by the registered sender since S1).
+- Keeping the row restores no server authority: it is opaque ciphertext
+  that was accepted before the cleanup, and holding it grants no
+  registration, recovery or recovery key authority.
+- The relay's sender field does not authenticate end-to-end content. The
+  recipient still applies its session, identity pin and session initiation
+  v2 transcript checks; a message that fails them is rejected as before.
+- For an exact device address the recipient has never talked to, a valid
+  first-contact message can create a new identity pin in state
+  `UNVERIFIED`, as any first contact does (TOFU).
+- It cannot replace the pinned identity of another address through the
+  relay sender field: a different key for a pinned address fails with
+  `IdentityChanged`, and the v2 transcript binds both addresses.
+- Applications should treat an unexpected first contact from a cleaned
+  address after the remediation as unverified and suspicious until the
+  users compare safety numbers.
+
+**Why it is accepted.** Deleting these rows would need either deleting
+legitimate in-flight envelopes of known addresses whose authentication key
+was compromised (the relay cannot tell them apart), or an additional
+operator input classifying each address as "entirely malicious" versus
+"legitimate address with a compromised key". S1.3 chose not to add another
+error-prone operator classification to a security-critical offline
+procedure and not to destroy legitimate queued messages. This is an
+intentional availability/security tradeoff for v0.1.0, not a claim that it
+is the best choice for every deployment; an operator who knows an address
+was entirely malicious can decide to handle its queued rows separately.
+
+**Tests** (they confirm the documented residual behavior, not a fix):
+`info3KnownAddressWithAttackerKeyCanReturn` (the earlier envelope is
+delivered after the cleanup) and
+`n5PreS1CleanupRevokesCompromisedRecoveryAuthority` (sent-as envelopes of
+`alice/evil` are kept).
+<!-- /ksm-security-claim:n8-residual -->
+
+<!-- ksm-security-claim:n9-residual -->
+### N9 — Consumed one-time prekey tombstone poisoning
+
+**Severity:** LOW. **Status:** ACCEPTED — RESIDUAL RISK DOCUMENTED.
+
+**Precondition.** Before S1, an attacker controlled (squatted or took over)
+a device address, published many one-time prekey IDs for it and had them
+consumed through public bundle fetches.
+
+**Behavior.** The cleanup keeps `consumed_one_time_prekey` tombstones
+(INFO-3), which is correct: a consumed ID must never be handed out again.
+When the legitimate device later publishes one-time prekeys whose IDs are
+tombstoned, the server skips them silently
+([prekey-publication.md](prekey-publication.md)). The client believes its
+one-time prekeys were published and its local target is satisfied, while
+the server may hold no one-time prekey for the device.
+
+**Impact.** New sessions with that device are then set up without a
+one-time prekey (the X3DH-style key agreement runs without the one-time
+prekey term, which the protocol allows). That removes the extra protection
+the single-use key gives the initial message: its forward secrecy then
+depends on the signed prekey's lifetime (rotation, grace period, deletion)
+instead of a key deleted after one use. Replay of an initiation the device
+already accepted is still rejected by the retired-initiation set
+([session-lifecycle.md](session-lifecycle.md#replay-and-rollback-protection)).
+
+N9 does not restore attacker device authority, does not reveal the
+plaintext of existing sessions, does not break established sessions and
+does not allow a consumed one-time prekey to be reused. It is not a loss of
+end-to-end encryption.
+
+**Likely future remediation** (not v0.1.0 behavior; a behavioral and API
+change that needs its own milestone and review): prekey publication
+reports the IDs it rejected because they are permanently consumed, the
+client retires those local IDs, allocates fresh, monotonically increasing
+IDs and continues replenishment.
+
+**Tests** (they confirm the documented residual behavior, not a fix):
+`info3ConsumedOneTimePreKeyIdIsNotReissued` and
+`info3KnownAddressWithAttackerKeyCanReturn` (consumed IDs stay tombstoned
+and are never handed out again).
+<!-- /ksm-security-claim:n9-residual -->
+
+### Cleanup: operational boundaries (N6)
+
+N6 is closed for the **documented** procedure: the one script file run
+non-interactively as `sqlite3 -bail /path/to/server.db <
+ksecuremessage-pre-s1-cleanup.sql` fails closed under the SQL errors the
+tests provoke (guard failures, constraint failures, a failing statement
+before `COMMIT`). Pasting it into an interactive prompt is unsafe and
+unsupported. There is no claim that the script is safe under every
+possible `sqlite3` invocation.
+
+The post-cleanup verification runs after `COMMIT`. A verification failure
+fails the run and reports the violation, but it does not undo the committed
+cleanup; the operator restores the backup taken before the run
+([operating-the-server.md](operating-the-server.md#pre-s1-cleanup)). This
+is an operational residual, not evidence that N6 is open under the
+documented procedure.
+
+### N7: informational boundaries
+
+Documented in the N7 fix above: genuine cancellation, `OutOfMemoryError`
+and `StackOverflowError` propagate by design, so a secret that host code
+attaches to them is outside KSecureMessage's sanitization guarantee. Host
+code must not put secrets into cancellation messages or causes and must
+not use those errors as control flow.
 
 ## Version changes
 
@@ -1138,11 +1311,21 @@ reason); the fixture now includes them and the test checks the exact error.
 - The host application authenticates and authorizes `UserId` membership;
   KSecureMessage still does not prove human or account identity.
 - The server sees metadata and vouches for sender addresses; no sealed
-  sender. First contact trusts the server (TOFU); safety numbers detect key
+  sender. First contact trusts the server (TOFU); manually compared safety numbers detect key
   substitution.
-- No formal verification; Kodium is a dependency with its own review status.
+- No formal verification; Kodium provides the X3DH and Double Ratchet
+  primitives and is a dependency with its own, separate review status that
+  these re-reviews did not cover.
 - A finding is closed only by the independent re-review (the CLOSED rows);
-  N1–N4, N6, N7 and D1–D7 are pending it.
+  D1–D7 were corrected and reviewed without an individual closure verdict.
+- N8: envelopes a suspect pre-S1 device queued before the cleanup may still
+  be delivered afterwards; recipients' session and identity checks still
+  apply, and a first contact from a cleaned address yields an `UNVERIFIED`
+  pin at most (accepted LOW residual).
+- N9: tombstones of one-time prekey IDs an attacker published and drained
+  before S1 make the server skip a returning device's uploads of those IDs;
+  new sessions may then run without a one-time prekey (accepted LOW
+  residual, future remediation described above).
 - Legacy: v1 initiations not answered before the upgrade are replaced by v2
   (their messages resent by the reliability layer); peers and servers must
   be upgraded together; `StaticStorageKeyProvider` cannot migrate milestone
@@ -1152,11 +1335,16 @@ reason); the fixture now includes them and the test checks the exact error.
   audits them and runs the offline cleanup (D3, N5). A server whose
   operator skips the cleanup keeps that exposure.
 - The operator is responsible for auditing pre-S1 state and running the
-  cleanup correctly (N6 makes mistakes fail closed, it cannot choose the
+  cleanup correctly (N6 makes the tested mistakes fail closed; it cannot choose the
   suspicious registrations).
 - `OutOfMemoryError` and `StackOverflowError` from host code propagate
   unsanitized (N7); KSecureMessage cannot control what happens after a
-  process-health failure leaves its boundary.
+  process-health failure leaves its boundary. Genuine cancellation also
+  propagates unchanged: host code must not attach secrets to cancellation
+  messages or causes, or to those errors.
+- The pre-S1 cleanup's verification runs after `COMMIT`; a failure is
+  reported, not undone (restore the backup). Only the documented
+  non-interactive invocation is tested fail-closed.
 - The server's wall clock is a security input (freshness windows, challenge
   expiry, reset delay).
 - F7: intent replay and provider-state trust (see F7), accepted for v0.x.

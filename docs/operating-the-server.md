@@ -145,6 +145,15 @@ policy.
   and `StackOverflowError` propagate unchanged: KSecureMessage does not
   turn them into an ordinary HTTP answer, and what happens to them after
   they leave its boundary (engine, logging) is outside its control.
+  Consequences for host code (S1.3 final re-review, informational):
+  KSecureMessage does not sanitize what it deliberately propagates. Once a
+  request is genuinely cancelled, a message or cause that host code attached
+  to the cancellation can reach the runtime's or server's own logging, so
+  host code must not place secrets in cancellation exception messages or
+  causes. Likewise, host code must not use `OutOfMemoryError` or
+  `StackOverflowError` as control flow or attach secrets to their messages:
+  such an error constructed by host code can reach the engine's HTTP and log
+  handling unchanged.
   <!-- /ksm-security-claim:host-boundary-throwables -->
 - The authorizer gets no view of KSecureMessage's registrations (S1.1,
   finding N2): being the first device of a user is not an authority, and a
@@ -283,6 +292,9 @@ has no effect there), so a guard or constraint failure is followed by the
 remaining `DELETE`s, the `UPDATE` and `COMMIT`: a partial cleanup is
 committed. Run as a script, the first error stops the shell with a non-zero
 exit status and SQLite rolls the open transaction back: nothing changes.
+This fail-closed behavior is tested for this documented, non-interactive
+invocation and the SQL errors the test suite provokes; it is not a claim
+about every other way of feeding the file to `sqlite3` or another tool.
 
 Steps:
 
@@ -309,7 +321,10 @@ Steps:
     If any check fails, do not start the server; restore the backup and
     investigate. A non-zero exit status with an error that names
     `post_cleanup_verification_found_no_violations` means the transaction
-    was committed but its result is wrong.
+    was committed but its result is wrong. The post-cleanup verification
+    runs after `COMMIT`: a failed verification reports the problem, but it
+    does not undo the committed cleanup. Recovering from it means restoring
+    the backup taken in step 1.
 6. Only then restart the server.
 7. On a legitimate device of each affected user:
    `val r2 = client.createLastDeviceRecoveryKey()`, back `r2` up offline,
@@ -369,6 +384,16 @@ recipient's session and identity trust, never by the relay's sender field,
 and deleting them cannot undo what the suspect key holder already
 delivered. A known address may also have legitimate envelopes in flight
 from its legitimate device, which the relay cannot tell apart.
+The consequence (finding N8, accepted LOW residual): an envelope a suspect
+device submitted **before** the cleanup and that is still queued may be
+delivered **after** it. The cleanup does not recall queued messages; it
+stops the removed key from submitting new ones. Recipients still validate
+such an envelope cryptographically (session, identity pin, v2 transcript);
+for an address they never talked to, it can create a new `UNVERIFIED`
+identity pin. Tell users that an unexpected first contact from a cleaned
+address after the remediation is unverified and suspicious until they
+compare safety numbers
+([security-review-remediation.md](security-review-remediation.md#n8-queued-envelopes-from-cleaned-sender-addresses)).
 
 **A known address with an attacker's key** (a legitimate device whose key a
 pre-S1 recovery or last-device recovery replaced) is cleaned up the same
@@ -378,6 +403,16 @@ by the host) and `publishPreKeys()`; its already consumed one-time prekey
 IDs stay tombstoned. Envelopes that were addressed to it are gone; their
 senders still hold them as pending and resend them with
 `retryPendingMessages()` until acknowledged.
+
+**Tombstoned one-time prekey IDs of a returning device** (finding N9,
+accepted LOW residual): if an attacker published one-time prekeys under
+the address before S1 and had them handed out, their IDs stay tombstoned.
+When the legitimate device publishes one-time prekeys with the same IDs,
+the server skips them silently, so the device may believe its one-time
+prekeys are available while the server holds none. New sessions with it
+are then set up without a one-time prekey. See
+[security-review-remediation.md](security-review-remediation.md#n9-consumed-one-time-prekey-tombstone-poisoning);
+v0.1.0 has no automatic replenishment with fresh IDs.
 
 **Exhausted recovery key epoch.** If an affected user's ACTIVE recovery key
 epoch is already `9223372036854775807`, the epoch cannot grow and never

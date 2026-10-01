@@ -1,14 +1,18 @@
 # Security review guide
 
-Material for an external security reviewer. **R1 is not an independent
-security audit, and KSecureMessage has not been audited.** Nothing here
-claims otherwise.
+Material for an external security reviewer. **KSecureMessage has not had
+a comprehensive security audit.** Nothing here claims otherwise.
 
-A first review produced nine findings (F1–F9); S1 addresses them. The
-re-review packet with root causes, changed files, invariants and test names
-is [security-review-remediation.md](security-review-remediation.md). Every
-finding stays **FIXED — PENDING RE-REVIEW** until an independent reviewer
-has checked it.
+A first targeted security review produced nine findings (F1–F9); S1 and the
+follow-ups S1.1–S1.3 addressed them and the findings of the independent
+re-reviews. The final S1.3 re-review passed with residual risks. The
+per-finding status (closed by which re-review, or accepted as a documented
+residual risk), root causes, changed files, invariants and test names are in
+[security-review-remediation.md](security-review-remediation.md). Accepted
+residual risks for v0.1: F7 (storage downgrade, partially fixed), N8
+(queued envelopes from cleaned pre-S1 addresses may still be delivered) and
+N9 (tombstoned one-time prekey IDs can leave a returning device without
+server-side one-time prekeys); see the limitations below.
 
 KSecureMessage is Signal-style secure messaging: it uses the X3DH and Double
 Ratchet primitives of [Kodium](https://github.com/LivotovLabs/kodium), with
@@ -131,8 +135,27 @@ Assumptions and non-goals, collected from the specifications in `docs/`:
 
 ## Known limitations and open points
 
-- **Not audited.** Kodium's own implementation of X25519/Ed25519, X3DH and
-  the Double Ratchet is a dependency and has its own review status.
+- **No comprehensive audit, no formal verification.** The S1 re-reviews
+  were targeted at their findings. Kodium's own implementation of
+  X25519/Ed25519, X3DH and the Double Ratchet is a dependency with its own
+  review status, not covered by them.
+- **Pre-S1 servers** keep never-authorized registrations and any offline
+  recovery key they planted until the operator audits them and runs the
+  offline cleanup; identifying the suspect registrations is the operator's
+  job ([operating-the-server.md](operating-the-server.md#registrations-from-before-s1)).
+  After the cleanup, envelopes a suspect device queued earlier may still be
+  delivered (N8; recipients' checks apply, a new first contact is
+  `UNVERIFIED`), and one-time prekey IDs it had consumed stay tombstoned, so
+  a returning device's uploads of those IDs are skipped and new sessions may
+  run without a one-time prekey (N9). The cleanup's verification runs after
+  its `COMMIT`: a failure is reported, not undone.
+- **Host boundaries**: the host's context extractor and registration
+  authorizer decide membership; KSecureMessage cannot check that they are
+  correct. Genuine cancellation, `OutOfMemoryError` and `StackOverflowError`
+  propagate unsanitized: host code must not attach secrets to them.
+- **F7** (storage downgrade) is partially fixed; intent replay and trust in
+  the key provider's state remain
+  ([storage-encryption.md](storage-encryption.md#downgrade-protection)).
 - **JS/Wasm**: see [supported-platforms.md](supported-platforms.md). The
   Kotlin/JS runtime of Kodium is slow (seconds per signature); Kodium's
   randomness dependency does not work on Wasm under Node.js.

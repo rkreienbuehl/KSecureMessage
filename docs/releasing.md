@@ -1,13 +1,13 @@
 # Releasing
 
 How KSecureMessage is versioned, what is published, how it is signed,
-uploaded and documented, and the checklist for a release. No public release
-has been made yet.
+uploaded and documented, and the checklist for a release. Release notes are
+in the root `CHANGELOG.md` (shown on the [changelog](changelog.md) page).
 
 ## Versioning and compatibility
 
 The only version is `version = …` in the root `build.gradle.kts`
-(currently `0.1.0-SNAPSHOT`). `checkReleaseConventions` fails if it is not a
+(currently `0.1.0`). `checkReleaseConventions` fails if it is not a
 SemVer version.
 
 Before 1.0:
@@ -29,11 +29,11 @@ Before 1.0:
   incompatible change needs a new explicit format version (for example a new
   domain string or version byte) with migration and tests, whatever the Maven
   version says.
-- **Version strategy**: `0.1.0-SNAPSHOT` during development (uploaded to the
-  Central snapshot repository), `0.1.0-internal.N` for internal prereleases,
-  `0.1.0` only for a deliberate public release.
+- **Version strategy**: `X.Y.Z-SNAPSHOT` during development (uploaded to the
+  Central snapshot repository), `X.Y.Z-internal.N` for internal prereleases,
+  `X.Y.Z` only for a deliberate public release (the first was `0.1.0`).
 - **Schema migrations stay explicit and tested**: client schema (currently
-  15) and server schema (currently 7) change only through numbered `.sqm`
+  16) and server schema (currently 8) change only through numbered `.sqm`
   migrations with a frozen fixture of the previous schema.
 
 ## Published artifacts
@@ -172,10 +172,14 @@ PASSED, FAILED or NOT EXECUTED (configured but not run is not passed).
    the release commit.
 2. **Version**: set `version` in `build.gradle.kts` (`0.1.0-internal.N` for
    an internal prerelease, no suffix for a public release), update
-   `README.md` and `docs/getting-started.md` if they name the version.
+   `README.md`, `docs/getting-started.md` and `docs/index.md` if they name
+   the version, and `CHANGELOG.md` (the entry's date is set in the release
+   commit that gets tagged).
    A version without `-SNAPSHOT` changes the npm lock files (Kotlin/JS writes
    the package versions into them), and `kotlinStorePackageLock` then fails
-   the build: run `./gradlew kotlinUpgradePackageLock kotlinWasmUpgradePackageLock`,
+   the build: run `./gradlew clean` (the generated `package.json` files are
+   otherwise reported up to date with the old version), then
+   `./gradlew kotlinUpgradePackageLock kotlinWasmUpgradePackageLock`,
    review and commit `kotlin-js-store/` with the version change (and again
    when bumping back to `-SNAPSHOT`).
 3. **Hosted CI green** on that commit: Tier A (`ci.yml`, including the
