@@ -21,7 +21,7 @@ group = "dev.kreienbuehl.ksecuremessage"
 
 // The one authoritative project version (docs/releasing.md). Published
 // coordinates: group KsmRelease.GROUP, artifact ID ksecuremessage-<module path>.
-version = "0.1.0-SNAPSHOT"
+version = "0.1.0"
 
 allprojects {
     // Unique internal project coordinates: several modules share the name

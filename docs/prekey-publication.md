@@ -209,10 +209,18 @@ stays inside `EncryptedEnvelope.payload`.
   one-time prekey.
 - **Consumed tombstones hide conflicts.** A re-upload of a consumed ID is
   skipped without comparing bytes.
+- **Skipped uploads are not reported.** The publication does not tell the
+  client which IDs it skipped as consumed, so a client whose IDs were
+  consumed by someone else (for example an attacker who controlled the
+  address before S1) may believe its one-time prekeys are available while
+  the server holds none; new sessions then run without one. This is the
+  accepted residual N9
+  ([security-review-remediation.md](security-review-remediation.md#n9-consumed-one-time-prekey-tombstone-poisoning)).
 - **No background sync.** The client re-sends its whole inventory on each
   `publishPreKeys()`; it neither tracks what the server has nor refills
   automatically.
-- **No persistent server storage.** Only `InMemoryServerStorage` exists; its
-  mailboxes are not synchronized.
+- **Server storage** (written at milestone 4): persistent server storage
+  was added in milestone 13 (`storage:server:sqldelight`, see
+  [server-storage.md](server-storage.md)).
 - **Envelopes** in the `/v1/messages` routes still use kotlinx.serialization's
   default `ByteArray` JSON encoding (array of numbers).

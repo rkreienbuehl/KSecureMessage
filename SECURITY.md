@@ -1,15 +1,19 @@
 # Security policy
 
-KSecureMessage is pre-1.0 and has **not** had an independent security audit.
-The threat model, known limitations and the reviewer checklist are in the
-[security review guide](https://github.com/rkreienbuehl/KSecureMessage/blob/main/docs/security-review.md).
+KSecureMessage is pre-1.0 and has **not** had a comprehensive security
+audit. The threat model, known limitations and the reviewer checklist are in
+the
+[security review guide](https://github.com/rkreienbuehl/KSecureMessage/blob/main/docs/security-review.md);
+the findings of the targeted security review, the independent re-review
+results and the accepted residual risks are in the
+[remediation record](https://github.com/rkreienbuehl/KSecureMessage/blob/main/docs/security-review-remediation.md).
 
 ## Supported versions
 
 | Version | Receives security fixes |
 |---|---|
-| latest 0.x release (currently the 0.1 line, including `0.1.0-internal.*` prereleases) | yes |
-| older 0.x releases, snapshots | no |
+| latest 0.x release (currently the 0.1 line, starting with `0.1.0`) | yes |
+| older 0.x releases, snapshots, internal prereleases | no |
 
 Fixes ship in a new release of the latest 0.x line; there are no backports.
 
