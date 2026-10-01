@@ -130,7 +130,13 @@ publishing enabled.
   (bearer: the Base64 of `mavenCentralUsername:mavenCentralPassword`), so
   `./gradlew verifyRemotePublication` works for it too: the mirror, the
   inspection, the signature check and the consumer fixture (which gets the
-  token only through its environment) all read that endpoint. To only
+  token only through its environment) all read that endpoint. The endpoint
+  answers each request in seconds, so the mirror of a release version is
+  resumable: it fetches only the checksums the inspection checks (md5,
+  sha1), writes files atomically, and a rerun for the same URL and version
+  (recorded in `build/remote-mirror.ksm-mirror`) keeps what is already
+  mirrored. After dropping a deployment and uploading the same version
+  again, delete `build/remote-mirror` first. To only
   exercise the path, drop the validated deployment afterwards instead of
   publishing it. `scripts/central-deployment.sh status|wait|drop <id>` reads
   and drops deployments through the Portal API (the ID is printed by

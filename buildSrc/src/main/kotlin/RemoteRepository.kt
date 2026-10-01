@@ -31,14 +31,27 @@ import javax.xml.parsers.DocumentBuilderFactory
  *   the sources and documentation jars.
  *
  * For each artifact and each multiplatform target variant that exists
- * remotely it fetches every file with its signature and checksums. Missing
- * files are simply not mirrored: the inspection then reports them.
+ * remotely it fetches every file with its signature and the checksums of
+ * [checksumAlgorithms] (the ones the inspection checks). Missing files are
+ * simply not mirrored: the inspection then reports them.
+ *
+ * A release version is mirrored resumably: the Central Portal deployment
+ * endpoint answers each request in seconds, so a full mirror takes hours.
+ * Files are written atomically (temporary file, then rename), and a run keeps
+ * the files an earlier run mirrored from the same repository URL and version
+ * (recorded in a marker file next to the mirror directory, `<mirror>`
+ * plus [MARKER_SUFFIX]) and fetches only the missing ones. Anything else
+ * (another URL or version, no marker, a SNAPSHOT) starts from an empty
+ * directory. After a deployment of the same version was dropped and uploaded
+ * again, delete the mirror directory by hand. Files that the remote does not
+ * have are requested again by every run.
  */
 @UntrackedTask(because = "Reads a remote repository that changes independently of the build")
 abstract class MirrorRemoteRepository : DefaultTask() {
     @get:Input abstract val repositoryUrl: Property<String>
     @get:Input abstract val version: Property<String>
     @get:Input abstract val artifacts: ListProperty<String>
+    @get:Input abstract val checksumAlgorithms: ListProperty<String>
     @get:OutputDirectory abstract val mirror: DirectoryProperty
 
     /** Authorization for the Central Portal deployment endpoint (never logged). */
@@ -59,7 +72,22 @@ abstract class MirrorRemoteRepository : DefaultTask() {
         val snapshot = version.endsWith("-SNAPSHOT")
         if (!snapshot && !bearerToken.isPresent) throw GradleException("a release version is read from a Central Portal deployment, which needs credentials")
         val base = repositoryUrl.get().trimEnd('/')
-        val root = mirror.get().asFile.apply { deleteRecursively(); mkdirs() }
+        val root = mirror.get().asFile
+        val marker = "repository=$base\nversion=$version\n"
+        // Next to the mirror, not in it: every file in the mirror must be a signed artifact file.
+        val markerFile = File(root.parentFile, root.name + MARKER_SUFFIX)
+        val resume = !snapshot && root.isDirectory && markerFile.let { it.isFile && it.readText() == marker }
+        if (!resume) {
+            markerFile.delete()
+            root.deleteRecursively()
+            root.mkdirs()
+            markerFile.writeText(marker)
+        } else {
+            // Leftovers of an interrupted write are never mirrored files.
+            root.walkTopDown().filter { it.isFile && it.name.endsWith(".part") }.forEach { it.delete() }
+            logger.lifecycle("Resuming the mirror of $version from $base in $root")
+        }
+        val suffixes = listOf("", ".asc") + checksumAlgorithms.get().map { ".$it" }
         val groupPath = KsmRelease.GROUP.replace('.', '/')
         val candidates = artifacts.get().flatMap { artifact -> listOf(artifact) + KsmRelease.targetSuffixes.map { "$artifact-$it" } }
         // Thousands of small files: fetch them in parallel, one file per request.
@@ -73,18 +101,19 @@ abstract class MirrorRemoteRepository : DefaultTask() {
                         root.resolve(versionPath).apply { mkdirs() }.resolve("maven-metadata.xml").writeBytes(metadata)
                         snapshotFiles(artifact, metadata)
                     } else {
-                        val module = get("$base/$versionPath/$artifact-$version.module")
-                        val pom = get("$base/$versionPath/$artifact-$version.pom")
+                        val module = mirrored(root, versionPath, "$artifact-$version.module") ?: get("$base/$versionPath/$artifact-$version.module")
+                        val pom = mirrored(root, versionPath, "$artifact-$version.pom") ?: get("$base/$versionPath/$artifact-$version.pom")
                         if (module == null && pom == null) return@submit emptyList()
                         releaseFiles(artifact, version, module)
                     }
-                    names.flatMap { name -> listOf("", ".asc", ".md5", ".sha1", ".sha256", ".sha512").map { versionPath to name + it } }
+                    names.flatMap { name -> suffixes.map { versionPath to name + it } }
                 }
             }.flatMap { it.get() }
             files.map { (versionPath, name) ->
                 pool.submit<Int> {
+                    if (root.resolve(versionPath).resolve(name).isFile) return@submit 1
                     val bytes = get("$base/$versionPath/$name") ?: return@submit 0
-                    root.resolve(versionPath).apply { mkdirs() }.resolve(name).writeBytes(bytes)
+                    write(root.resolve(versionPath).apply { mkdirs() }.resolve(name), bytes)
                     1
                 }
             }.sumOf { it.get() }
@@ -93,6 +122,17 @@ abstract class MirrorRemoteRepository : DefaultTask() {
         }
         if (fileCount == 0) throw GradleException("no KSecureMessage $version artifacts found in $base")
         logger.lifecycle("Mirrored $fileCount files of $version from $base to $root")
+    }
+
+    /** The bytes of a file an earlier run of this version mirrored, or null. */
+    private fun mirrored(root: File, versionPath: String, name: String): ByteArray? =
+        root.resolve(versionPath).resolve(name).takeIf(File::isFile)?.readBytes()
+
+    /** Writes [bytes] to a temporary file and renames it, so an interrupted run never leaves a partial file. */
+    private fun write(target: File, bytes: ByteArray) {
+        val temporary = File(target.parentFile, ".${target.name}.part")
+        temporary.writeBytes(bytes)
+        java.nio.file.Files.move(temporary.toPath(), target.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
     }
 
     /** File names of the latest snapshot in a version-level maven-metadata.xml (signatures and checksums excluded). */
@@ -114,6 +154,11 @@ abstract class MirrorRemoteRepository : DefaultTask() {
         val listed = module?.let { bytes -> InspectReleaseArtifacts.moduleFileUrls(String(bytes)) }.orEmpty()
         val known = listOf(".pom", ".module", "-sources.jar", "-javadoc.jar", "-kotlin-tooling-metadata.json").map { "$artifact-$version$it" }
         return (known + listed).distinct()
+    }
+
+    companion object {
+        /** Suffix of the file next to the mirror directory that records the repository URL and version it holds. */
+        const val MARKER_SUFFIX: String = ".ksm-mirror"
     }
 
     private fun get(url: String): ByteArray? {
