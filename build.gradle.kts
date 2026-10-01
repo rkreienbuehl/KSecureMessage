@@ -339,6 +339,8 @@ val centralBearerToken: Provider<String> = providers.gradleProperty("mavenCentra
         java.util.Base64.getEncoder().encodeToString("$user:$password".toByteArray())
     }
 val remoteMirror = layout.buildDirectory.dir("remote-mirror")
+// The remote checksums the inspection checks; the mirror fetches only these.
+val remoteChecksumAlgorithms = listOf("md5", "sha1")
 val mirrorRemoteRepository by tasks.registering(MirrorRemoteRepository::class) {
     group = "verification"
     description = "Downloads the uploaded version of every artifact from the remote repository into build/remote-mirror."
@@ -346,6 +348,7 @@ val mirrorRemoteRepository by tasks.registering(MirrorRemoteRepository::class) {
     if (!snapshotVersion) bearerToken.set(centralBearerToken)
     this.version.set(project.version.toString())
     artifacts.set(KsmRelease.publishedModules.map(KsmRelease::artifactId))
+    checksumAlgorithms.set(remoteChecksumAlgorithms)
     mirror.set(remoteMirror)
 }
 val inspectRemoteArtifacts by tasks.registering(InspectReleaseArtifacts::class) {
@@ -357,7 +360,7 @@ val inspectRemoteArtifacts by tasks.registering(InspectReleaseArtifacts::class) 
     expectedArtifacts.set(KsmRelease.publishedModules.map(KsmRelease::artifactId))
     forbiddenArtifacts.set(KsmRelease.neverPublishedModules.map(KsmRelease::artifactId))
     requireSignatures.set(true)
-    checksumAlgorithms.set(listOf("md5", "sha1"))
+    checksumAlgorithms.set(remoteChecksumAlgorithms)
     report.set(layout.buildDirectory.file("reports/remote-artifacts.txt"))
 }
 val verifyRemoteSignatures by tasks.registering(Exec::class) {
